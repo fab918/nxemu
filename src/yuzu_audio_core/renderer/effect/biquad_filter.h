@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2025 Eden Emulator Project
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // SPDX-FileCopyrightText: Copyright 2022 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -27,13 +30,27 @@ public:
     struct ParameterVersion2 {
         /* 0x00 */ std::array<s8, MaxChannels> inputs;
         /* 0x06 */ std::array<s8, MaxChannels> outputs;
-        /* 0x0C */ std::array<s16, 3> b;
-        /* 0x12 */ std::array<s16, 2> a;
-        /* 0x16 */ s8 channel_count;
-        /* 0x17 */ ParameterState state;
+        /* 0x0C */ u32 padding;
+        /* 0x10 */ std::array<f32, 3> b;
+        /* 0x1C */ std::array<f32, 2> a;
+        /* 0x24 */ s8 channel_count;
+        /* 0x25 */ ParameterState state;
+        /* 0x26 */ u16 reserved;
     };
     static_assert(sizeof(ParameterVersion2) <= sizeof(EffectInfoBase::InParameterVersion2),
                   "BiquadFilterInfo::ParameterVersion2 has the wrong size!");
+
+    void SetFloatParameterFormat(bool enabled) {
+        // Effect instances are allocated in sizeof(EffectInfoBase) slots. Keep the
+        // format marker inside the existing parameter storage so this derived type
+        // never grows beyond its allocation slot. Biquad payloads occupy at most
+        // sizeof(ParameterVersion2), leaving the final byte host-private.
+        parameter.back() = static_cast<u8>(enabled);
+    }
+
+    [[nodiscard]] bool UsesFloatParameterFormat() const {
+        return parameter.back() != 0;
+    }
 
     /**
      * Update the info with new parameters, version 1.
@@ -74,6 +91,9 @@ public:
      * @param dsp_state - AudioRenderer-side result state to update from.
      */
     void UpdateResultState(EffectResultState& cpu_state, EffectResultState& dsp_state) override;
+
 };
+static_assert(sizeof(BiquadFilterInfo) == sizeof(EffectInfoBase),
+              "BiquadFilterInfo must fit in an EffectInfoBase allocation slot");
 
 } // namespace AudioCore::Renderer

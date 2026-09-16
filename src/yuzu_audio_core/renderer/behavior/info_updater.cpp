@@ -1,9 +1,13 @@
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // SPDX-FileCopyrightText: Copyright 2022 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "yuzu_audio_core/common/feature_support.h"
 #include "yuzu_audio_core/renderer/behavior/behavior_info.h"
 #include "yuzu_audio_core/renderer/behavior/info_updater.h"
+#include "yuzu_audio_core/renderer/effect/biquad_filter.h"
 #include "yuzu_audio_core/renderer/effect/effect_context.h"
 #include "yuzu_audio_core/renderer/effect/effect_reset.h"
 #include "yuzu_audio_core/renderer/memory/memory_pool_info.h"
@@ -61,8 +65,6 @@ Result InfoUpdater::UpdateVoices(VoiceContext& voice_context,
     const PoolMapper pool_mapper(process_handle, memory_pools, memory_pool_count,
                                  behaviour.IsMemoryForceMappingEnabled());
     const auto voice_count{voice_context.GetCount()};
-    std::span<const VoiceInfo::InParameter> in_params{
-        reinterpret_cast<const VoiceInfo::InParameter*>(input), voice_count};
     std::span<VoiceInfo::OutStatus> out_params{reinterpret_cast<VoiceInfo::OutStatus*>(output),
                                                voice_count};
 
@@ -73,8 +75,70 @@ Result InfoUpdater::UpdateVoices(VoiceContext& voice_context,
 
     u32 new_voice_count{0};
 
+    // Two input formats exist: legacy (0x170) and v2 with float biquad (0x188).
+    const bool use_v2 = behaviour.IsVoiceInParameterV2Supported();
+    const u32 in_stride = use_v2 ? 0x188u : static_cast<u32>(sizeof(VoiceInfo::InParameter));
+
     for (u32 i = 0; i < voice_count; i++) {
-        const auto& in_param{in_params[i]};
+        VoiceInfo::InParameter local_in{};
+        std::array<VoiceInfo::BiquadFilterParameter2, MaxBiquadFilters> float_biquads{};
+
+        if (!use_v2) {
+            const auto* in_param_ptr = reinterpret_cast<const VoiceInfo::InParameter*>(
+                input + i * sizeof(VoiceInfo::InParameter));
+            local_in = *in_param_ptr;
+        } else {
+            const auto* vin = reinterpret_cast<const VoiceInfo::InParameter2*>(
+                input + i * in_stride);
+            local_in.id = vin->id;
+            local_in.node_id = vin->node_id;
+            local_in.is_new = vin->is_new;
+            local_in.in_use = vin->in_use;
+            local_in.play_state = vin->play_state;
+            local_in.sample_format = vin->sample_format;
+            local_in.sample_rate = vin->sample_rate;
+            local_in.priority = vin->priority;
+            local_in.sort_order = vin->sort_order;
+            local_in.channel_count = vin->channel_count;
+            local_in.pitch = vin->pitch;
+            local_in.volume = vin->volume;
+
+            // REV15+ keeps the native float coefficients for command generation,
+            // while the legacy copy remains populated for the existing voice path.
+            for (size_t filter_idx = 0; filter_idx < MaxBiquadFilters; filter_idx++) {
+                const auto& src = vin->biquads[filter_idx];
+                auto& dst = local_in.biquads[filter_idx];
+                dst.enabled = src.enabled;
+                dst.b[0] = static_cast<s16>(
+                    std::clamp(src.numerator[0] * 16384.0f, -32768.0f, 32767.0f));
+                dst.b[1] = static_cast<s16>(
+                    std::clamp(src.numerator[1] * 16384.0f, -32768.0f, 32767.0f));
+                dst.b[2] = static_cast<s16>(
+                    std::clamp(src.numerator[2] * 16384.0f, -32768.0f, 32767.0f));
+                dst.a[0] = static_cast<s16>(
+                    std::clamp(src.denominator[0] * 16384.0f, -32768.0f, 32767.0f));
+                dst.a[1] = static_cast<s16>(
+                    std::clamp(src.denominator[1] * 16384.0f, -32768.0f, 32767.0f));
+
+                float_biquads[filter_idx] = src;
+            }
+            local_in.wave_buffer_count = vin->wave_buffer_count;
+            local_in.wave_buffer_index = static_cast<u16>(vin->wave_buffer_index);
+            local_in.src_data_address = vin->src_data_address;
+            local_in.src_data_size = vin->src_data_size;
+            local_in.mix_id = vin->mix_id;
+            local_in.splitter_id = vin->splitter_id;
+            local_in.wave_buffer_internal = vin->wave_buffer_internal;
+            for (size_t channel = 0; channel < MaxChannels; channel++) {
+                local_in.channel_resource_ids[channel] =
+                    static_cast<u32>(vin->channel_resource_ids[channel]);
+            }
+            local_in.clear_voice_drop = vin->clear_voice_drop;
+            local_in.flush_buffer_count = vin->flush_buffer_count;
+            local_in.flags = vin->flags;
+            local_in.src_quality = vin->src_quality;
+        }
+        const auto& in_param = local_in;
         std::array<VoiceState*, MaxChannels> voice_states{};
 
         if (!in_param.in_use) {
@@ -98,6 +162,14 @@ Result InfoUpdater::UpdateVoices(VoiceContext& voice_context,
         BehaviorInfo::ErrorInfo update_error{};
         voice_info.UpdateParameters(update_error, in_param, pool_mapper, behaviour);
 
+        // For REV15+, store the native float biquad coefficients
+        if (use_v2) {
+            voice_info.use_float_biquads = true;
+            voice_info.biquads_float = float_biquads;
+        } else {
+            voice_info.use_float_biquads = false;
+        }
+
         if (!update_error.error_code.IsSuccess()) {
             behaviour.AppendError(update_error);
         }
@@ -118,7 +190,7 @@ Result InfoUpdater::UpdateVoices(VoiceContext& voice_context,
         new_voice_count += in_param.channel_count;
     }
 
-    auto consumed_input_size{voice_count * static_cast<u32>(sizeof(VoiceInfo::InParameter))};
+    auto consumed_input_size{voice_count * in_stride};
     auto consumed_output_size{voice_count * static_cast<u32>(sizeof(VoiceInfo::OutStatus))};
     if (consumed_input_size != in_header->voices_size) {
         LOG_ERROR(Service_Audio, "Consumed an incorrect voices size, header size={}, consumed={}",
@@ -213,6 +285,10 @@ Result InfoUpdater::UpdateEffectsVersion2(EffectContext& effect_context, const b
         if (effect_info->GetType() != in_params[i].type) {
             effect_info->ForceUnmapBuffers(pool_mapper);
             ResetEffect(effect_info, in_params[i].type);
+        }
+        if (in_params[i].type == EffectInfoBase::Type::BiquadFilter) {
+            static_cast<BiquadFilterInfo*>(effect_info)->SetFloatParameterFormat(
+                behaviour.IsBiquadFilterParameterFloatSupported());
         }
 
         BehaviorInfo::ErrorInfo error_info{};
