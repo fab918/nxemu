@@ -196,9 +196,38 @@ NvResult nvhost_as_gpu::AllocateSpace(IoctlAllocSpace& params)
     return NvResult::Success;
 }
 
-void nvhost_as_gpu::FreeMappingLocked(u64 offset)
+bool nvhost_as_gpu::FreeMappingLocked(u64 offset)
 {
-    UNIMPLEMENTED();
+    const auto it = mapping_map.find(offset);
+    if (it == mapping_map.end())
+    {
+        return false;
+    }
+
+    const auto mapping = it->second;
+    if (!mapping->fixed)
+    {
+        auto& allocator{mapping->big_page ? *vm.big_page_allocator : *vm.small_page_allocator};
+        const u32 page_size_bits{mapping->big_page ? vm.big_page_size_bits : VM::PAGE_SIZE_BITS};
+        const u32 page_size{mapping->big_page ? vm.big_page_size : VM::YUZU_PAGESIZE};
+        const u64 aligned_size{Common::AlignUp(mapping->size, page_size)};
+        allocator.Free(static_cast<u32>(mapping->offset >> page_size_bits),
+                       static_cast<u32>(aligned_size >> page_size_bits));
+    }
+
+    IVideo& video = system.GetVideo();
+    if (mapping->sparse_alloc)
+    {
+        video.MapSparse(gmmu, mapping->offset, mapping->size, mapping->big_page);
+    }
+    else
+    {
+        video.Unmap(gmmu, mapping->offset, mapping->size);
+    }
+
+    nvmap.UnpinHandle(mapping->handle);
+    mapping_map.erase(it);
+    return true;
 }
 
 NvResult nvhost_as_gpu::FreeSpace(IoctlFreeSpace& params)
@@ -212,36 +241,41 @@ NvResult nvhost_as_gpu::FreeSpace(IoctlFreeSpace& params)
         return NvResult::BadValue;
     }
 
-    try
-    {
-        auto allocation{allocation_map[params.offset]};
-
-        if (allocation.page_size != params.page_size || allocation.size != (static_cast<u64>(params.pages) * params.page_size))
-        {
-            return NvResult::BadValue;
-        }
-
-        for (const auto & mapping : allocation.mappings)
-        {
-            FreeMappingLocked(mapping->offset);
-        }
-
-        // Unset sparse flag if required
-        if (allocation.sparse)
-        {
-            system.GetVideo().Unmap(gmmu, params.offset, allocation.size);
-        }
-
-        auto & allocator{params.page_size == VM::YUZU_PAGESIZE ? *vm.small_page_allocator : *vm.big_page_allocator};
-        u32 page_size_bits{params.page_size == VM::YUZU_PAGESIZE ? VM::PAGE_SIZE_BITS : vm.big_page_size_bits};
-
-        allocator.Free(static_cast<u32>(params.offset >> page_size_bits), static_cast<u32>(allocation.size >> page_size_bits));
-        allocation_map.erase(params.offset);
-    }
-    catch (const std::out_of_range &)
+    const auto it = allocation_map.find(params.offset);
+    if (it == allocation_map.end())
     {
         return NvResult::BadValue;
     }
+
+    const auto allocation = it->second;
+    if (allocation.page_size != params.page_size ||
+        allocation.size != (static_cast<u64>(params.pages) * params.page_size))
+    {
+        return NvResult::BadValue;
+    }
+
+    for (const auto& mapping : allocation.mappings)
+    {
+        if (!FreeMappingLocked(mapping->offset))
+        {
+            return NvResult::BadValue;
+        }
+    }
+
+    // Unset sparse flag if required
+    if (allocation.sparse)
+    {
+        system.GetVideo().Unmap(gmmu, params.offset, allocation.size);
+    }
+
+    auto& allocator{params.page_size == VM::YUZU_PAGESIZE ? *vm.small_page_allocator
+                                                           : *vm.big_page_allocator};
+    const u32 page_size_bits{params.page_size == VM::YUZU_PAGESIZE ? VM::PAGE_SIZE_BITS
+                                                                   : vm.big_page_size_bits};
+
+    allocator.Free(static_cast<u32>(params.offset >> page_size_bits),
+                   static_cast<u32>(allocation.size >> page_size_bits));
+    allocation_map.erase(it);
     return NvResult::Success;
 }
 
