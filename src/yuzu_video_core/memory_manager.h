@@ -218,6 +218,10 @@ private:
     std::vector<u64> entries;
     std::vector<u64> big_entries;
 
+    void NotifyMappingChanged(GPUVAddr gpu_addr, DAddr dev_addr, size_t size,
+                              EntryType entry_type, PTEKind kind, bool is_big_pages);
+    void PrepareSmallPageMapping(GPUVAddr gpu_addr, size_t size);
+
     template <EntryType entry_type>
     GPUVAddr PageTableOp(GPUVAddr gpu_addr, [[maybe_unused]] DAddr dev_addr, size_t size,
                          PTEKind kind);
