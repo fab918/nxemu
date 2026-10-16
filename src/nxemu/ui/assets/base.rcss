@@ -1,0 +1,375 @@
+/* Shared look of every NXEmu document. Sizes are in dp so the interface
+   follows the display's scale on every platform. */
+
+body
+{
+    font-family: LatoLatin;
+    font-size: 15dp;
+    color: #e6ebf2;
+}
+
+div, h1, p
+{
+    display: block;
+}
+
+h1
+{
+    font-size: 28dp;
+    font-weight: bold;
+}
+
+button
+{
+    display: inline-block;
+    padding: 7dp 18dp;
+    border: 1dp #24344f;
+    border-radius: 5dp;
+    background-color: #111a2a;
+    color: #e6ebf2;
+    text-align: center;
+    cursor: pointer;
+}
+
+button:hover
+{
+    background-color: #1b2a44;
+}
+
+button.primary
+{
+    border-color: #2f7df6;
+    background-color: #2f7df6;
+    color: #ffffff;
+}
+
+button.primary:hover
+{
+    background-color: #4a90ff;
+}
+
+.link
+{
+    color: #4aa3ff;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.link:hover
+{
+    color: #8cc4ff;
+}
+
+scrollbarvertical
+{
+    width: 10dp;
+    margin-left: 2dp;
+}
+
+scrollbarvertical slidertrack
+{
+    background-color: #0c1320;
+    border-radius: 5dp;
+}
+
+scrollbarvertical sliderbar
+{
+    width: 10dp;
+    min-height: 24dp;
+    background-color: #24344f;
+    border-radius: 5dp;
+}
+
+scrollbarvertical sliderbar:hover,
+scrollbarvertical sliderbar:active
+{
+    background-color: #33486c;
+}
+
+scrollbarvertical sliderarrowdec,
+scrollbarvertical sliderarrowinc
+{
+    width: 0;
+    height: 0;
+}
+
+/* Dialogs are documents that cover the window and centre a panel on it. */
+body.dialog-backdrop
+{
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #000000a0;
+}
+
+.dialog
+{
+    border: 1dp #1f2c44;
+    border-radius: 6dp;
+    background-color: #070b14;
+}
+
+.dialog-header
+{
+    display: flex;
+    align-items: center;
+    height: 38dp;
+    padding: 0 6dp 0 14dp;
+    border-bottom: 1dp #16202f;
+    background-color: #0a0f1a;
+}
+
+.dialog-header img
+{
+    width: 20dp;
+    height: 20dp;
+    margin-right: 8dp;
+}
+
+.dialog-title
+{
+    flex: 1;
+    font-weight: bold;
+}
+
+.dialog-close
+{
+    width: 30dp;
+    line-height: 26dp;
+    border-radius: 4dp;
+    font-size: 20dp;
+    text-align: center;
+    cursor: pointer;
+}
+
+.dialog-close:hover
+{
+    background-color: #e81123;
+}
+
+.dialog-footer
+{
+    padding: 10dp 30dp 20dp 30dp;
+    text-align: right;
+}
+
+.dialog-footer button
+{
+    min-width: 70dp;
+    margin-left: 8dp;
+}
+
+/* A setting that is on or off. */
+.switch
+{
+    box-sizing: border-box;
+    width: 36dp;
+    height: 20dp;
+    padding: 2dp;
+    border-radius: 10dp;
+    background-color: #33415a;
+    cursor: pointer;
+}
+
+.switch-knob
+{
+    width: 16dp;
+    height: 16dp;
+    border-radius: 8dp;
+    background-color: #c5cedb;
+}
+
+.switch.on
+{
+    background-color: #2f7df6;
+}
+
+.switch.on .switch-knob
+{
+    margin-left: 16dp;
+    background-color: #ffffff;
+}
+
+/* A value chosen along a line. */
+input.range slidertrack
+{
+    height: 4dp;
+    margin-top: 6dp;
+    border-radius: 2dp;
+    background-color: #24344f;
+}
+
+input.range sliderprogress
+{
+    height: 4dp;
+    margin-top: 1dp;
+    border-radius: 2dp;
+    background-color: #2f7df6;
+}
+
+input.range sliderbar
+{
+    width: 14dp;
+    height: 14dp;
+    margin-top: 1dp;
+    border-radius: 7dp;
+    background-color: #ffffff;
+    cursor: pointer;
+}
+
+input.range sliderarrowdec,
+input.range sliderarrowinc
+{
+    width: 0;
+    height: 0;
+}
+
+/* A value chosen from a list that opens under it. */
+select
+{
+    display: inline-block;
+    box-sizing: border-box;
+    width: 190dp;
+    height: 28dp;
+    border: 1dp #24344f;
+    border-radius: 6dp;
+    background-color: #0f1a2b;
+    cursor: pointer;
+}
+
+select:hover
+{
+    border-color: #3d5a8a;
+    background-color: #14233a;
+}
+
+select selectvalue
+{
+    width: auto;
+    height: 26dp;
+    margin-right: 24dp;
+    padding-left: 10dp;
+    line-height: 26dp;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+select selectarrow
+{
+    width: 12dp;
+    height: 12dp;
+    margin: 7dp 8dp 0 0;
+    decorator: image(images/chevron-down.png);
+    image-color: #8fa0b8;
+}
+
+select selectbox
+{
+    margin-top: 4dp;
+    padding: 4dp;
+    border: 1dp #1f2c44;
+    border-radius: 6dp;
+    background-color: #0f1624;
+}
+
+select selectbox option
+{
+    display: block;
+    padding: 6dp 10dp;
+    border-radius: 4dp;
+    white-space: nowrap;
+}
+
+select selectbox option:hover
+{
+    background-color: #1b2a44;
+}
+
+select selectbox option:checked
+{
+    color: #8fb8ff;
+}
+
+/* The volume of games: a button that mutes them, the level, and a slider. */
+.volume-control
+{
+    display: flex;
+    align-items: center;
+}
+
+.volume-toggle
+{
+    display: flex;
+    align-items: center;
+    padding: 3dp 5dp;
+    margin-right: 3dp;
+    border: 1dp transparent;
+    border-radius: 4dp;
+    cursor: pointer;
+}
+
+.volume-toggle:hover
+{
+    border-color: #33486c;
+}
+
+.volume-icon
+{
+    width: 16dp;
+    height: 16dp;
+    margin-right: 6dp;
+    image-color: #dfe6f0;
+}
+
+.volume-text
+{
+    width: 36dp;
+}
+
+.volume-range
+{
+    position: relative;
+    width: 120dp;
+    height: 16dp;
+    margin-left: 4dp;
+}
+
+/* Where 100% is on the slider, which goes up to 200%. Taller than the
+   slider's handle, to show on both sides of it. */
+.volume-normal-mark
+{
+    position: absolute;
+    left: 59.5dp;
+    top: -3dp;
+    width: 1dp;
+    height: 22dp;
+    background-color: #33415a;
+}
+
+.volume-slider
+{
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 120dp;
+    height: 16dp;
+}
+
+/* A button that removes or undoes what cannot be had back. */
+button.danger
+{
+    border-color: #b3403f;
+    background-color: #b3403f;
+    color: #ffffff;
+}
+
+button.danger:hover
+{
+    background-color: #cf4d4c;
+}
