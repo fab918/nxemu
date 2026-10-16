@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <array>
+#include <cstdlib>
 #include <vector>
 #include "nxemu-video/video_settings.h"
 #include "yuzu_common/yuzu_assert.h"
@@ -11,6 +12,7 @@
 #include "yuzu_video_core/engines/maxwell_3d.h"
 #include "yuzu_video_core/macro/macro.h"
 #include "yuzu_video_core/macro/macro_hle.h"
+#include "yuzu_video_core/macro/indirect_draw_count.h"
 #include "yuzu_video_core/memory_manager.h"
 #include "yuzu_video_core/rasterizer_interface.h"
 
@@ -262,16 +264,40 @@ public:
         const u32 indirect_words = 5 + padding;
         const u32 stride = indirect_words * sizeof(u32);
         const std::size_t draw_count = end_indirect - start_indirect;
+        // This diagnostic switch permits an A/B comparison with identical builds.
+        static const bool disable_known_count =
+            std::getenv("NXEMU_DISABLE_KNOWN_INDIRECT_COUNT") != nullptr;
+        const auto known_count = KnownMultiDrawCount(
+            disable_known_count || maxwell3d.AnyParametersDirty(), start_indirect, end_indirect,
+            parameters[4]);
+        static const bool trace = std::getenv("NXEMU_TRACE_PERFORMANCE") != nullptr;
+        if (trace) {
+            static u64 draws{}, known{}, gpu_written{};
+            ++draws;
+            known += known_count.has_value();
+            gpu_written += maxwell3d.AnyParametersDirty();
+            if (draws % 4096 == 0) {
+                LOG_INFO(Render_Vulkan, "Indirect draws: {} batches, {} CPU-known counts, {} GPU-written batches",
+                         draws, known, gpu_written);
+            }
+        }
+        if (known_count && *known_count == 0) {
+            return;
+        }
         const u32 estimate = IndexCount(parameters, indirect_words, draw_count);
         maxwell3d.dirty.flags[VideoCommon::Dirty::IndexBuffer] = true;
         auto& params = maxwell3d.draw_manager->GetIndirectParams();
         params.is_byte_count = false;
         params.is_indexed = true;
-        params.include_count = true;
+        // MoltenVK implements an indirect count by interrupting the render pass
+        // for a compute conversion. A CPU-known count can use ordinary indirect
+        // draws without a readback or that conversion. GPU-written arguments
+        // retain the original indirect-count path.
+        params.include_count = !known_count.has_value();
         params.count_start_address = maxwell3d.GetMacroAddress(4);
         params.indirect_start_address = maxwell3d.GetMacroAddress(5);
         params.buffer_size = stride * draw_count;
-        params.max_draw_counts = draw_count;
+        params.max_draw_counts = known_count ? *known_count : draw_count;
         params.stride = stride;
         maxwell3d.dirty.flags[VideoCommon::Dirty::IndexBuffer] = true;
         maxwell3d.engine_state = Maxwell3D::EngineHint::OnHLEMacro;

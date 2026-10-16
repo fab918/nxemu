@@ -15,6 +15,7 @@
 #include "yuzu_common/common_types.h"
 #include "yuzu_video_core/engines/draw_manager.h"
 #include "yuzu_video_core/host1x/gpu_device_memory_manager.h"
+#include "yuzu_video_core/query_cache/query_bank_tail.h"
 #include "yuzu_video_core/query_cache/query_cache.h"
 #include "yuzu_video_core/rasterizer_interface.h"
 #include "yuzu_video_core/renderer_vulkan/vk_buffer_cache.h"
@@ -470,16 +471,11 @@ private:
         current_bank->AddReference(1);
         num_slots_used++;
         if (current_query) {
-            size_t bank_id = current_query->start_bank_id;
-            size_t banks_set = current_query->size_banks - 1;
-            bool found = bank_id == current_bank_id;
-            while (!found && banks_set > 0) {
-                SamplesQueryBank& some_bank = bank_pool.GetBank(bank_id);
-                bank_id = some_bank.next_bank - 1;
-                found = bank_id == current_bank_id;
-                banks_set--;
-            }
-            if (!found) {
+            // Slots are appended to the current bank until it closes. Banks
+            // referenced by this query cannot be recycled, so a changed tail
+            // always means exactly one newly appended bank. Do not walk the
+            // whole history of a counter that can stay active for minutes.
+            if (current_query_tail.Append(current_bank_id)) {
                 current_query->size_banks++;
             }
             current_query->size_slots++;
@@ -488,6 +484,7 @@ private:
             current_query = GetQuery(current_query_id);
             current_query->start_bank_id = static_cast<u32>(current_bank_id);
             current_query->size_banks = 1;
+            current_query_tail.Begin(current_bank_id);
             current_query->start_slot = new_slot;
             current_query->size_slots = 1;
         }
@@ -598,6 +595,7 @@ private:
     SamplesQueryBank* current_bank;
     VkQueryPool current_query_pool;
     size_t current_query_id;
+    VideoCommon::QueryBankTail current_query_tail;
     size_t num_slots_used{};
     size_t first_accumulation_checkpoint{};
     size_t last_accumulation_checkpoint{};

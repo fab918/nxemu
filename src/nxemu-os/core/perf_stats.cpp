@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <iterator>
 #include <mutex>
 #include <numeric>
@@ -10,10 +11,12 @@
 #include <thread>
 #include <fmt/chrono.h>
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 #include "yuzu_common/fs/file.h"
 #include "yuzu_common/fs/fs.h"
 #include "yuzu_common/fs/path_util.h"
 #include "yuzu_common/settings.h"
+#include "yuzu_common/logging/log.h"
 #include "os_settings.h"
 #include "core/perf_stats.h"
 
@@ -76,7 +79,8 @@ void PerfStats::EndSystemFrame() {
 
 void PerfStats::EndGameFrame() {
     game_frames.fetch_add(1, std::memory_order_relaxed);
-    if (!measure_game_frames.load(std::memory_order_relaxed)) {
+    static const bool trace_frames = std::getenv("NXEMU_TRACE_FRAME_TIMES") != nullptr;
+    if (!measure_game_frames.load(std::memory_order_relaxed) && !trace_frames) {
         return;
     }
 
@@ -86,6 +90,12 @@ void PerfStats::EndGameFrame() {
         return;
     }
     const Clock::rep length = now - previous;
+    if (trace_frames) {
+        const u64 index = game_frame_trace_written.fetch_add(1, std::memory_order_relaxed);
+        auto& slot = game_frame_trace[index % game_frame_trace.size()];
+        slot.length.store(length, std::memory_order_relaxed);
+        slot.sequence.store(index + 1, std::memory_order_release);
+    }
     Clock::rep longest = longest_game_frame.load(std::memory_order_relaxed);
     while (length > longest &&
            !longest_game_frame.compare_exchange_weak(longest, length, std::memory_order_relaxed)) {
@@ -134,6 +144,37 @@ PerfStatsResults PerfStats::GetAndResetStats(microseconds current_system_time_us
         .emulation_speed = system_us_per_second.count() / 1'000'000.0,
         .longest_game_frame = duration_cast<DoubleSecs>(longest_frame).count(),
     };
+
+    static const bool trace = std::getenv("NXEMU_TRACE_PERFORMANCE") != nullptr;
+    if (trace) {
+        LOG_INFO(Core, "Performance: game_fps={:.3f} system_fps={:.3f} frame_ms={:.3f} longest_ms={:.3f} guest_us={}",
+                 results.average_game_fps, results.system_fps, results.frametime * 1000.0,
+                 results.longest_game_frame * 1000.0, current_system_time_us.count());
+    }
+
+    static const bool trace_frames = std::getenv("NXEMU_TRACE_FRAME_TIMES") != nullptr;
+    if (trace_frames) {
+        const u64 end = game_frame_trace_written.load(std::memory_order_relaxed);
+        const u64 begin = std::max(game_frame_trace_read,
+                                  end > game_frame_trace.size() ? end - game_frame_trace.size() : 0);
+        std::vector<double> lengths;
+        lengths.reserve(static_cast<size_t>(end - begin));
+        u64 dropped = begin - game_frame_trace_read;
+        for (u64 index = begin; index < end; ++index) {
+            const auto& slot = game_frame_trace[index % game_frame_trace.size()];
+            const u64 sequence = slot.sequence.load(std::memory_order_acquire);
+            const Clock::duration length{slot.length.load(std::memory_order_relaxed)};
+            if (sequence == index + 1 &&
+                slot.sequence.load(std::memory_order_acquire) == sequence) {
+                lengths.push_back(std::chrono::duration<double, std::milli>(length).count());
+            } else {
+                ++dropped;
+            }
+        }
+        game_frame_trace_read = end;
+        LOG_INFO(Core, "FrameTimes: guest_us={} dropped={} frame_ms=[{:.3f}]",
+                 current_system_time_us.count(), dropped, fmt::join(lengths, ","));
+    }
 
     // Reset counters
     reset_point = now;

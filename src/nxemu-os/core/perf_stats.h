@@ -72,6 +72,15 @@ private:
     /// Longest duration between two game frames since last reset, as a count of the clock
     std::atomic<Clock::rep> longest_game_frame = 0;
 
+    // Optional diagnostics: atomic slots avoid adding a lock to frame completion.
+    struct FrameTraceSlot {
+        std::atomic<Clock::rep> length{};
+        std::atomic<u64> sequence{};
+    };
+    std::array<FrameTraceSlot, 4096> game_frame_trace{};
+    std::atomic<u64> game_frame_trace_written{};
+    u64 game_frame_trace_read{};
+
     /// Point when the previous system frame ended
     Clock::time_point previous_frame_end = reset_point;
     /// Point when the current system frame began

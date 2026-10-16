@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <vector>
+#include <span>
 
 #include "yuzu_common/common_types.h"
 #include "yuzu_common/div_ceil.h"
@@ -13,10 +14,10 @@
 
 namespace VideoCommon {
 
-template <typename Descriptor>
+template <typename Descriptor, typename Memory = Tegra::MemoryManager>
 class DescriptorTable {
 public:
-    explicit DescriptorTable(Tegra::MemoryManager& gpu_memory_) : gpu_memory{gpu_memory_} {}
+    explicit DescriptorTable(Memory& gpu_memory_) : gpu_memory{gpu_memory_} {}
 
     [[nodiscard]] bool Synchronize(GPUVAddr gpu_addr, u32 limit) {
         [[likely]] if (current_gpu_addr == gpu_addr && current_limit == limit) { return false; }
@@ -28,11 +29,15 @@ public:
         std::ranges::fill(read_descriptors, 0);
     }
 
-    [[nodiscard]] std::pair<Descriptor, bool> Read(u32 index) {
+    [[nodiscard]] std::pair<Descriptor, bool> Read(u32 index, const Descriptor* snapshot = nullptr) {
         DEBUG_ASSERT(index <= current_limit);
         const GPUVAddr gpu_addr = current_gpu_addr + index * sizeof(Descriptor);
         std::pair<Descriptor, bool> result;
-        gpu_memory.ReadBlockUnsafe(gpu_addr, &result.first, sizeof(Descriptor));
+        if (snapshot) {
+            result.first = *snapshot;
+        } else {
+            gpu_memory.ReadBlockUnsafe(gpu_addr, &result.first, sizeof(Descriptor));
+        }
         if (IsDescriptorRead(index)) {
             result.second = result.first != descriptors[index];
         } else {
@@ -43,6 +48,12 @@ public:
             descriptors[index] = result.first;
         }
         return result;
+    }
+
+    void ReadRange(u32 first, std::span<Descriptor> output) const {
+        DEBUG_ASSERT(first <= current_limit && output.size() <= size_t{current_limit} - first + 1);
+        gpu_memory.ReadBlockUnsafe(current_gpu_addr + first * sizeof(Descriptor),
+                                   output.data(), output.size_bytes());
     }
 
     [[nodiscard]] u32 Limit() const noexcept {
@@ -68,7 +79,7 @@ private:
         return (read_descriptors[index / 64] & (1ULL << (index % 64))) != 0;
     }
 
-    Tegra::MemoryManager& gpu_memory;
+    Memory& gpu_memory;
     GPUVAddr current_gpu_addr{};
     u32 current_limit{};
     std::vector<u64> read_descriptors;

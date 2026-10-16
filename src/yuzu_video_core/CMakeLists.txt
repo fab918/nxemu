@@ -3,6 +3,40 @@
 
 add_subdirectory(host_shaders)
 
+option(NXEMU_BUILD_DESCRIPTOR_PAYLOAD_TESTS "Build descriptor upload lifetime tests" OFF)
+if(NXEMU_BUILD_DESCRIPTOR_PAYLOAD_TESTS)
+    add_executable(nxemu_descriptor_payload_tests renderer_vulkan/descriptor_payload_tests.cpp)
+    target_link_libraries(nxemu_descriptor_payload_tests PRIVATE Threads::Threads)
+    add_test(NAME nxemu_descriptor_payload COMMAND nxemu_descriptor_payload_tests)
+    add_executable(nxemu_descriptor_read_batch_tests texture_cache/descriptor_read_batch_tests.cpp)
+    target_include_directories(nxemu_descriptor_read_batch_tests PRIVATE
+        "${CMAKE_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_SOURCE_DIR}/src/nxemu-video")
+    target_link_libraries(nxemu_descriptor_read_batch_tests PRIVATE yuzu_common)
+    add_test(NAME nxemu_descriptor_read_batch COMMAND nxemu_descriptor_read_batch_tests)
+    add_executable(nxemu_descriptor_copy_tests renderer_vulkan/descriptor_copy_cache_tests.cpp)
+    add_test(NAME nxemu_descriptor_copy COMMAND nxemu_descriptor_copy_tests)
+    add_executable(nxemu_query_bank_tail_tests query_cache/query_bank_tail_tests.cpp)
+    target_include_directories(nxemu_query_bank_tail_tests PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    target_link_libraries(nxemu_query_bank_tail_tests PRIVATE yuzu_common)
+    add_test(NAME nxemu_query_bank_tail COMMAND nxemu_query_bank_tail_tests)
+endif()
+
+option(NXEMU_BUILD_INDIRECT_DRAW_TESTS "Build indirect draw count tests" OFF)
+if(NXEMU_BUILD_INDIRECT_DRAW_TESTS)
+    add_executable(nxemu_indirect_draw_tests macro/indirect_draw_count_tests.cpp)
+    add_test(NAME nxemu_indirect_draw COMMAND nxemu_indirect_draw_tests)
+endif()
+
+option(NXEMU_BUILD_DESCRIPTOR_BENCHMARK "Build the manual MoltenVK descriptor benchmark" OFF)
+if(APPLE AND NXEMU_BUILD_DESCRIPTOR_BENCHMARK)
+    add_executable(nxemu_descriptor_benchmark
+        renderer_vulkan/descriptor_benchmark/descriptor_update_benchmark.cpp)
+    target_include_directories(nxemu_descriptor_benchmark PRIVATE
+        "${PROJECT_SOURCE_DIR}/external/vulkan-headers/include")
+    target_link_libraries(nxemu_descriptor_benchmark PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
 if(LIBVA_FOUND)
     set_source_files_properties(host1x/ffmpeg/ffmpeg.cpp
         PROPERTIES COMPILE_DEFINITIONS LIBVA_FOUND=1)
@@ -113,6 +147,7 @@ add_library(video_core STATIC
     pte_kind.h
     query_cache/bank_base.h
     query_cache/query_base.h
+    query_cache/query_bank_tail.h
     query_cache/query_cache_base.h
     query_cache/query_cache.h
     query_cache/query_stream.h
@@ -199,6 +234,7 @@ add_library(video_core STATIC
     renderer_vulkan/blit_image.h
     renderer_vulkan/descriptor_lookup.h
     renderer_vulkan/descriptor_limits.h
+    renderer_vulkan/descriptor_copy_cache.h
     renderer_vulkan/descriptor_payload.h
     renderer_vulkan/cbuf_size_dependencies.h
     renderer_vulkan/fixed_pipeline_state.cpp
@@ -274,6 +310,7 @@ add_library(video_core STATIC
     texture_cache/accelerated_swizzle.h
     texture_cache/decode_bc.cpp
     texture_cache/decode_bc.h
+    texture_cache/descriptor_read_batch.h
     texture_cache/descriptor_table.h
     texture_cache/formatter.cpp
     texture_cache/formatter.h

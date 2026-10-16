@@ -4,6 +4,8 @@
 #pragma once
 
 #include <unordered_set>
+#include <cstdlib>
+#include "yuzu_video_core/texture_cache/descriptor_read_batch.h"
 #include <boost/container/small_vector.hpp>
 
 #include "yuzu_common/alignment.h"
@@ -525,29 +527,32 @@ void TextureCache<P>::FillImageViews(DescriptorTable<TICEntry>& table,
         if constexpr (has_blacklists) {
             has_blacklisted = false;
         }
-        for (ImageViewInOut& view : views) {
-            view.id = VisitImageView(table, cached_image_view_ids, view.index);
-            if constexpr (has_blacklists) {
-                if (view.blacklist && view.id != NULL_IMAGE_VIEW_ID) {
-                    const ImageViewBase& image_view{slot_image_views[view.id]};
-                    auto& image = slot_images[image_view.image_id];
-                    has_blacklisted |= ScaleDown(image);
-                    image.scale_rating = 0;
+        static const bool batch = std::getenv("NXEMU_DISABLE_DESCRIPTOR_READ_BATCH") == nullptr;
+        VisitDescriptorRuns<TICEntry>(views, table.Limit(), batch,
+            [&](u32 first, std::span<TICEntry> descriptors) { table.ReadRange(first, descriptors); },
+            [&](ImageViewInOut& view, const TICEntry* snapshot) {
+                view.id = VisitImageView(table, cached_image_view_ids, view.index, snapshot);
+                if constexpr (has_blacklists) {
+                    if (view.blacklist && view.id != NULL_IMAGE_VIEW_ID) {
+                        const ImageViewBase& image_view{slot_image_views[view.id]};
+                        auto& image = slot_images[image_view.image_id];
+                        has_blacklisted |= ScaleDown(image);
+                        image.scale_rating = 0;
+                    }
                 }
-            }
-        }
+        });
     } while (has_deleted_images || (has_blacklists && has_blacklisted));
 }
 
 template <class P>
 ImageViewId TextureCache<P>::VisitImageView(DescriptorTable<TICEntry>& table,
                                             std::span<ImageViewId> cached_image_view_ids,
-                                            u32 index) {
+                                            u32 index, const TICEntry* snapshot) {
     if (index > table.Limit()) {
         LOG_DEBUG(HW_GPU, "Invalid image view index={}", index);
         return NULL_IMAGE_VIEW_ID;
     }
-    const auto [descriptor, is_new] = table.Read(index);
+    const auto [descriptor, is_new] = table.Read(index, snapshot);
     ImageViewId& image_view_id = cached_image_view_ids[index];
     if (is_new || image_view_id == CORRUPT_ID) {
         image_view_id = FindImageView(descriptor);

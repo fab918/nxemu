@@ -309,7 +309,8 @@ private:
 
     /// Find or create an image view in the guest descriptor table
     ImageViewId VisitImageView(DescriptorTable<TICEntry>& table,
-                               std::span<ImageViewId> cached_image_view_ids, u32 index);
+                               std::span<ImageViewId> cached_image_view_ids, u32 index,
+                               const TICEntry* snapshot = nullptr);
 
     /// Find or create a framebuffer with the given render target parameters
     FramebufferId GetFramebufferId(const RenderTargets& key);
