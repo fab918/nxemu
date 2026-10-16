@@ -465,6 +465,9 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
       texture_cache{texture_cache_}, shader_notify{shader_notify_},
       use_asynchronous_shaders{videoSettings.use_asynchronous_shaders},
       use_vulkan_pipeline_cache{videoSettings.use_vulkan_driver_pipeline_cache},
+#if defined(NXEMU_MOLTENVK_SHADER_CACHE)
+      use_native_metal_cache{videoSettings.use_native_metal_cache},
+#endif
       workers(device.HasBrokenParallelShaderCompiling() ? 1ULL : GetTotalPipelineWorkers(),
               "VkPipelineBuilder"),
       serialization_thread(1, "VkPipelineSerialization") {
@@ -645,7 +648,9 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     }
     pipeline_cache_filename = base_dir / "vulkan.bin";
 
-    if (use_vulkan_pipeline_cache) {
+    const bool molten_vk = device.GetDriverID() == VK_DRIVER_ID_MOLTENVK;
+    const bool native_metal_cache = molten_vk && use_native_metal_cache;
+    if (use_vulkan_pipeline_cache && (!molten_vk || native_metal_cache)) {
         vulkan_pipeline_cache_filename = base_dir / "vulkan_pipelines.bin";
         vulkan_pipeline_cache =
             LoadVulkanPipelineCache(vulkan_pipeline_cache_filename, CACHE_VERSION);
@@ -803,6 +808,9 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     lock.unlock();
 
     workers.WaitForRequests(stop_loading);
+    if (use_vulkan_pipeline_cache && molten_vk && !native_metal_cache) {
+        vulkan_pipeline_cache = LoadVulkanPipelineCache({}, CACHE_VERSION);
+    }
 
     lock.lock();
     for (const auto& key : hle_shared_keys) {
@@ -1212,8 +1220,17 @@ std::unique_ptr<ComputePipeline> PipelineCache::CreateComputePipeline(
 void PipelineCache::SerializeVulkanPipelineCache(const std::filesystem::path& filename,
                                                  const vk::PipelineCache& pipeline_cache,
                                                  u32 cache_version) try {
+    if (!pipeline_cache) {
+        return;
+    }
+    // Read before truncating the last disk cache. ReadData tolerates concurrent
+    // growth and only returns the bytes the driver actually wrote.
+    const auto cache_data = pipeline_cache.ReadData();
+    if (cache_data.empty()) {
+        return;
+    }
     std::ofstream file(filename, std::ios::binary);
-    file.exceptions(std::ifstream::failbit);
+    file.exceptions(std::ofstream::failbit | std::ofstream::badbit);
     if (!file.is_open()) {
         LOG_ERROR(Common_Filesystem, "Failed to open Vulkan driver pipeline cache file {}",
                   Common::FS::PathToUTF8String(filename));
@@ -1222,14 +1239,8 @@ void PipelineCache::SerializeVulkanPipelineCache(const std::filesystem::path& fi
     file.write(VULKAN_CACHE_MAGIC_NUMBER.data(), VULKAN_CACHE_MAGIC_NUMBER.size())
         .write(reinterpret_cast<const char*>(&cache_version), sizeof(cache_version));
 
-    size_t cache_size = 0;
-    std::vector<char> cache_data;
-    if (pipeline_cache) {
-        pipeline_cache.Read(&cache_size, nullptr);
-        cache_data.resize(cache_size);
-        pipeline_cache.Read(&cache_size, cache_data.data());
-    }
-    file.write(cache_data.data(), cache_size);
+    file.write(cache_data.data(), static_cast<std::streamsize>(cache_data.size()));
+    file.close();
 
     LOG_INFO(Render_Vulkan, "Vulkan driver pipelines cached at: {}",
              Common::FS::PathToUTF8String(filename));
@@ -1240,6 +1251,8 @@ void PipelineCache::SerializeVulkanPipelineCache(const std::filesystem::path& fi
         LOG_ERROR(Common_Filesystem, "Failed to delete Vulkan driver pipeline cache file {}",
                   Common::FS::PathToUTF8String(filename));
     }
+} catch (const vk::Exception& e) {
+    LOG_ERROR(Render_Vulkan, "Failed to read Vulkan driver pipeline cache: {}", e.what());
 }
 
 vk::PipelineCache PipelineCache::LoadVulkanPipelineCache(const std::filesystem::path& filename,
@@ -1251,8 +1264,31 @@ vk::PipelineCache PipelineCache::LoadVulkanPipelineCache(const std::filesystem::
             .flags = 0,
             .initialDataSize = data_size,
             .pInitialData = data};
-        return device.GetLogical().CreatePipelineCache(pipeline_cache_ci);
+        const auto start = std::chrono::steady_clock::now();
+        auto cache = device.GetLogical().CreatePipelineCache(pipeline_cache_ci);
+#if defined(NXEMU_MOLTENVK_SHADER_CACHE)
+        if (device.GetDriverID() == VK_DRIVER_ID_MOLTENVK && !use_native_metal_cache) {
+            // Configure the private bundled-runtime hook before any pipeline can
+            // use this cache. Keep MSL reuse, without native archive recording.
+            using DisableArchives = void(VKAPI_PTR*)(VkDevice, VkPipelineCache);
+            const auto disable = reinterpret_cast<DisableArchives>(
+                device.GetLogical().GetProcAddr("vkDisablePipelineCacheMetalArchivesNXEMU"));
+            if (disable) {
+                disable(*device.GetLogical(), *cache);
+            } else {
+                LOG_WARNING(Render_Vulkan, "MoltenVK lacks the native-cache control hook; disabling the driver cache");
+                return vk::PipelineCache{};
+            }
+        }
+#endif
+        LOG_INFO(Render_Vulkan, "Initialized Vulkan driver pipeline cache ({} bytes) in {} ms",
+                 data_size, std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - start).count());
+        return cache;
     };
+    if (filename.empty()) {
+        return create_pipeline_cache(0, nullptr);
+    }
     try {
         std::ifstream file(filename, std::ios::binary | std::ios::ate);
         if (!file.is_open()) {
@@ -1289,7 +1325,7 @@ vk::PipelineCache PipelineCache::LoadVulkanPipelineCache(const std::filesystem::
         file.read(cache_data.data(), cache_size);
 
         LOG_INFO(Render_Vulkan,
-                 "Loaded Vulkan driver pipeline cache: ", Common::FS::PathToUTF8String(filename));
+                 "Loaded Vulkan driver pipeline cache: {}", Common::FS::PathToUTF8String(filename));
 
         return create_pipeline_cache(cache_size, cache_data.data());
 
