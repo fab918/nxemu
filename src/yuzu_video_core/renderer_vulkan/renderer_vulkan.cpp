@@ -156,6 +156,8 @@ catch (const vk::Exception & exception)
 RendererVulkan::~RendererVulkan()
 {
     scheduler.RegisterOnSubmit([] {});
+    rasterizer.WaitForShaderBuilds();
+    scheduler.Finish();
     void(device.GetLogical().WaitIdle());
     CleanupWatermark();
 }
