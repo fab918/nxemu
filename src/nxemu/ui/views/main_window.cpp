@@ -33,6 +33,17 @@ constexpr uint64_t kStatusIntervalMs = 1000;
 constexpr float kScanStepShare = 0.85f;  // of a game's step, shown while it is read
 constexpr float kScanEaseSeconds = 0.7f; // time for the bar to cover 63% of what is left
 
+#ifdef __APPLE__
+constexpr bool kShowEmulationControlsDefault = true;
+#else
+constexpr bool kShowEmulationControlsDefault = false;
+#endif
+
+bool ShowEmulationControls()
+{
+    return UiPreferences::GetBool(UiPreferences::ShowEmulationControls, kShowEmulationControlsDefault);
+}
+
 
 // The orders the games can be shown in; the preference stores the index.
 const char * const kGameSorts[] = {TrMark("Name"), TrMark("Publisher"), TrMark("Recent"), TrMark("Play time"), TrMark("Size")};
@@ -217,7 +228,7 @@ bool MainWindow::Create()
     const OpenSettingsPage openPage = [this](SettingsPage page) { return ShowSettingsPage(page); };
     m_generalDialog = std::make_unique<GeneralDialog>(m_window, m_session, m_settingsContext, m_assetDir, GeneralDialog::Host{[this] { UpdateStatusWidgets(); }, openPage});
     m_advancedDialog = std::make_unique<AdvancedDialog>(m_window, m_session, m_settingsContext, m_assetDir, openPage);
-    m_controllerDialog = std::make_unique<ControllerDialog>(m_window, m_session, m_assetDir, openPage);
+    m_controllerDialog = std::make_unique<ControllerDialog>(m_window, m_session, m_assetDir);
     m_directoriesDialog = std::make_unique<DirectoriesDialog>(m_window, m_library, m_assetDir,
                                                         DirectoriesDialog::Host{
                                                             [this] { return !m_session.IsRunning() && m_pendingGame.empty(); },
@@ -301,6 +312,21 @@ void MainWindow::RequestQuit()
 
 void MainWindow::HandleEvent(const SDL_Event & event)
 {
+    const auto chord = Hotkeys::TrackGamepad(event);
+    if (m_advancedDialog->HandleGamepad(event, chord)) return;
+    if (event.type == SDL_JOYBUTTONDOWN && chord.buttons != 0 && !DialogOpen() &&
+        m_session.IsRunning() && (SDL_GetWindowFlags(m_window.Handle()) & SDL_WINDOW_INPUT_FOCUS) != 0)
+    {
+        for (const HotkeyAction & hotkey : kHotkeyActions)
+        {
+            if (Hotkeys::GetGamepad(hotkey.id) == chord &&
+                (hotkey.action != Action::ExitFullscreen || m_window.IsFullscreen()))
+            {
+                Post(hotkey.action);
+                return;
+            }
+        }
+    }
     if (event.type == SDL_MOUSEMOTION || event.type == SDL_MOUSEBUTTONDOWN || event.type == SDL_MOUSEWHEEL)
     {
         m_mouseMovedAt = SDL_GetTicks64();
@@ -394,11 +420,16 @@ void MainWindow::Update()
     std::vector<GameEntry> games;
     if (m_library.TakeScanResult(games))
     {
+        // A content-only change (such as removing a DLC folder) can leave
+        // every GameEntry unchanged. Refresh the selected game's add-ons too.
+        m_details = {};
+        m_detailsDirty = true;
         // An empty list was waiting for the scan to say whether it is.
         if (games != m_games || games.empty())
         {
             ShowGames(std::move(games));
         }
+        RequestSelectedDetails();
     }
     GameDetails details;
     if (m_library.TakeDetails(details) && details.path == m_selectedPath)
@@ -674,6 +705,10 @@ void MainWindow::Run(Action action)
             }
         }
         break;
+    case Action::ToggleEmulationControls:
+        UiPreferences::SetBool(UiPreferences::ShowEmulationControls, !ShowEmulationControls());
+        SyncPhase();
+        break;
     case Action::ToggleSpeedLimit:
         settings.SetBool(NXOsSetting::UseSpeedLimit, !settings.GetBool(NXOsSetting::UseSpeedLimit));
         m_session.FlushSettings();
@@ -782,9 +817,11 @@ void MainWindow::Run(Action action)
     case Action::OpenReportIssues: OpenUrl(kReportUrl); break;
     case Action::OpenAbout: m_aboutDialog->Show(); break;
     case Action::CopyVersion:
-        SDL_SetClipboardText(VER_FILE_VERSION_STR);
-        m_versionCopiedUntil = SDL_GetTicks64() + kVersionCopiedMs;
-        ShowVersion();
+        if (SDL_SetClipboardText(VER_FILE_VERSION_STR) == 0)
+        {
+            m_versionCopiedUntil = SDL_GetTicks64() + kVersionCopiedMs;
+            ShowVersion();
+        }
         break;
     case Action::ConfigureControllers:
         if (m_session.IsValid())
@@ -970,6 +1007,8 @@ void MainWindow::BindEvents()
     onClick("title-settings", Action::OpenSettings);
     onClick("title-controllers", Action::ConfigureControllers);
     onClick("title-restart", Action::Restart);
+    onClick("title-logo", Action::CopyVersion);
+    onClick("title-name", Action::CopyVersion);
     onClick("title-version", Action::CopyVersion);
     onClick("title-pause", Action::PauseOrContinue);
     onClick("title-stop", Action::Stop);
@@ -1088,13 +1127,10 @@ void MainWindow::RebuildMenu()
                                                                 action(Action::OpenLogDirectory, Tr("&Log Folder")),
                                                             }));
     file.push_back(MenuItem::Separator());
+    file.push_back(action(Action::OpenSettings, Tr("&Settings")));
+    file.push_back(action(Action::ConfigureControllers, Tr("Controllers"), m_session.IsValid()));
+    file.push_back(MenuItem::Separator());
     file.push_back(action(Action::InstallFirmware, Tr("Install &Firmware"), !running));
-    file.push_back(MenuItem::Submenu(Tr("&Options"), {
-                                                      action(Action::OpenSettings, Tr("&Settings")),
-                                                      action(Action::ConfigureControllers, Tr("&Controllers")),
-                                                      action(Action::OpenProfiles, Tr("Profiles")),
-                                                      action(Action::OpenGameDirectories, Tr("Game directories")),
-                                                  }));
     file.push_back(MenuItem::Separator());
     file.push_back(action(Action::Exit, Tr("E&xit")));
 
@@ -1106,13 +1142,17 @@ void MainWindow::RebuildMenu()
         action(Action::PauseOrContinue, m_session.IsPaused() ? Tr("Continue") : Tr("Pause")),
         action(Action::Stop, Tr("&Stop")),
         action(Action::Restart, Tr("Restart")),
-        MenuItem::Separator(),
-        check(Action::ToggleSpeedLimit, Tr("Limit &Speed"), SettingsStore::GetInstance().GetBool(NXOsSetting::UseSpeedLimit)),
     };
     for (MenuItem & item : emulation)
     {
         item.enabled = item.id == static_cast<int>(Action::Stop) ? canStop : playing;
     }
+
+    emulation.push_back(check(Action::ToggleEmulationControls, Tr("Show emulation controls"), ShowEmulationControls()));
+    emulation.push_back(MenuItem::Separator());
+    MenuItem speedLimit = check(Action::ToggleSpeedLimit, Tr("Limit &Speed"), SettingsStore::GetInstance().GetBool(NXOsSetting::UseSpeedLimit));
+    speedLimit.enabled = playing;
+    emulation.push_back(std::move(speedLimit));
 
     // Fullscreen and the hidden interface are for a game: without one, the
     // menu says how the next starts.
@@ -1143,7 +1183,7 @@ void MainWindow::RebuildMenu()
         action(Action::ResetWindowSize1080p, "1080p"),
     }));
     emulation.push_back(MenuItem::Separator());
-    emulation.push_back(MenuItem::Submenu(Tr("Performance"), std::move(performance)));
+    emulation.push_back(MenuItem::Submenu(Tr("Performance overlay"), std::move(performance)));
     emulation.push_back(MenuItem::Separator());
     emulation.push_back(check(Action::ToggleStartGamesInFullscreen, Tr("Start games in fullscreen"), UiPreferences::GetBool(UiPreferences::StartGamesInFullscreen, false)));
     emulation.push_back(check(Action::ToggleStartGamesWithUiHidden, Tr("Start games with UI hidden"), UiPreferences::GetBool(UiPreferences::StartGamesWithUiHidden, false)));
@@ -1770,7 +1810,7 @@ void MainWindow::SyncInterfaceLanguage()
     m_aboutDialog->RefreshTranslation();
     m_firmwareDialog->RefreshTranslation();
     m_controllerDialog->RefreshTranslation();
-    m_advancedDialog->RefreshTranslation();
+    m_advancedDialog->RefreshLanguage();
     m_directoriesDialog->RefreshTranslation();
     m_profilesDialog->RefreshTranslation();
     m_generalDialog->RefreshLanguage();
@@ -1780,6 +1820,7 @@ void MainWindow::SyncInterfaceLanguage()
     m_pendingGameMenu = nullptr;
     m_pendingSelectMenu = nullptr;
     RebuildMenu();
+    ApplyLibraryOptions();
     RenderGames();
     RenderVisibleGames();
     RenderDetails();
@@ -1798,15 +1839,8 @@ void MainWindow::SyncPhase()
     m_document->SetClass("emulating", emulating);
     const bool paused = emulating && phase == EmulatorSession::Phase::Paused;
     m_document->SetClass("game-paused", paused);
-    const bool loading = !m_pendingGame.empty() || phase == EmulatorSession::Phase::Loading;
-    const bool controlsVisible = m_session.IsRunning() || !m_pendingGame.empty();
+    const bool controlsVisible = ShowEmulationControls() && (m_session.IsRunning() || !m_pendingGame.empty());
     m_document->SetClass("game-controls-visible", controlsVisible);
-    if (Rml::Element * state = m_document->GetElementById("title-state"))
-    {
-        const std::string source = paused ? "images/state-pause.png" : "images/state-play.png";
-        if (state->GetAttribute<Rml::String>("src", "") != source) state->SetAttribute("src", source);
-        state->SetAttribute("title", paused ? Tr("Paused") : loading ? Tr("Loading") : Tr("Running"));
-    }
     for (const char * id : {"title-pause", "title-restart"})
     {
         if (Rml::Element * button = m_document->GetElementById(id))
@@ -1938,6 +1972,7 @@ void MainWindow::SetTitle(const std::string & game)
 
 void MainWindow::ShowVersion()
 {
+    m_document->GetElementById("version-notification")->SetClass("shown", m_versionCopiedUntil != 0);
     // The badge keeps to the release and the build; the whole version shows on hover.
     const std::string version = VER_FILE_VERSION_STR;
     const size_t dash = version.find('-');
@@ -2055,6 +2090,7 @@ bool MainWindow::AttachVideo()
     {
         return true;
     }
+    // A native fallback is necessary when no renderer can draw RmlUi.
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "NXEmu", m_window.Error().c_str(), m_window.Handle());
     m_quit = true;
     return false;
@@ -2120,19 +2156,12 @@ void MainWindow::AnnounceGame(const std::string & path)
 
 bool MainWindow::ShowSettingsPage(SettingsPage page)
 {
-    if (m_settingsContext.IsGame() && page != SettingsPage::General && page != SettingsPage::Advanced) return false;
+    if (m_settingsContext.IsGame() && page != SettingsPage::General && page != SettingsPage::Advanced && page != SettingsPage::Debug) return false;
     switch (page)
     {
     case SettingsPage::General:
         m_generalDialog->Show();
         return m_generalDialog->IsVisible();
-    case SettingsPage::Controllers:
-        // The controllers are the modules'.
-        if (m_session.IsValid())
-        {
-            m_controllerDialog->Show();
-        }
-        return m_controllerDialog->IsVisible();
     case SettingsPage::Profiles:
         // The profiles are the modules'.
         if (m_session.IsValid())
@@ -2144,7 +2173,8 @@ bool MainWindow::ShowSettingsPage(SettingsPage page)
         m_directoriesDialog->Show();
         return m_directoriesDialog->IsVisible();
     case SettingsPage::Advanced:
-        m_advancedDialog->Show();
+    case SettingsPage::Debug:
+        m_advancedDialog->ShowPage(page);
         return m_advancedDialog->IsVisible();
     }
     return false;
@@ -2211,8 +2241,8 @@ void MainWindow::ShowSelectMenu(Rml::Element * origin)
     else if (origin->GetId() == "docked-mode")
     {
         const bool docked = IsDocked();
-        choice(static_cast<int>(Action::SetDockedMode), Tr("TV"), docked).stays = true;
-        choice(static_cast<int>(Action::SetHandheldMode), Tr("Handheld"), !docked).stays = true;
+        choice(static_cast<int>(Action::SetDockedMode), Tr("Docked"), docked);
+        choice(static_cast<int>(Action::SetHandheldMode), Tr("Handheld"), !docked);
     }
     else if (origin->GetId() == "scaling-filter")
     {
@@ -2221,11 +2251,11 @@ void MainWindow::ShowSelectMenu(Rml::Element * origin)
         for (const auto & filter : kScalingFilters)
         {
             const int value = static_cast<int>(filter.value);
-            MenuItem & item = choice(static_cast<int>(Action::ScalingFilterFirst) + value, Tr(filter.label), value == current);
+            items.push_back(MenuItem::Check(static_cast<int>(Action::ScalingFilterFirst) + value, Tr(filter.label), value == current));
+            MenuItem & item = items.back();
             // The filter the game settings choose
             item.tag = value == game ? Tr("Default") : std::string();
             item.hint = Tr(filter.hint);
-            item.stays = true;
             if (filter.value == ScalingFilter::Fsr)
             {
                 // Only FSR has a sharpness; it is set once FSR is the filter.
@@ -2246,7 +2276,7 @@ void MainWindow::ShowSelectMenu(Rml::Element * origin)
         const int current = ResolutionScale();
         for (int scale = 0; scale < kResolutionScaleCount; scale++)
         {
-            choice(static_cast<int>(Action::ResolutionScaleFirst) + scale, kResolutionScales[scale].label, scale == current).stays = true;
+            choice(static_cast<int>(Action::ResolutionScaleFirst) + scale, kResolutionScales[scale].label, scale == current);
         }
     }
     if (items.empty())
@@ -2282,7 +2312,7 @@ void MainWindow::UpdateStatusWidgets()
     SettingsStore & settings = SettingsStore::GetInstance();
     const bool docked = IsDocked();
     const auto & scale = kResolutionScales[ResolutionScale()];
-    SetText("docked-text", docked ? Tr("TV") : Tr("Handheld"));
+    SetText("docked-text", docked ? Tr("Docked") : Tr("Handheld"));
     if (Rml::Element * icon = m_document->GetElementById("docked-icon"))
     {
         const char * image = docked ? "images/docked.png" : "images/handheld.png";
@@ -2314,7 +2344,8 @@ void MainWindow::UpdateStatusWidgets()
         // The video module reads the scale when a game starts.
         const bool locked = m_session.IsRunning();
         select->SetClass("locked", locked);
-        const std::string hint = locked ? Tr("The resolution scale cannot change while a game is running") : Tr("Resolution scale");
+        const std::string hint = Tr("Resolution scale: higher values give a sharper picture but need more graphics power.") +
+            (locked ? "\n" + Tr("The resolution scale cannot change while a game is running") : "");
         if (select->GetAttribute<Rml::String>("title", "") != hint)
         {
             select->SetAttribute("title", hint);

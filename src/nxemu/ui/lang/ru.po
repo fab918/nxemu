@@ -76,7 +76,6 @@ msgstr "Контроллеры"
 #: assets/directories_dialog.rml
 #: assets/general_dialog.rml
 #: assets/profiles_dialog.rml
-#: views/main_window.cpp
 msgid "Game directories"
 msgstr "Папки с играми"
 
@@ -272,7 +271,6 @@ msgid "Less stutter; things can show late. A hack."
 msgstr "Меньше дерганий; некоторые предметы могут появиться с опозданием. Приближение."
 
 #: assets/advanced_dialog.rml
-#: views/main_window.cpp
 msgid "Performance"
 msgstr "Производительность"
 
@@ -464,10 +462,6 @@ msgid "What is written, as class:level."
 msgstr "Что записывается в журнал, в формате класс:уровень."
 
 #: assets/advanced_dialog.rml
-msgid "Click a shortcut, then press its keys. A click elsewhere keeps it as it is."
-msgstr "Нажмите на сочетание, затем нажмите его клавиши. Щелчок в другом месте оставит его без изменений."
-
-#: assets/advanced_dialog.rml
 msgid "In game"
 msgstr "В игре"
 
@@ -575,10 +569,6 @@ msgid "Save"
 msgstr "Сохранить"
 
 #: assets/directories_dialog.rml
-msgid "The folders NXEmu looks for games in. The folders inside them are not searched."
-msgstr "Папки, в которых NXEmu ищет игры. Их подпапки не просматриваются."
-
-#: assets/directories_dialog.rml
 msgid "Add a directory"
 msgstr "Добавить папку"
 
@@ -673,18 +663,14 @@ msgid "Console mode"
 msgstr "Консольный режим"
 
 #: assets/general_dialog.rml
-msgid "On the television, or in the hands."
-msgstr "На телевизоре или в руках."
-
-#: assets/general_dialog.rml
 msgid "As on the television: games draw up to 1080p."
 msgstr "Как на телевизоре: игры отображаются до 1080p."
 
 #: assets/general_dialog.rml
 #: views/main_window.cpp
 #: views/settings_context.cpp
-msgid "TV"
-msgstr "TV"
+msgid "Docked"
+msgstr "Docked"
 
 #: assets/general_dialog.rml
 msgid "As on the console's own screen: games draw 720p, which asks less of the computer."
@@ -731,22 +717,6 @@ msgid "Whole pictures only: no tearing."
 msgstr "Полные изображения, без разрывов."
 
 #: assets/general_dialog.rml
-msgid "Profile"
-msgstr "Профиль"
-
-#: assets/general_dialog.rml
-msgid "Who plays, with saves of their own."
-msgstr "Игрок со своими сохранениями."
-
-#: assets/general_dialog.rml
-msgid "Add players, and change their names and pictures"
-msgstr "Добавить игроков и изменить их имена и изображения"
-
-#: assets/general_dialog.rml
-msgid "Manage"
-msgstr "Управление"
-
-#: assets/general_dialog.rml
 msgid "Language"
 msgstr "Язык"
 
@@ -791,10 +761,6 @@ msgstr "Режим вывода"
 #: assets/general_dialog.rml
 msgid "Surround needs speakers that play it."
 msgstr "Для объемного звука требуются совместимые динамики."
-
-#: assets/general_dialog.rml
-msgid "A game is running: what is greyed out cannot change until it stops, and the languages and the audio output are read when a game starts."
-msgstr "Игра запущена: недоступные параметры можно изменить только после её остановки. Языки и вывод звука применяются при запуске игры."
 
 #: assets/main_window.rml
 #: views/main_window.cpp
@@ -938,10 +904,6 @@ msgid "Paused"
 msgstr "Приостановлено"
 
 #: assets/main_window.rml
-msgid "Console mode: on the television, or in the hands"
-msgstr "Режим консоли: на ТВ или в руках"
-
-#: assets/main_window.rml
 msgid "The resolution games are drawn at"
 msgstr "Разрешение, с которым отображаются игры"
 
@@ -950,7 +912,6 @@ msgid "Window filter: only applies when the game's resolution is lower than the 
 msgstr "Фильтр окна: применяется, только если разрешение игры меньше размера окна"
 
 #: assets/profiles_dialog.rml
-#: views/main_window.cpp
 msgid "Profiles"
 msgstr "Профили"
 
@@ -1031,10 +992,6 @@ msgstr "Удалить профиль"
 msgid "Delete"
 msgstr "Удалить"
 
-#: assets/profiles_dialog.rml
-msgid "Back to the general settings"
-msgstr "Назад к общим настройкам"
-
 #: emulation/emulator_session.cpp
 msgid "Stop the current game before opening another one."
 msgstr "Остановите текущую игру, прежде чем открывать другую."
@@ -1055,18 +1012,6 @@ msgstr ""
 #: ui_application.cpp
 msgid "Required modules failed to load."
 msgstr "Не удалось загрузить необходимые модули."
-
-#: emulation/emulator_session.cpp
-msgid ""
-"Could not load the game:\n"
-"%1"
-msgstr ""
-"Не удалось загрузить игру:\n"
-"%1"
-
-#: host/ui_notification.cpp
-msgid "Yes"
-msgstr "Да"
 
 #: host/ui_notification.cpp
 msgid "No"
@@ -2100,8 +2045,8 @@ msgid "Stop the game"
 msgstr "Остановить игру"
 
 #: views/hotkeys.h
-msgid "TV or handheld"
-msgstr "ТВ или портативный режим"
+msgid "Docked or handheld"
+msgstr "Docked или портативный режим"
 
 #: views/loading_screen.cpp
 msgid "Opening the game..."
@@ -2218,16 +2163,12 @@ msgid "Window size"
 msgstr "Размер окна"
 
 #: views/main_window.cpp
-msgid "&Options"
-msgstr "&Параметры"
+msgid "Performance overlay"
+msgstr "Оверлей производительности"
 
 #: views/main_window.cpp
 msgid "&Settings"
 msgstr "&Параметры"
-
-#: views/main_window.cpp
-msgid "&Controllers"
-msgstr "&Контроллеры"
 
 #: views/main_window.cpp
 msgid "Install &Firmware"
@@ -2339,10 +2280,6 @@ msgstr "Резкость: когда выбран фильтр FSR"
 #: views/main_window.cpp
 msgid "The resolution scale cannot change while a game is running"
 msgstr "Масштаб разрешения нельзя изменить во время игры."
-
-#: views/main_window.cpp
-msgid "Resolution scale"
-msgstr "Масштаб разрешения"
 
 #: views/main_window.cpp
 msgid "The profile cannot change while a game is running"
@@ -2517,6 +2454,89 @@ msgstr "Выключить звук"
 msgid "Restart"
 msgstr "Перезапустить"
 
+#: assets/general_dialog.rml
+msgid "Interface theme"
+msgstr "Тема интерфейса"
+
+#: assets/general_dialog.rml
+msgid "Use the system appearance, or choose a light or dark theme."
+msgstr "Использовать оформление системы или выбрать светлую либо тёмную тему."
+
+#: views/general_dialog.cpp
+msgid "Light"
+msgstr "Светлая"
+
+#: views/general_dialog.cpp
+msgid "Dark"
+msgstr "Тёмная"
+
+#: assets/main_window.rml
+msgid "Version copied to clipboard"
+msgstr "Версия скопирована в буфер обмена"
+
 #: views/main_window.cpp
-msgid "Running"
-msgstr "Запущено"
+msgid "Show emulation controls"
+msgstr "Показывать кнопки эмуляции"
+
+msgid "Debug"
+msgstr "Отладка"
+
+msgid "Emulation diagnostics"
+msgstr "Диагностика эмуляции"
+
+msgid "Threads and input"
+msgstr "Потоки и ввод"
+
+msgid "Gamepad"
+msgstr "Геймпад"
+
+msgid "Not assigned"
+msgstr "Не назначено"
+
+msgid "Press the buttons..."
+msgstr "Нажмите кнопки..."
+
+msgid "Docked: games run at 1080p and expect a TV."
+msgstr "ТВ-режим: игры работают в 1080p и рассчитаны на телевизор."
+
+msgid "Handheld: games run at 720p, as on the console's own screen."
+msgstr "Портативный режим: игры работают в 720p, как на экране консоли."
+
+msgid "A game is running: what is greyed out cannot change until it stops, and languages are read when a game starts."
+msgstr "Игра запущена: недоступные параметры можно изменить после её остановки. Языки применяются при запуске игры."
+
+msgid "Your games, updates and DLC can share a directory or be kept in separate directories. NXEmu matches them automatically. Games are listed directly from each directory; add-ons are also found in subfolders."
+msgstr "Игры, обновления и DLC можно хранить вместе или в разных папках. NXEmu автоматически связывает их. Игры ищутся непосредственно в каждой папке, дополнения — также во вложенных папках."
+
+msgid "Profile"
+msgstr "Профиль"
+
+msgid "Who plays, with saves of their own."
+msgstr "Игрок со своими сохранениями."
+
+msgid "Add players, and change their names and pictures"
+msgstr "Добавить игроков и изменить их имена и изображения"
+
+msgid "Manage"
+msgstr "Управление"
+
+msgid "Console mode: on the television (1080p), or handheld (720p)"
+msgstr "Режим консоли: на телевизоре (1080p) или в портативном режиме (720p)"
+
+msgid "Clear shortcut"
+msgstr "Удалить сочетание"
+
+msgid "Click a shortcut, then press the keys or hold and release the gamepad buttons. To clear it, use the cross beside it, or click it and press Delete."
+msgstr "Выберите сочетание и нажмите клавиши либо удерживайте и отпустите кнопки геймпада. Чтобы удалить назначение, нажмите крестик рядом или выберите сочетание и нажмите Delete."
+
+msgid "Resolution scale: higher values give a sharper picture but need more graphics power."
+msgstr "Масштаб разрешения: чем выше значение, тем чётче изображение, но тем больше требуется мощности видеокарты."
+
+msgid "This game has no usable executable (ExeFS).\n\nIf this copy requires an update, add its folder in Settings > Game directories, then enable the update in the game's details. If an update is already enabled, check that its files are complete and readable.\n\nGame: %1"
+msgstr "В игре нет пригодного исполняемого файла (ExeFS).\n\nЕсли этой копии требуется обновление, добавьте его папку в Настройки > Папки игр и включите обновление в сведениях об игре. Если оно уже включено, проверьте полноту и доступность его файлов.\n\nИгра: %1"
+
+msgid "Could not load the game:\n%1\n\nLoader error: %2. Check that the game files are complete and that the required keys and firmware are available."
+msgstr "Не удалось загрузить игру:\n%1\n\nОшибка загрузчика: %2. Проверьте полноту файлов игры и наличие необходимых ключей и прошивки."
+
+msgid "Unable to load the interface. Check that NXEmu's ui folder is complete."
+msgstr "Не удалось загрузить интерфейс. Проверьте полноту папки ui в NXEmu."

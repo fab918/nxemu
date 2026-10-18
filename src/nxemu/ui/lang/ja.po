@@ -76,7 +76,6 @@ msgstr "コントローラー"
 #: assets/directories_dialog.rml
 #: assets/general_dialog.rml
 #: assets/profiles_dialog.rml
-#: views/main_window.cpp
 msgid "Game directories"
 msgstr "ゲームフォルダー"
 
@@ -272,7 +271,6 @@ msgid "Less stutter; things can show late. A hack."
 msgstr "ぎくしゃく感が軽減されました。一部のアイテムは表示が遅れる場合があります。近似値。"
 
 #: assets/advanced_dialog.rml
-#: views/main_window.cpp
 msgid "Performance"
 msgstr "パフォーマンス"
 
@@ -464,10 +462,6 @@ msgid "What is written, as class:level."
 msgstr "ログに記録する内容。形式はクラス:レベルです。"
 
 #: assets/advanced_dialog.rml
-msgid "Click a shortcut, then press its keys. A click elsewhere keeps it as it is."
-msgstr "ショートカットをクリックしてからキーを押します。他の場所をクリックすると変更されません。"
-
-#: assets/advanced_dialog.rml
 msgid "In game"
 msgstr "ゲーム中"
 
@@ -575,10 +569,6 @@ msgid "Save"
 msgstr "保存"
 
 #: assets/directories_dialog.rml
-msgid "The folders NXEmu looks for games in. The folders inside them are not searched."
-msgstr "NXEmu がゲームを検索するフォルダー。そのサブフォルダーは参照されません。"
-
-#: assets/directories_dialog.rml
 msgid "Add a directory"
 msgstr "フォルダーを追加"
 
@@ -673,18 +663,14 @@ msgid "Console mode"
 msgstr "コンソールモード"
 
 #: assets/general_dialog.rml
-msgid "On the television, or in the hands."
-msgstr "テレビでも、手元でも。"
-
-#: assets/general_dialog.rml
 msgid "As on the television: games draw up to 1080p."
 msgstr "テレビと同様に、ゲームは最大 1080p で表示されます。"
 
 #: assets/general_dialog.rml
 #: views/main_window.cpp
 #: views/settings_context.cpp
-msgid "TV"
-msgstr "TV"
+msgid "Docked"
+msgstr "Docked"
 
 #: assets/general_dialog.rml
 msgid "As on the console's own screen: games draw 720p, which asks less of the computer."
@@ -731,22 +717,6 @@ msgid "Whole pictures only: no tearing."
 msgstr "ティアリングのない完全な画像。"
 
 #: assets/general_dialog.rml
-msgid "Profile"
-msgstr "プロフィール"
-
-#: assets/general_dialog.rml
-msgid "Who plays, with saves of their own."
-msgstr "プレイヤーと、そのプレイヤー専用のセーブデータ。"
-
-#: assets/general_dialog.rml
-msgid "Add players, and change their names and pictures"
-msgstr "プレイヤーを追加し、名前と画像を変更"
-
-#: assets/general_dialog.rml
-msgid "Manage"
-msgstr "管理"
-
-#: assets/general_dialog.rml
 msgid "Language"
 msgstr "言語"
 
@@ -791,10 +761,6 @@ msgstr "出力モード"
 #: assets/general_dialog.rml
 msgid "Surround needs speakers that play it."
 msgstr "サラウンド サウンドには互換性のあるスピーカーが必要です。"
-
-#: assets/general_dialog.rml
-msgid "A game is running: what is greyed out cannot change until it stops, and the languages and the audio output are read when a game starts."
-msgstr "ゲームの実行中は、グレー表示の項目を変更できません。言語と音声出力の設定はゲーム起動時に適用されます。"
 
 #: assets/main_window.rml
 #: views/main_window.cpp
@@ -938,10 +904,6 @@ msgid "Paused"
 msgstr "一時停止中"
 
 #: assets/main_window.rml
-msgid "Console mode: on the television, or in the hands"
-msgstr "コンソール モード: テレビまたは手持ち"
-
-#: assets/main_window.rml
 msgid "The resolution games are drawn at"
 msgstr "ゲームが表示される解像度"
 
@@ -950,7 +912,6 @@ msgid "Window filter: only applies when the game's resolution is lower than the 
 msgstr "ウィンドウフィルター：ゲームの解像度がウィンドウより小さいときのみ適用されます"
 
 #: assets/profiles_dialog.rml
-#: views/main_window.cpp
 msgid "Profiles"
 msgstr "プロフィール"
 
@@ -1031,10 +992,6 @@ msgstr "プロフィールの削除"
 msgid "Delete"
 msgstr "削除"
 
-#: assets/profiles_dialog.rml
-msgid "Back to the general settings"
-msgstr "一般設定に戻る"
-
 #: emulation/emulator_session.cpp
 msgid "Stop the current game before opening another one."
 msgstr "別のゲームを開く前に、現在のゲームを停止してください。"
@@ -1055,18 +1012,6 @@ msgstr ""
 #: ui_application.cpp
 msgid "Required modules failed to load."
 msgstr "必要なモジュールをロードできませんでした。"
-
-#: emulation/emulator_session.cpp
-msgid ""
-"Could not load the game:\n"
-"%1"
-msgstr ""
-"ゲームのロードに失敗しました:\n"
-"%1"
-
-#: host/ui_notification.cpp
-msgid "Yes"
-msgstr "はい"
 
 #: host/ui_notification.cpp
 msgid "No"
@@ -2086,8 +2031,8 @@ msgid "Stop the game"
 msgstr "ゲームを停止"
 
 #: views/hotkeys.h
-msgid "TV or handheld"
-msgstr "TV/携帯モード"
+msgid "Docked or handheld"
+msgstr "Docked または携帯モード"
 
 #: views/loading_screen.cpp
 msgid "Opening the game..."
@@ -2204,16 +2149,12 @@ msgid "Window size"
 msgstr "ウィンドウサイズ"
 
 #: views/main_window.cpp
-msgid "&Options"
-msgstr "オプション(&O)"
+msgid "Performance overlay"
+msgstr "パフォーマンスオーバーレイ"
 
 #: views/main_window.cpp
 msgid "&Settings"
 msgstr "パラメータ(&P)"
-
-#: views/main_window.cpp
-msgid "&Controllers"
-msgstr "コントローラ(&C)"
 
 #: views/main_window.cpp
 msgid "Install &Firmware"
@@ -2323,10 +2264,6 @@ msgstr "シャープネス：FSRフィルターの選択時"
 #: views/main_window.cpp
 msgid "The resolution scale cannot change while a game is running"
 msgstr "ゲームの進行中に解像度スケールを変更することはできません"
-
-#: views/main_window.cpp
-msgid "Resolution scale"
-msgstr "解像度スケール"
 
 #: views/main_window.cpp
 msgid "The profile cannot change while a game is running"
@@ -2499,6 +2436,89 @@ msgstr "サウンドをミュートします"
 msgid "Restart"
 msgstr "再起動"
 
+#: assets/general_dialog.rml
+msgid "Interface theme"
+msgstr "インターフェースのテーマ"
+
+#: assets/general_dialog.rml
+msgid "Use the system appearance, or choose a light or dark theme."
+msgstr "システムの外観を使用するか、ライトテーマまたはダークテーマを選択します。"
+
+#: views/general_dialog.cpp
+msgid "Light"
+msgstr "ライト"
+
+#: views/general_dialog.cpp
+msgid "Dark"
+msgstr "ダーク"
+
+#: assets/main_window.rml
+msgid "Version copied to clipboard"
+msgstr "バージョンをクリップボードにコピーしました"
+
 #: views/main_window.cpp
-msgid "Running"
-msgstr "実行中"
+msgid "Show emulation controls"
+msgstr "エミュレーション操作ボタンを表示"
+
+msgid "Debug"
+msgstr "デバッグ"
+
+msgid "Emulation diagnostics"
+msgstr "エミュレーション診断"
+
+msgid "Threads and input"
+msgstr "スレッドと入力"
+
+msgid "Gamepad"
+msgstr "ゲームパッド"
+
+msgid "Not assigned"
+msgstr "未割り当て"
+
+msgid "Press the buttons..."
+msgstr "ボタンを押してください..."
+
+msgid "Docked: games run at 1080p and expect a TV."
+msgstr "TVモード：ゲームは1080pで動作し、テレビでの表示を想定します。"
+
+msgid "Handheld: games run at 720p, as on the console's own screen."
+msgstr "携帯モード：本体画面と同じように、ゲームは720pで動作します。"
+
+msgid "A game is running: what is greyed out cannot change until it stops, and languages are read when a game starts."
+msgstr "ゲームの実行中は、グレー表示の設定を変更できません。言語はゲームの起動時に適用されます。"
+
+msgid "Your games, updates and DLC can share a directory or be kept in separate directories. NXEmu matches them automatically. Games are listed directly from each directory; add-ons are also found in subfolders."
+msgstr "ゲーム、更新データ、DLCは同じフォルダーにも別々のフォルダーにも保存できます。NXEmuが自動的に関連付けます。ゲームは各フォルダーの直下、追加コンテンツはサブフォルダーも検索します。"
+
+msgid "Profile"
+msgstr "プロフィール"
+
+msgid "Who plays, with saves of their own."
+msgstr "プレイヤーと、そのプレイヤー専用のセーブデータ。"
+
+msgid "Add players, and change their names and pictures"
+msgstr "プレイヤーを追加し、名前と画像を変更"
+
+msgid "Manage"
+msgstr "管理"
+
+msgid "Console mode: on the television (1080p), or handheld (720p)"
+msgstr "本体モード：テレビ（1080p）または携帯モード（720p）"
+
+msgid "Clear shortcut"
+msgstr "ショートカットを解除"
+
+msgid "Click a shortcut, then press the keys or hold and release the gamepad buttons. To clear it, use the cross beside it, or click it and press Delete."
+msgstr "ショートカットをクリックしてキーを押すか、ゲームパッドのボタンを押して離します。解除するには隣の×をクリックするか、ショートカットをクリックしてDeleteを押します。"
+
+msgid "Resolution scale: higher values give a sharper picture but need more graphics power."
+msgstr "解像度倍率：値を上げると映像が鮮明になりますが、より高いグラフィックス性能が必要です。"
+
+msgid "This game has no usable executable (ExeFS).\n\nIf this copy requires an update, add its folder in Settings > Game directories, then enable the update in the game's details. If an update is already enabled, check that its files are complete and readable.\n\nGame: %1"
+msgstr "このゲームには使用可能な実行ファイル（ExeFS）がありません。\n\n更新が必要な場合は、設定 > ゲームフォルダーで更新のフォルダーを追加し、ゲームの詳細で有効にしてください。有効になっている場合は、ファイルが完全で読み取り可能か確認してください。\n\nゲーム：%1"
+
+msgid "Could not load the game:\n%1\n\nLoader error: %2. Check that the game files are complete and that the required keys and firmware are available."
+msgstr "ゲームを読み込めませんでした：\n%1\n\nローダーエラー：%2。ゲームファイルが完全で、必要なキーとファームウェアが利用可能か確認してください。"
+
+msgid "Unable to load the interface. Check that NXEmu's ui folder is complete."
+msgstr "インターフェースを読み込めません。NXEmu の ui フォルダーが完全か確認してください。"

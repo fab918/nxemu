@@ -20,11 +20,13 @@ constexpr const char * ShowGameDetails = "GameBrowser\\ShowDetails";
 constexpr const char * StartGamesInFullscreen = "StartGamesInFullscreen";
 constexpr const char * StartGamesWithUiHidden = "StartGamesWithUiHidden";
 constexpr const char * ShowPerformance = "ShowPerformance";
+constexpr const char * ShowEmulationControls = "ShowEmulationControls";
 constexpr const char * ConfirmBeforeStopping = "ConfirmBeforeStopping";
 constexpr const char * ConsoleLanguageSet = "ConsoleLanguageSet";
 constexpr const char * PerformVulkanCheck = "PerformVulkanCheck";
 constexpr const char * EnableDiscordPresence = "EnableDiscordPresence";
 constexpr const char * InterfaceLanguage = "InterfaceLanguage";
+constexpr const char * InterfaceTheme = "InterfaceTheme"; // system, light or dark
 
 std::string InterfaceLanguageChoice(); // Empty means follow the global console language.
 std::string InterfaceLanguageCode();

@@ -31,6 +31,8 @@ add_library(nxemu_ui STATIC
     host/ui_renderer_internal.h
     host/ui_window.cpp
     host/ui_window.h
+    host/ui_theme.cpp
+    host/ui_theme.h
     host/vulkan/vma.cpp
     host/vulkan/vma.h
     host/vulkan/vulkan_api.cpp
@@ -65,6 +67,8 @@ add_library(nxemu_ui STATIC
     platform/file_dialogs.cpp
     platform/file_dialogs.h
     platform/native_window.h
+    platform/system_theme.cpp
+    platform/system_theme.h
     views/about_dialog.cpp
     views/about_dialog.h
     views/advanced_dialog.cpp
@@ -75,6 +79,8 @@ add_library(nxemu_ui STATIC
     views/controller_picture.h
     views/dialog.cpp
     views/dialog.h
+    views/message_dialog.cpp
+    views/message_dialog.h
     views/directories_dialog.cpp
     views/directories_dialog.h
     views/firmware_dialog.cpp
@@ -142,14 +148,27 @@ target_compile_definitions(nxemu_ui PRIVATE
 target_link_libraries(nxemu_ui PUBLIC RmlUi::RmlUi SDL2::SDL2
     PRIVATE nxemu_core common yuzu_common discord-rpc Vulkan::Headers GPUOpen::VulkanMemoryAllocator)
 
+option(NXEMU_BUILD_HOTKEY_TESTS "Build the keyboard and gamepad shortcut tests" OFF)
+if(NXEMU_BUILD_HOTKEY_TESTS)
+    enable_testing()
+    add_executable(nxemu_hotkey_tests views/hotkeys_tests.cpp views/hotkeys.cpp views/shortcut.cpp)
+    target_include_directories(nxemu_hotkey_tests PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    target_link_libraries(nxemu_hotkey_tests PRIVATE SDL2::SDL2)
+    add_test(NAME nxemu_hotkeys COMMAND nxemu_hotkey_tests)
+endif()
+
 option(NXEMU_BUILD_TRANSLATION_TESTS "Build the interface translation tests" OFF)
 if(NXEMU_BUILD_TRANSLATION_TESTS)
     enable_testing()
     add_executable(nxemu_translation_tests
         i18n/translation_tests.cpp
+        views/message_dialog.cpp
+        views/dialog.cpp
+        views/rml_events.cpp
         i18n/translation.cpp
         i18n/plural_rule.cpp
         host/system_fonts.cpp
+        host/ui_theme.cpp
         library/ui_preferences.cpp)
     target_link_libraries(nxemu_translation_tests PRIVATE RmlUi::RmlUi nxemu_core common yuzu_common)
     add_test(NAME nxemu_translations COMMAND nxemu_translation_tests "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -182,6 +201,9 @@ if(NXEMU_BUILD_LIBRARY_CACHE_TESTS)
     target_include_directories(nxemu_game_library_scan_tests PRIVATE "${CMAKE_SOURCE_DIR}/src")
     target_link_libraries(nxemu_game_library_scan_tests PRIVATE RmlUi::RmlUi nxemu_core common yuzu_common)
     add_test(NAME nxemu_game_library_scan COMMAND nxemu_game_library_scan_tests)
+    add_test(NAME nxemu_game_content_loader COMMAND nxemu_game_library_scan_tests "$<TARGET_FILE:nxemu-loader>")
+    add_dependencies(nxemu_game_library_scan_tests nxemu-loader)
+    set_tests_properties(nxemu_game_library_cache nxemu_game_library_scan nxemu_game_content_loader PROPERTIES TIMEOUT 120)
 endif()
 
 # On macOS the modules are built into the build tree; an executable run
@@ -205,11 +227,11 @@ if(APPLE)
         endif()
     endforeach()
 elseif(WIN32)
-    target_link_libraries(nxemu_ui PRIVATE comdlg32 ole32 shell32)
+    target_link_libraries(nxemu_ui PRIVATE comdlg32 ole32 shell32 advapi32)
 elseif(UNIX)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(DBUS dbus-1 REQUIRED IMPORTED_TARGET)
-    target_link_libraries(nxemu_ui PRIVATE ${CMAKE_DL_LIBS} PkgConfig::DBUS)
+    target_link_libraries(nxemu_ui PRIVATE ${CMAKE_DL_LIBS} PkgConfig::DBUS Threads::Threads)
     find_package(Fontconfig QUIET)
     if(Fontconfig_FOUND)
         foreach(_nxemu_font_target nxemu_ui nxemu_translation_tests)
