@@ -425,7 +425,10 @@ private:
         // guest report. Periodically fold its segments into the existing sum.
         static constexpr size_t MAX_RETAINED_SLOTS = 8192;
         const auto driver = device.GetDriverID();
-        return driver != VK_DRIVER_ID_QUALCOMM_PROPRIETARY &&
+        // Disable periodic checkpoints on MoltenVK while investigating VK_NOT_READY
+        // during occlusion readback. Guest reports still synchronize normally.
+        return driver != VK_DRIVER_ID_MOLTENVK &&
+               driver != VK_DRIVER_ID_QUALCOMM_PROPRIETARY &&
                driver != VK_DRIVER_ID_ARM_PROPRIETARY && driver != VK_DRIVER_ID_MESA_TURNIP &&
                device.IsSubgroupFeatureSupported(VK_SUBGROUP_FEATURE_BASIC_BIT) &&
                device.IsSubgroupFeatureSupported(VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) &&
