@@ -710,9 +710,17 @@ void MainWindow::Run(Action action)
         SyncPhase();
         break;
     case Action::ToggleSpeedLimit:
-        settings.SetBool(NXOsSetting::UseSpeedLimit, !settings.GetBool(NXOsSetting::UseSpeedLimit));
+    {
+        const bool limit = !settings.GetBool(NXOsSetting::UseSpeedLimit);
+        settings.SetBool(NXOsSetting::UseSpeedLimit, limit);
+        // A game override wins over the global setting, so the toggle overrides it until the game stops.
+        if (settings.GetBoolWithoutControl(NXOsSetting::UseSpeedLimit) != limit)
+            settings.SetControlOverride(NXOsSetting::UseSpeedLimit, JsonValue(limit));
+        else
+            settings.ClearControlOverride(NXOsSetting::UseSpeedLimit);
         m_session.FlushSettings();
         break;
+    }
     case Action::ToggleStartGamesInFullscreen:
         UiPreferences::SetBool(UiPreferences::StartGamesInFullscreen, !UiPreferences::GetBool(UiPreferences::StartGamesInFullscreen, false));
         break;

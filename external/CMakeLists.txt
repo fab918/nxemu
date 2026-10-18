@@ -287,29 +287,44 @@ if(APPLE)
         set(NXEMU_MOLTENVK_RUNTIME "${NXEMU_MOLTENVK_PREBUILT}" CACHE INTERNAL "" FORCE)
     else()
         set(_nxemu_moltenvk_root "${CMAKE_BINARY_DIR}/external/moltenvk")
-        set(_nxemu_moltenvk_source "${_nxemu_moltenvk_root}/src")
+        set(_nxemu_moltenvk_source "${_nxemu_moltenvk_root}/fork")
         set(_nxemu_moltenvk_runtime
-            "${_nxemu_moltenvk_source}/MoltenVK/Package/Latest/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib")
+            "${_nxemu_moltenvk_source}/Package/Latest/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib")
+        # The fork's nxemu branch carries the Ryujinx fixes and ours. Fixes not pushed to it yet go in
+        # moltenvk-patches and are applied on top.
+        file(GLOB _nxemu_moltenvk_patches "${CMAKE_CURRENT_SOURCE_DIR}/moltenvk-patches/*.patch")
+        list(SORT _nxemu_moltenvk_patches)
+        set(_nxemu_moltenvk_apply "")
+        if(_nxemu_moltenvk_patches)
+            string(JOIN " " _nxemu_moltenvk_patch_args ${_nxemu_moltenvk_patches})
+            set(_nxemu_moltenvk_apply
+                "(git apply --reverse --check ${_nxemu_moltenvk_patch_args} || git apply --verbose ${_nxemu_moltenvk_patch_args}) && ")
+        endif()
 
         ExternalProject_Add(nxemu_moltenvk
-            GIT_REPOSITORY "https://github.com/V380-Ori/Ryujinx.MoltenVK.git"
-            GIT_TAG "45f9b641e45f1d150f3521d74808477add9e975b"
+            GIT_REPOSITORY "https://github.com/fab918/MoltenVK.git"
+            GIT_TAG "cf4e63c4456f30609beecdc665be0b389bee0ec4"
             GIT_SHALLOW FALSE
-            GIT_SUBMODULES_RECURSE TRUE
             UPDATE_COMMAND ""
             SOURCE_DIR "${_nxemu_moltenvk_source}"
             CONFIGURE_COMMAND ""
             BUILD_IN_SOURCE TRUE
             BUILD_COMMAND /bin/sh -c
-                "cd MoltenVK && (git apply --reverse --check ../000*.patch || git apply --verbose ../000*.patch) && ./fetchDependencies --macos && make macos"
+                "${_nxemu_moltenvk_apply}./fetchDependencies --macos && make macos"
             BUILD_BYPRODUCTS "${_nxemu_moltenvk_runtime}"
             INSTALL_COMMAND ""
         )
+        if(_nxemu_moltenvk_patches)
+            ExternalProject_Add_StepDependencies(nxemu_moltenvk build ${_nxemu_moltenvk_patches})
+        endif()
 
         set(NXEMU_MOLTENVK_RUNTIME "${_nxemu_moltenvk_runtime}" CACHE INTERNAL "" FORCE)
         unset(_nxemu_moltenvk_root)
         unset(_nxemu_moltenvk_source)
         unset(_nxemu_moltenvk_runtime)
+        unset(_nxemu_moltenvk_patches)
+        unset(_nxemu_moltenvk_patch_args)
+        unset(_nxemu_moltenvk_apply)
     endif()
 endif()
 

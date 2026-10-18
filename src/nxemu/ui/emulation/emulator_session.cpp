@@ -6,6 +6,7 @@
 #include <nxemu-core/settings/settings.h>
 #include <nxemu-module-spec/operating_system.h>
 #include <nxemu-module-spec/video.h>
+#include <nxemu-os/os_settings_identifiers.h>
 #include <nxemu/ui/host/sdl_input.h>
 #include <nxemu/ui/host/ui_notification.h>
 #include <nxemu/ui/i18n/translation.h>
@@ -248,6 +249,7 @@ bool EmulatorSession::ResetModules(uint64_t programId)
     m_notification.Close();
     SettingsStore::GetInstance().SetBool(NXCoreSetting::EmulationRunning, false);
     m_modules.ShutDown();
+    SettingsStore::GetInstance().ClearControlOverride(NXOsSetting::UseSpeedLimit);
     SettingsStore::GetInstance().SetGameOverrides(GameSettings::GetInstance().Snapshot(programId));
     m_modules.Setup(m_renderWindow);
     m_notification.BindWindow(m_window);
