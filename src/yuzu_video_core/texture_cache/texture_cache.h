@@ -107,8 +107,13 @@ bool TextureCache<P>::QueueGCReadback(ImageId id) {
         return false;
     } else {
         auto& image = slot_images[id];
-        if (image.unswizzled_size_bytes == 0 || image.unswizzled_size_bytes > GC_READBACK_LIMIT ||
-            image.gpu_page_table_index != channel_state->gpu_page_table_index) {
+        if (image.unswizzled_size_bytes == 0 || image.unswizzled_size_bytes > GC_READBACK_LIMIT) {
+            return false;
+        }
+        // The image may belong to a channel other than the bound one; the poll writes it
+        // back through its own address space.
+        const auto address_space = ImageAddressSpace(image);
+        if (!address_space) {
             return false;
         }
         if (gc_readback_ids.contains(id)) {
@@ -121,7 +126,7 @@ bool TextureCache<P>::QueueGCReadback(ImageId id) {
         auto map = runtime.DownloadStagingBuffer(image.unswizzled_size_bytes, true);
         image.DownloadMemory(map, FullDownloadCopies(image.info));
         gc_readbacks.push_back({id, image.modification_tick, lru_cache.GetTick(image.lru_index),
-                                runtime.GetReadbackTick(), current_address_space,
+                                runtime.GetReadbackTick(), *address_space,
                                 image.gpu_page_table_index, map});
         gc_readback_ids.insert(id);
         gc_readback_bytes += map.mapped_span.size_bytes();
@@ -169,6 +174,28 @@ void TextureCache<P>::PollGCReadbacks() {
             gc_readbacks.pop_front();
         }
     }
+}
+
+template <class P>
+std::optional<size_t> TextureCache<P>::ImageAddressSpace(const ImageBase& image) const {
+    if (image.gpu_page_table_index == channel_state->gpu_page_table_index) {
+        return current_address_space;
+    }
+    for (const auto& [id, address_space] : address_spaces) {
+        if (address_space.storage_id * 2 == image.gpu_page_table_index) {
+            return id;
+        }
+    }
+    return std::nullopt;
+}
+
+template <class P>
+Tegra::MemoryManager* TextureCache<P>::ImageGpuMemory(const ImageBase& image) const {
+    if (image.gpu_page_table_index == channel_state->gpu_page_table_index) {
+        return gpu_memory;
+    }
+    const auto id = ImageAddressSpace(image);
+    return id ? address_spaces.at(*id).gpu_memory : nullptr;
 }
 
 template <class P>
@@ -234,12 +261,16 @@ void TextureCache<P>::RunGarbageCollector() {
         if (must_download && QueueGCReadback(image_id)) {
             return false;
         }
-        if (must_download) {
+        // The collector may run while another channel is bound. Write the contents back to
+        // the address space the image belongs to; nothing can read them once it is gone.
+        Tegra::MemoryManager* const image_gpu_memory =
+            must_download ? ImageGpuMemory(image) : nullptr;
+        if (image_gpu_memory) {
             auto map = runtime.DownloadStagingBuffer(image.unswizzled_size_bytes);
             const auto copies = FullDownloadCopies(image.info);
             image.DownloadMemory(map, copies);
             runtime.Finish();
-            SwizzleImage(*gpu_memory, image.gpu_addr, image.info, copies, map.mapped_span,
+            SwizzleImage(*image_gpu_memory, image.gpu_addr, image.info, copies, map.mapped_span,
                          swizzle_data_buffer);
         }
         if (True(image.flags & ImageFlagBits::Tracked)) {

@@ -7,6 +7,7 @@
 #include <deque>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <type_traits>
 #include <unordered_map>
@@ -455,6 +456,12 @@ private:
     bool QueueGCReadback(ImageId id);
     void PollGCReadbacks();
     void CancelGCReadback(ImageId id);
+
+    /// Id of the address space an image was created in, or nullopt if it is gone
+    std::optional<size_t> ImageAddressSpace(const ImageBase& image) const;
+
+    /// Memory manager of the address space an image was created in, or null if it is gone
+    Tegra::MemoryManager* ImageGpuMemory(const ImageBase& image) const;
 
     Runtime& runtime;
 
