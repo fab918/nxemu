@@ -107,6 +107,7 @@ enum class ScalingFilter : uint32_t
     CasBilinear,
     CasCatmullRom,
     CasCatmullRomFast,
+    Area, // Downscaling pipeline; selected by the separate downscale setting.
 };
 
 enum class AntiAliasing : uint32_t

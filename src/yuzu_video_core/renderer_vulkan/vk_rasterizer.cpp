@@ -5,6 +5,7 @@
 #include <array>
 #include <memory>
 #include <mutex>
+#include "yuzu_video_core/renderer_vulkan/present/scale_trace.h"
 
 #include "yuzu_video_core/renderer_vulkan/renderer_vulkan.h"
 
@@ -1024,6 +1025,7 @@ std::optional<FramebufferTextureInfo> RasterizerVulkan::AccelerateDisplay(
 
     FramebufferTextureInfo info{};
     info.image = image_view->ImageHandle();
+    if (ScaleTrace::Active()) ScaleTrace::output << "PRESENT " << info.image << '\n';
     info.image_view = image_view->Handle(Shader::TextureType::Color2D);
     info.width = image_view->size.width;
     info.height = image_view->size.height;

@@ -10,6 +10,7 @@
 namespace OpenGL {
 
 std::unique_ptr<WindowAdaptPass> MakeNearestNeighbor(const Device& device);
+std::unique_ptr<WindowAdaptPass> MakeArea(const Device& device);
 std::unique_ptr<WindowAdaptPass> MakeBilinear(const Device& device);
 std::unique_ptr<WindowAdaptPass> MakeCatmullRom(const Device& device);
 std::unique_ptr<WindowAdaptPass> MakeCas(const Device& device, ScalingFilter filter);

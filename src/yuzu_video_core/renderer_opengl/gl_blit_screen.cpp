@@ -25,7 +25,7 @@ BlitScreen::~BlitScreen() = default;
 void BlitScreen::DrawScreen(std::span<const Tegra::FramebufferConfig> framebuffers,
                             const Layout::FramebufferLayout& layout, bool invert_y) {
     VideoCore::BeginFsrFrame(videoSettings.fsr_sharpening_slider, videoSettings.cas_sharpening_slider,
-                            static_cast<unsigned>(videoSettings.scaling_filter));
+                            static_cast<unsigned>(videoSettings.scaling_filter), videoSettings.downscaling_filter);
     // TODO: Signal state tracker about these changes
     state_tracker.NotifyScreenDrawVertexArray();
     state_tracker.NotifyPolygonModes();
@@ -72,7 +72,7 @@ void BlitScreen::DrawScreen(std::span<const Tegra::FramebufferConfig> framebuffe
         timer->Begin();
         start = VideoCore::PresentDiagnostics::Clock::now();
     }
-    window_adapt->DrawToFramebuffer(program_manager, layers, framebuffers, layout, invert_y);
+    window_adapt->DrawToFramebuffer(program_manager, layers, framebuffers, layout, invert_y, current_window_adapt);
     if (measure) {
         auto sample = VideoCore::PresentDiagnostics::Begin(layout.screen.GetWidth(), layout.screen.GetHeight(),
             static_cast<unsigned>(framebuffers.size()), static_cast<unsigned>(current_window_adapt));

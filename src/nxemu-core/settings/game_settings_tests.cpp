@@ -6,6 +6,7 @@
 #include <nxemu-video/video_settings.h>
 #include <nxemu-video/video_settings_identifiers.h>
 #include <yuzu_video_core/present.h>
+#include <yuzu_video_core/area_sampling.h>
 #include <nxemu-os/os_settings_identifiers.h>
 #include <chrono>
 #include <fstream>
@@ -63,6 +64,32 @@ int main(int argc, char ** argv)
               filter_definition->Display(JsonValue(8)) == "Catmull-Rom fast" &&
               !filter_definition->Accepts(JsonValue(16)), "fast filter accepted, runtime pipeline rejected");
         Check(filter_definition->Accepts(JsonValue(9)) && filter_definition->Display(JsonValue(9)) == "ScaleForce fast", "ScaleForce fast override accepted");
+        const auto* downscale_definition = GameSettings::Definition(NXVideoSetting::DownscalingFilter);
+        Check(downscale_definition && downscale_definition->Accepts(JsonValue(0)) &&
+              downscale_definition->Accepts(JsonValue(1)) && !downscale_definition->Accepts(JsonValue(2)),
+              "downscale setting bounds");
+        for (auto upscale : {ScalingFilter::NearestNeighbor, ScalingFilter::Bilinear, ScalingFilter::Bicubic,
+                            ScalingFilter::CatmullRom, ScalingFilter::CatmullRomFast,
+                            ScalingFilter::ScaleForce, ScalingFilter::ScaleForceFast, ScalingFilter::Fsr,
+                            ScalingFilter::CasCatmullRomFast}) {
+            const Common::Rectangle<float> full{0,0,1,1}, cropped{0,0,.8f,.8f}, flipped{1,1,0,0};
+            auto select = [&](bool area, unsigned w, unsigned h, const auto& crop, unsigned ow, unsigned oh) {
+                return ResolvePresentScale(upscale,area,w,h,crop,ow,oh);
+            };
+            auto up=select(true,1280,720,full,1920,1080);
+            Check(up.filter==upscale && up.mode==PresentScaleMode::Upscale,"upscaler used only for enlargement");
+            auto native=select(true,1600,900,cropped,1280,720);
+            Check(native.filter==ScalingFilter::Bilinear && native.mode==PresentScaleMode::Native,"padded native crop bypasses every upscaler");
+            auto down=select(true,3840,2160,flipped,1920,1080);
+            Check(down.filter==ScalingFilter::Area && down.mode==PresentScaleMode::Downscale,"Area selected for flipped reduction");
+            Check(select(false,3840,2160,full,1920,1080).filter==ScalingFilter::Bilinear,"independent bilinear downscale");
+            Check(select(true,1280,720,full,640,1080).filter==ScalingFilter::Area,"mixed axes prefilter shrinking axis");
+            Check(select(true,1280,720,full,0,0).mode==PresentScaleMode::Native,"empty output avoids division");
+        }
+        Check(VideoCore::AreaSamplingGrid(3840,2160,0,0,1,1,1920,1080)==(1u|(1u<<16)),"aligned 2x single fetch");
+        Check(VideoCore::AreaSamplingGrid(3840,2160,1,1,0,0,960,540)==(2u|(2u<<16)),"flipped aligned 4x paired grid");
+        Check(VideoCore::AreaSamplingGrid(3840,2160,.00013f,0,.99991f,1,1920,1080)==0,"fractional crop cannot assume pair alignment");
+        Check(VideoCore::AreaSamplingGrid(3840,2160,0,0,1,1,1280,720)==0,"odd ratio uses exact coverage weights");
         const auto* cas_definition = GameSettings::Definition(NXVideoSetting::CASSharpness);
         Check(cas_definition && cas_definition->Accepts(JsonValue(0)) &&
               cas_definition->Accepts(JsonValue(100)) && !cas_definition->Accepts(JsonValue(101)),

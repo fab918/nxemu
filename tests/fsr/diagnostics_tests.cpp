@@ -41,6 +41,13 @@ int main() {
     Require(catmull.segment == segment + 1 && catmull.cas_strength == 30);
     Require(catmull.selected_filter == 7 && catmull.sharpness_stored == 68);
     Require(catmull.viewport_width == 1280 && catmull.viewport_height == 720);
+    VideoCore::BeginFsrFrame(68, 30, 7, 1);
+    VideoCore::NotePresentInput(3840,2160,3840,2160);
+    VideoCore::NotePresentSelection(20,2);
+    VideoCore::NotePresentSelection(1,0);
+    const auto area = VideoCore::PresentDiagnostics::Begin(1920,1080,2,7);
+    Require(area.filter==20 && area.selected_filter==7 && area.downscale_filter==1 && area.scale_mode==2);
+    Require(area.segment==catmull.segment+1);
     for (int i = 0; i <= 100; ++i)
         Require(FsrSharpness::ToDisplay(FsrSharpness::ToStored(i)) == i);
     Require(FsrSharpness::ToDisplay(-1) == 100 && FsrSharpness::ToDisplay(201) == 0);

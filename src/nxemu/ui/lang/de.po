@@ -907,10 +907,6 @@ msgstr "Pausiert"
 msgid "The resolution games are drawn at"
 msgstr "Die Auflösung, mit der Spiele dargestellt werden"
 
-#: assets/main_window.rml
-msgid "Window filter: only applies when the game's resolution is lower than the window size"
-msgstr "Fensterfilter: wirkt nur, wenn die Auflösung des Spiels kleiner als das Fenster ist"
-
 #: assets/profiles_dialog.rml
 msgid "Profiles"
 msgstr "Profile"
@@ -2397,10 +2393,6 @@ msgstr "Etwas schärfer als bilinear, bei etwas mehr Aufwand."
 msgid "Sharp edges, best for 2D games and drawings. Heavier."
 msgstr "Scharfe Kanten, ideal für 2D-Spiele und Zeichnungen. Aufwendiger."
 
-#: views/scaling_filters.h
-msgid "AMD FidelityFX Super Resolution: sharpens a picture drawn smaller than the window, best for 3D games. Moderate work."
-msgstr "AMD FidelityFX Super Resolution: schärft ein Bild, das kleiner als das Fenster gezeichnet wird, ideal für 3D-Spiele. Mäßiger Aufwand."
-
 #: views/settings_context.cpp
 msgid "Volume"
 msgstr "Lautstärke"
@@ -2531,3 +2523,45 @@ msgstr "Spiel konnte nicht geladen werden:\n%1\n\nLadefehler: %2. Prüfen Sie di
 
 msgid "Unable to load the interface. Check that NXEmu's ui folder is complete."
 msgstr "Die Oberfläche konnte nicht geladen werden. Prüfen Sie, ob der ui-Ordner von NXEmu vollständig ist."
+
+msgid "Optional sharpening at 1:1 and when downscaling; also with Nearest, Bilinear or Catmull-Rom upscaling. Off at 0%."
+msgstr "Optionale Schärfung bei 1:1 und beim Verkleinern; auch beim Hochskalieren mit Nächster Nachbar, Bilinear oder Catmull-Rom. Bei 0 % aus."
+
+msgid "AMD FidelityFX Super Resolution: edge-aware upscaling with adjustable sharpness. At 0%, sharpening is off."
+msgstr "AMD FidelityFX Super Resolution: kantenerhaltende Hochskalierung mit einstellbarer Schärfe. Bei 0 % ist die Schärfung aus."
+
+msgid "Five-sample approximation. Faster, with small changes around diagonal edges."
+msgstr "Näherung mit fünf Abtastungen. Schneller, mit kleinen Abweichungen an diagonalen Kanten."
+
+msgid "ScaleForce fast"
+msgstr "ScaleForce schnell"
+
+msgid "Upscaling and downscaling filters: selected automatically from the image and display dimensions"
+msgstr "Vergrößerungs- und Verkleinerungsfilter: automatische Auswahl anhand der Bild- und Anzeigegröße"
+
+msgid "CAS sharpness"
+msgstr "CAS-Schärfe"
+
+msgid "Catmull-Rom fast"
+msgstr "Catmull-Rom schnell"
+
+msgid "Sharper reconstruction with fine detail. May add halos around strong edges."
+msgstr "Schärfere Rekonstruktion feiner Details. Kann Säume an starken Kanten erzeugen."
+
+msgid "Used automatically when the source image is larger than its display area. Lowest cost."
+msgstr "Wird automatisch verwendet, wenn das Quellbild größer als sein Anzeigebereich ist. Geringster Aufwand."
+
+msgid "Downscaling filter"
+msgstr "Verkleinerungsfilter"
+
+msgid "Downscale: Area"
+msgstr "Verkleinerung: Area"
+
+msgid "Downscale: Bilinear"
+msgstr "Verkleinerung: Bilinear"
+
+msgid "Area-weighted reduction. Filters the full source footprint to reduce aliasing."
+msgstr "Flächengewichtete Verkleinerung. Filtert die gesamte abgedeckte Quellfläche, um Treppeneffekte zu verringern."
+
+msgid "Four-neighbor edge estimate. Faster, but diagonal contours may differ."
+msgstr "Kantenschätzung mit vier Nachbarn. Schneller, aber diagonale Konturen können abweichen."

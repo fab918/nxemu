@@ -907,10 +907,6 @@ msgstr "Приостановлено"
 msgid "The resolution games are drawn at"
 msgstr "Разрешение, с которым отображаются игры"
 
-#: assets/main_window.rml
-msgid "Window filter: only applies when the game's resolution is lower than the window size"
-msgstr "Фильтр окна: применяется, только если разрешение игры меньше размера окна"
-
 #: assets/profiles_dialog.rml
 msgid "Profiles"
 msgstr "Профили"
@@ -2406,10 +2402,6 @@ msgstr "Немного чётче билинейного, при чуть бол
 msgid "Sharp edges, best for 2D games and drawings. Heavier."
 msgstr "Чёткие края, лучше всего для 2D-игр и рисунков. Тяжелее."
 
-#: views/scaling_filters.h
-msgid "AMD FidelityFX Super Resolution: sharpens a picture drawn smaller than the window, best for 3D games. Moderate work."
-msgstr "AMD FidelityFX Super Resolution: повышает резкость изображения, нарисованного меньше окна, лучше всего для 3D-игр. Умеренная нагрузка."
-
 #: views/settings_context.cpp
 msgid "Volume"
 msgstr "Громкость"
@@ -2540,3 +2532,45 @@ msgstr "Не удалось загрузить игру:\n%1\n\nОшибка з�
 
 msgid "Unable to load the interface. Check that NXEmu's ui folder is complete."
 msgstr "Не удалось загрузить интерфейс. Проверьте полноту папки ui в NXEmu."
+
+msgid "Optional sharpening at 1:1 and when downscaling; also with Nearest, Bilinear or Catmull-Rom upscaling. Off at 0%."
+msgstr "Повышение резкости при 1:1 и уменьшении; также при увеличении методами ближайшего соседа, билинейным или Catmull-Rom. При 0% отключено."
+
+msgid "AMD FidelityFX Super Resolution: edge-aware upscaling with adjustable sharpness. At 0%, sharpening is off."
+msgstr "AMD FidelityFX Super Resolution: увеличение с учётом контуров и настраиваемой резкостью. При 0% повышение резкости отключено."
+
+msgid "Five-sample approximation. Faster, with small changes around diagonal edges."
+msgstr "Приближение по пяти выборкам. Быстрее, с небольшими отличиями на диагональных границах."
+
+msgid "ScaleForce fast"
+msgstr "Быстрый ScaleForce"
+
+msgid "Upscaling and downscaling filters: selected automatically from the image and display dimensions"
+msgstr "Фильтры увеличения и уменьшения: автоматический выбор по размерам изображения и области вывода"
+
+msgid "CAS sharpness"
+msgstr "Резкость CAS"
+
+msgid "Catmull-Rom fast"
+msgstr "Быстрый Catmull-Rom"
+
+msgid "Sharper reconstruction with fine detail. May add halos around strong edges."
+msgstr "Более чёткое восстановление мелких деталей. Может создавать ореолы на контрастных границах."
+
+msgid "Used automatically when the source image is larger than its display area. Lowest cost."
+msgstr "Используется автоматически, если исходное изображение больше области вывода. Минимальные затраты."
+
+msgid "Downscaling filter"
+msgstr "Фильтр уменьшения"
+
+msgid "Downscale: Area"
+msgstr "Уменьшение: Area"
+
+msgid "Downscale: Bilinear"
+msgstr "Уменьшение: билинейное"
+
+msgid "Area-weighted reduction. Filters the full source footprint to reduce aliasing."
+msgstr "Уменьшение с весами по площади. Фильтрует всю покрываемую область исходного изображения для уменьшения ступенчатости."
+
+msgid "Four-neighbor edge estimate. Faster, but diagonal contours may differ."
+msgstr "Оценка границ по четырём соседям. Быстрее, но диагональные контуры могут отличаться."

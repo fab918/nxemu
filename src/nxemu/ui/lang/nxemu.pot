@@ -755,6 +755,19 @@ msgid "Sharpness of the FSR filter"
 msgstr ""
 
 #: assets/general_dialog.rml
+msgid "Downscaling filter"
+msgstr ""
+
+#: assets/general_dialog.rml
+msgid "CAS sharpness"
+msgstr ""
+
+#: assets/general_dialog.rml
+#: views/main_window.cpp
+msgid "Optional sharpening at 1:1 and when downscaling; also with Nearest, Bilinear or Catmull-Rom upscaling. Off at 0%."
+msgstr ""
+
+#: assets/general_dialog.rml
 msgid "Aspect ratio"
 msgstr ""
 
@@ -975,7 +988,7 @@ msgid "The resolution games are drawn at"
 msgstr ""
 
 #: assets/main_window.rml
-msgid "Window filter: only applies when the game's resolution is lower than the window size"
+msgid "Upscaling and downscaling filters: selected automatically from the image and display dimensions"
 msgstr ""
 
 #: assets/main_window.rml
@@ -2088,6 +2101,12 @@ msgid "Gaussian"
 msgstr ""
 
 #: views/general_dialog.cpp
+#: views/main_window.cpp
+#: views/scaling_filters.h
+msgid "Bilinear"
+msgstr ""
+
+#: views/general_dialog.cpp
 msgid "Docked: games run at 1080p and expect a TV."
 msgstr ""
 
@@ -2387,6 +2406,22 @@ msgid "Sharpness: once FSR is the filter"
 msgstr ""
 
 #: views/main_window.cpp
+msgid "Downscale: Bilinear"
+msgstr ""
+
+#: views/main_window.cpp
+msgid "Used automatically when the source image is larger than its display area. Lowest cost."
+msgstr ""
+
+#: views/main_window.cpp
+msgid "Downscale: Area"
+msgstr ""
+
+#: views/main_window.cpp
+msgid "Area-weighted reduction. Filters the full source footprint to reduce aliasing."
+msgstr ""
+
+#: views/main_window.cpp
 msgid "Use game settings"
 msgstr ""
 
@@ -2497,11 +2532,19 @@ msgid "Sharp squares, for pixel art. The lightest."
 msgstr ""
 
 #: views/scaling_filters.h
-msgid "Bilinear"
+msgid "Smooth. The usual choice, and light."
 msgstr ""
 
 #: views/scaling_filters.h
-msgid "Smooth. The usual choice, and light."
+msgid "Sharper reconstruction with fine detail. May add halos around strong edges."
+msgstr ""
+
+#: views/scaling_filters.h
+msgid "Catmull-Rom fast"
+msgstr ""
+
+#: views/scaling_filters.h
+msgid "Five-sample approximation. Faster, with small changes around diagonal edges."
 msgstr ""
 
 #: views/scaling_filters.h
@@ -2517,7 +2560,15 @@ msgid "Sharp edges, best for 2D games and drawings. Heavier."
 msgstr ""
 
 #: views/scaling_filters.h
-msgid "AMD FidelityFX Super Resolution: sharpens a picture drawn smaller than the window, best for 3D games. Moderate work."
+msgid "ScaleForce fast"
+msgstr ""
+
+#: views/scaling_filters.h
+msgid "Four-neighbor edge estimate. Faster, but diagonal contours may differ."
+msgstr ""
+
+#: views/scaling_filters.h
+msgid "AMD FidelityFX Super Resolution: edge-aware upscaling with adjustable sharpness. At 0%, sharpening is off."
 msgstr ""
 
 #: views/settings_context.cpp

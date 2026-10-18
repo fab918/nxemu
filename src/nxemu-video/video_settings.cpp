@@ -263,6 +263,7 @@ static VideoSetting settings[] = {
     {NXVideoSetting::ScalingFilter, "video", "scaling_filter", &videoSettings.scaling_filter, ScalingFilter::Bilinear},
     {NXVideoSetting::AntiAliasing, "video", "anti_aliasing", &videoSettings.anti_aliasing, AntiAliasing::None},
     {NXVideoSetting::FSPSharpness, "video", "fsr_sharpening_slider", &videoSettings.fsr_sharpening_slider, 25, 0, 200},
+    {NXVideoSetting::DownscalingFilter, "video", "downscaling_filter", &videoSettings.downscaling_filter, 0, 0, 1},
     {NXVideoSetting::CASSharpness, "video", "cas_sharpening_slider", &videoSettings.cas_sharpening_slider, 0, 0, 100},
     {NXVideoSetting::FsrLegacyBenchmark, "video", "fsr_legacy_benchmark", &videoSettings.fsr_legacy_benchmark, false},
     {NXVideoSetting::ForceMaximumClocks, "video", "renderer_force_max_clock", &videoSettings.renderer_force_max_clock, false},

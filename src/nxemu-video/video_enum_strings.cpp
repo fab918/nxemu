@@ -231,6 +231,7 @@ const char* ScalingFilterToString(ScalingFilter value)
     case ScalingFilter::FsrEasu: return "FsrEasu";
     case ScalingFilter::CatmullRom: return "CatmullRom";
     case ScalingFilter::CatmullRomFast: return "CatmullRomFast";
+    case ScalingFilter::Area: return "Area";
     case ScalingFilter::CasNearest:
     case ScalingFilter::CasBilinear:
     case ScalingFilter::CasCatmullRom:

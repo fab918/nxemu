@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
+#include <bit>
+#include "yuzu_video_core/area_sampling.h"
+#include "yuzu_video_core/renderer_vulkan/present/scale_capture.h"
 
 #include "yuzu_video_core/present.h"
+#include "yuzu_video_core/present_sharpening.h"
 #include "yuzu_video_core/fsr.h"
 #include "yuzu_video_core/renderer_vulkan/vk_rasterizer.h"
 
@@ -73,9 +77,9 @@ Layer::~Layer() {
     ReleaseRawImages();
 }
 
-void Layer::ConfigureDraw(PresentPushConstants* out_push_constants,
+PresentScaleSelection Layer::ConfigureDraw(PresentPushConstants* out_push_constants,
                           VkDescriptorSet* out_descriptor_set, RasterizerVulkan& rasterizer,
-                          VkSampler sampler, size_t image_index,
+                          VkSampler sampler, VkSampler bilinear_sampler, VkSampler area_sampler, ScalingFilter requested_filter, PresentSharpening sharpening, size_t image_index,
                           const Tegra::FramebufferConfig& framebuffer,
                           const Layout::FramebufferLayout& layout) {
     const auto texture_info = rasterizer.AccelerateDisplay(
@@ -104,6 +108,12 @@ void Layer::ConfigureDraw(PresentPushConstants* out_push_constants,
     VkImageView source_image_view =
         texture_info ? texture_info->image_view : *raw_image_views[image_index];
 
+    if (!filters.is_applet_capture && ScaleCapture::active) {
+        ScaleCapture::Source(device,memory_allocator,scheduler,source_image_view,
+            scaled_width,scaled_height,Tegra::NormalizeCrop(framebuffer,texture_width,texture_height),
+            layout,static_cast<unsigned>(VideoCore::fsr_frame_state.downscale_filter),
+            static_cast<unsigned>(filters.get_anti_aliasing()));
+    }
     anti_alias->Draw(scheduler, image_index, &source_image, &source_image_view);
 
     auto crop_rect = Tegra::NormalizeCrop(framebuffer, texture_width, texture_height);
@@ -115,7 +125,49 @@ void Layer::ConfigureDraw(PresentPushConstants* out_push_constants,
         .height = scaled_height,
     };
 
-    const ScalingFilter scaling_filter = filters.get_scaling_filter();
+    const auto selection = ResolvePresentScale(requested_filter,
+        !filters.is_applet_capture && VideoCore::fsr_frame_state.downscale_filter == 1,
+        scaled_width, scaled_height, crop_rect, layout.screen.GetWidth(), layout.screen.GetHeight());
+    const ScalingFilter scaling_filter = selection.filter;
+    VideoCore::NotePresentSelection(static_cast<unsigned>(scaling_filter),
+                                   static_cast<unsigned>(selection.mode));
+    if (selection.mode != PresentScaleMode::Upscale) {
+        sampler = scaling_filter == ScalingFilter::Area ? area_sampler : bilinear_sampler;
+    }
+    if (scaling_filter == ScalingFilter::Area) {
+        const std::array<float, 4> area{
+            std::abs(crop_rect.right - crop_rect.left) * scaled_width / layout.screen.GetWidth(),
+            std::abs(crop_rect.bottom - crop_rect.top) * scaled_height / layout.screen.GetHeight(),
+            1.0f / scaled_width, 1.0f / scaled_height};
+        for (size_t i = 0; i < area.size(); ++i)
+            out_push_constants->filter_constants[i] = std::bit_cast<u32>(area[i]);
+        out_push_constants->filter_constants[4] = VideoCore::AreaSamplingGrid(scaled_width, scaled_height,
+            crop_rect.left, crop_rect.top, crop_rect.right, crop_rect.bottom,
+            layout.screen.GetWidth(), layout.screen.GetHeight());
+    }
+    // Sharpen the reduced image, never the original high-resolution texels.
+    // Bilinear+CAS already reconstructs its output-pixel cross in one pass.
+    // Area is evaluated once per output pixel; RCAS needs texelFetch on an
+    // actual output-sized image. Keep both cached passes alive across toggles.
+    const bool rcas_phase_copy = selection.mode == PresentScaleMode::Native &&
+        sharpening == PresentSharpening::Rcas && layout.screen.GetWidth() &&
+        layout.screen.GetHeight() && !IsPresentCropTexelAligned(scaled_width, scaled_height, crop_rect);
+    const bool precompute_downscale = rcas_phase_copy || (selection.mode == PresentScaleMode::Downscale &&
+        sharpening != PresentSharpening::None &&
+        (scaling_filter == ScalingFilter::Area || sharpening == PresentSharpening::Rcas));
+    if (precompute_downscale) {
+        auto& pass = downscale_passes[scaling_filter == ScalingFilter::Area ? 1 : 0];
+        if (!pass) {
+            pass = std::make_unique<CatmullPass>(device, memory_allocator, image_count,
+                VkExtent2D{layout.screen.GetWidth(), layout.screen.GetHeight()}, scaling_filter);
+        }
+        source_image_view = pass->Draw(scheduler, image_index, source_image, source_image_view,
+                                      crop_rect, false, out_push_constants);
+        crop_rect = pass->OutputCrop();
+        sampler = bilinear_sampler;
+        out_push_constants->filter_constants.fill(0);
+        VideoCore::NoteFsrInput(scaled_width, scaled_height, 1U);
+    }
     const bool catmull_cas = scaling_filter == ScalingFilter::CasCatmullRom ||
                              scaling_filter == ScalingFilter::CasCatmullRomFast;
     // Avoid a second pass for native mapping and small targets where its setup costs more.
@@ -182,6 +234,7 @@ void Layer::ConfigureDraw(PresentPushConstants* out_push_constants,
 
     UpdateDescriptorSet(source_image_view, sampler, image_index);
     *out_descriptor_set = descriptor_sets[image_index];
+    return selection;
 }
 
 void Layer::CreateDescriptorPool() {

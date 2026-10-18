@@ -9,6 +9,7 @@
 #include "yuzu_video_core/host_shaders/vulkan_present_cas_catmull_quad_frag_spv.h"
 #include "yuzu_video_core/host_shaders/vulkan_present_cas_catmull_frag_spv.h"
 
+#include "yuzu_video_core/host_shaders/present_area_frag_spv.h"
 #include "yuzu_video_core/host_shaders/present_bicubic_frag_spv.h"
 #include "yuzu_video_core/host_shaders/present_gaussian_frag_spv.h"
 #include "yuzu_video_core/host_shaders/vulkan_present_frag_spv.h"
@@ -67,8 +68,14 @@ std::unique_ptr<WindowAdaptPass> MakeNearestNeighbor(const Device& device, VkFor
                                              BuildShader(device, VULKAN_PRESENT_FRAG_SPV));
 }
 
+std::unique_ptr<WindowAdaptPass> MakeArea(const Device& device, VkFormat frame_format) {
+    return std::make_unique<WindowAdaptPass>(device, frame_format,
+        CreateBilinearSampler(device, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
+        BuildShader(device, PRESENT_AREA_FRAG_SPV));
+}
+
 std::unique_ptr<WindowAdaptPass> MakeBilinear(const Device& device, VkFormat frame_format) {
-    return std::make_unique<WindowAdaptPass>(device, frame_format, CreateBilinearSampler(device),
+    return std::make_unique<WindowAdaptPass>(device, frame_format, CreateBilinearSampler(device, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
                                              BuildShader(device, VULKAN_PRESENT_FRAG_SPV));
 }
 

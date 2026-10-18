@@ -180,7 +180,7 @@
       </div>
       <div id="resolution" class="status-item" title="The resolution games are drawn at" />
       <div class="status-separator" />
-      <div id="scaling-filter" class="select" title="Window filter: only applies when the game's resolution is lower than the window size">
+      <div id="scaling-filter" class="select" title="Upscaling and downscaling filters: selected automatically from the image and display dimensions">
         <img class="select-icon" src="images/picture.png" />
         <div id="scaling-filter-text" />
         <img class="select-arrow" src="images/chevron-down.png" />

@@ -907,10 +907,6 @@ msgstr "일시중지됨"
 msgid "The resolution games are drawn at"
 msgstr "게임이 표시되는 해상도"
 
-#: assets/main_window.rml
-msgid "Window filter: only applies when the game's resolution is lower than the window size"
-msgstr "창 필터: 게임 해상도가 창 크기보다 작을 때만 적용됩니다"
-
 #: assets/profiles_dialog.rml
 msgid "Profiles"
 msgstr "프로필"
@@ -2388,10 +2384,6 @@ msgstr "쌍선형보다 조금 더 선명하며 부하가 약간 더 큽니다."
 msgid "Sharp edges, best for 2D games and drawings. Heavier."
 msgstr "선명한 윤곽. 2D 게임과 그림에 가장 적합합니다. 더 무겁습니다."
 
-#: views/scaling_filters.h
-msgid "AMD FidelityFX Super Resolution: sharpens a picture drawn smaller than the window, best for 3D games. Moderate work."
-msgstr "AMD FidelityFX Super Resolution: 창보다 작게 그려진 화면을 선명하게 합니다. 3D 게임에 가장 적합합니다. 부하는 보통입니다."
-
 #: views/settings_context.cpp
 msgid "Volume"
 msgstr "볼륨"
@@ -2522,3 +2514,45 @@ msgstr "게임을 불러올 수 없습니다:\n%1\n\n로더 오류: %2. 게임 �
 
 msgid "Unable to load the interface. Check that NXEmu's ui folder is complete."
 msgstr "인터페이스를 불러올 수 없습니다. NXEmu의 ui 폴더가 완전한지 확인하세요."
+
+msgid "Optional sharpening at 1:1 and when downscaling; also with Nearest, Bilinear or Catmull-Rom upscaling. Off at 0%."
+msgstr "1:1 및 축소 시 선택적 선명도 향상. 최근접 이웃, 이중선형 또는 Catmull-Rom 확대에도 적용됩니다. 0%에서 꺼집니다."
+
+msgid "AMD FidelityFX Super Resolution: edge-aware upscaling with adjustable sharpness. At 0%, sharpening is off."
+msgstr "AMD FidelityFX Super Resolution: 윤곽을 고려한 확대와 조절 가능한 선명도. 0%에서는 선명도 향상이 꺼집니다."
+
+msgid "Five-sample approximation. Faster, with small changes around diagonal edges."
+msgstr "5개 샘플을 사용하는 근사 방식. 더 빠르지만 대각선 경계에 작은 차이가 생깁니다."
+
+msgid "ScaleForce fast"
+msgstr "ScaleForce 고속"
+
+msgid "Upscaling and downscaling filters: selected automatically from the image and display dimensions"
+msgstr "확대 및 축소 필터: 이미지와 표시 영역의 크기에 따라 자동 선택"
+
+msgid "CAS sharpness"
+msgstr "CAS 선명도"
+
+msgid "Catmull-Rom fast"
+msgstr "Catmull-Rom 고속"
+
+msgid "Sharper reconstruction with fine detail. May add halos around strong edges."
+msgstr "미세한 디테일을 더 선명하게 복원합니다. 뚜렷한 경계 주변에 테두리 번짐이 생길 수 있습니다."
+
+msgid "Used automatically when the source image is larger than its display area. Lowest cost."
+msgstr "원본 이미지가 표시 영역보다 크면 자동으로 사용합니다. 비용이 가장 낮습니다."
+
+msgid "Downscaling filter"
+msgstr "축소 필터"
+
+msgid "Downscale: Area"
+msgstr "축소: Area"
+
+msgid "Downscale: Bilinear"
+msgstr "축소: 이중선형"
+
+msgid "Area-weighted reduction. Filters the full source footprint to reduce aliasing."
+msgstr "면적 가중 축소. 원본에서 해당하는 영역 전체를 필터링하여 계단 현상을 줄입니다."
+
+msgid "Four-neighbor edge estimate. Faster, but diagonal contours may differ."
+msgstr "네 이웃으로 경계를 추정합니다. 더 빠르지만 대각선 윤곽이 달라질 수 있습니다."

@@ -16,6 +16,7 @@
 #include "video_settings.h"
 
 #include "yuzu_video_core/renderer_vulkan/vk_texture_cache.h"
+#include "yuzu_video_core/renderer_vulkan/present/scale_trace.h"
 
 #include "yuzu_video_core/engines/fermi_2d.h"
 #include "yuzu_video_core/renderer_vulkan/blit_image.h"
@@ -1881,6 +1882,8 @@ bool Image::ScaleUp(bool ignore) {
         ignore = false;
     }
     current_image = *scaled_image;
+    if (ScaleTrace::Active()) ScaleTrace::output << "SCALEUP " << *original_image << ' ' << *scaled_image
+                                                 << " guest=" << std::hex << gpu_addr << std::dec << " native=" << info.size.width << 'x' << info.size.height << " ignore=" << ignore << '\n';
     if (ignore) {
         return true;
     }
@@ -1906,6 +1909,8 @@ bool Image::ScaleDown(bool ignore) {
     ASSERT(info.type != ImageType::Linear);
     flags &= ~ImageFlagBits::Rescaled;
     current_image = *original_image;
+    if (ScaleTrace::Active()) ScaleTrace::output << "SCALEDOWN " << *scaled_image << ' ' << *original_image
+                                                 << " guest=" << std::hex << gpu_addr << std::dec << " native=" << info.size.width << 'x' << info.size.height << " ignore=" << ignore << '\n';
     if (ignore) {
         return true;
     }

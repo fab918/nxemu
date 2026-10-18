@@ -907,10 +907,6 @@ msgstr "En pause"
 msgid "The resolution games are drawn at"
 msgstr "La résolution à laquelle les jeux sont affichés"
 
-#: assets/main_window.rml
-msgid "Window filter: only applies when the game's resolution is lower than the window size"
-msgstr "Filtre de fenêtre : ne s'applique que si la résolution du jeu est inférieure à la taille de la fenêtre"
-
 #: assets/profiles_dialog.rml
 msgid "Profiles"
 msgstr "Profils"
@@ -2397,10 +2393,6 @@ msgstr "Un peu plus net que le bilinéaire, pour un peu plus de travail."
 msgid "Sharp edges, best for 2D games and drawings. Heavier."
 msgstr "Contours nets, idéal pour les jeux en 2D et les dessins. Plus lourd."
 
-#: views/scaling_filters.h
-msgid "AMD FidelityFX Super Resolution: sharpens a picture drawn smaller than the window, best for 3D games. Moderate work."
-msgstr "AMD FidelityFX Super Resolution : rend plus nette une image dessinée plus petite que la fenêtre, idéal pour les jeux en 3D. Coût modéré."
-
 #: views/settings_context.cpp
 msgid "Volume"
 msgstr "Volume"
@@ -2535,9 +2527,6 @@ msgstr "Impossible de charger l'interface. Vérifiez que le dossier ui de NXEmu 
 msgid "CAS sharpness"
 msgstr "Netteté CAS"
 
-msgid "Optional sharpening for Bilinear and Catmull-Rom. Off at 0%."
-msgstr "Netteté optionnelle pour Bilinéaire et Catmull-Rom. Désactivée à 0 %."
-
 msgid "Sharper reconstruction with fine detail. May add halos around strong edges."
 msgstr "Reconstruction plus nette des détails fins. Peut créer des halos sur les contours marqués."
 
@@ -2552,3 +2541,27 @@ msgstr "ScaleForce rapide"
 
 msgid "Four-neighbor edge estimate. Faster, but diagonal contours may differ."
 msgstr "Estimation des contours sur quatre voisins. Plus rapide, mais les diagonales peuvent différer."
+
+msgid "Downscale: Bilinear"
+msgstr "Réduction : Bilinear"
+
+msgid "Downscale: Area"
+msgstr "Réduction : Area"
+
+msgid "Downscaling filter"
+msgstr "Filtre de réduction"
+
+msgid "Used automatically when the source image is larger than its display area. Lowest cost."
+msgstr "Utilisé automatiquement quand l’image source est plus grande que sa zone d’affichage. Coût minimal."
+
+msgid "Area-weighted reduction. Filters the full source footprint to reduce aliasing."
+msgstr "Réduction pondérée par la surface. Filtre toute la zone source couverte pour réduire le crénelage."
+
+msgid "Upscaling and downscaling filters: selected automatically from the image and display dimensions"
+msgstr "Filtres d’agrandissement et de réduction : choisis automatiquement selon les dimensions de l’image et de l’affichage"
+
+msgid "Optional sharpening at 1:1 and when downscaling; also with Nearest, Bilinear or Catmull-Rom upscaling. Off at 0%."
+msgstr "Netteté facultative en 1:1 et en réduction ; aussi en agrandissement avec Nearest, Bilinear ou Catmull-Rom. Désactivée à 0 %."
+
+msgid "AMD FidelityFX Super Resolution: edge-aware upscaling with adjustable sharpness. At 0%, sharpening is off."
+msgstr "AMD FidelityFX Super Resolution : agrandissement adapté aux contours avec une netteté réglable. À 0 %, la netteté est désactivée."

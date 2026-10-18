@@ -79,3 +79,41 @@ static inline bool CanUseNativeRcas(u32 input_width, u32 input_height,
     return input_width != 0 && input_height != 0 && input_width == output_width &&
            input_height == output_height && full_x && full_y;
 }
+
+// Classification uses the useful, internally scaled crop, not the allocation size
+// or the desktop resolution. A mixed-axis resize uses the downscaler to prefilter
+// the shrinking axis. An empty/minimized output never enters an Area loop.
+enum class PresentScaleMode : unsigned { Native, Upscale, Downscale };
+struct PresentScaleSelection {
+    ScalingFilter filter;
+    PresentScaleMode mode;
+};
+// RCAS uses integer texelFetch coordinates. A 1:1 fractional crop still needs
+// its subpixel translation materialized before RCAS; no scaling is involved.
+static inline bool IsPresentCropTexelAligned(u32 width, u32 height,
+                                            const Common::Rectangle<f32>& crop) {
+    const double x = double(crop.left) * width;
+    const double y = double(crop.top) * height;
+    return std::isfinite(x) && std::isfinite(y) &&
+           std::abs(x - std::round(x)) <= 0.001 &&
+           std::abs(y - std::round(y)) <= 0.001;
+}
+static inline PresentScaleSelection ResolvePresentScale(
+    ScalingFilter upscale, bool area, u32 width, u32 height,
+    const Common::Rectangle<f32>& crop, u32 output_width, u32 output_height) {
+    const double useful_width = std::abs(double(crop.right) - crop.left) * width;
+    const double useful_height = std::abs(double(crop.bottom) - crop.top) * height;
+    constexpr double tolerance = 0.001; // Sub-texel roundoff in normalized crops.
+    if (!output_width || !output_height || !std::isfinite(useful_width) ||
+        !std::isfinite(useful_height) || useful_width <= 0 || useful_height <= 0) {
+        return {ScalingFilter::Bilinear, PresentScaleMode::Native};
+    }
+    if (std::abs(useful_width - output_width) <= tolerance &&
+        std::abs(useful_height - output_height) <= tolerance) {
+        return {ScalingFilter::Bilinear, PresentScaleMode::Native};
+    }
+    if (useful_width > output_width + tolerance || useful_height > output_height + tolerance) {
+        return {area ? ScalingFilter::Area : ScalingFilter::Bilinear, PresentScaleMode::Downscale};
+    }
+    return {upscale, PresentScaleMode::Upscale};
+}

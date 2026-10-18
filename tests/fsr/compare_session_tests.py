@@ -31,6 +31,25 @@ class SessionTest(unittest.TestCase):
             self.assertTrue(all(r["samples"] < 200 for r in result))
             self.assertTrue(all(r["submission_fps"] == 250 for r in result))
 
+    def test_downscale_selection_is_distinct_from_upscaler(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"area.csv"
+            rows=[]
+            for segment, actual, down, mode in [(0,20,1,"downscale"),(1,1,0,"downscale"),(2,1,1,"native")]:
+                for frame in range(100):
+                    rows.append(dict(frame=segment*100+frame,backend="Vulkan",segment=segment,
+                        implementation="standard",filter=actual,selected_filter=5,downscale_filter=down,
+                        scale_mode=mode,input_width=3840,input_height=2160,viewport_width=3840,viewport_height=2160,
+                        width=1920,height=1080,layers=1,cpu_ms=.001,gpu_ms=.02,
+                        elapsed_s=segment*10+frame*.1,frame_interval_ms=4,offscreen_passes=0,
+                        target="display",sharpness_stored=25,cas_strength=0))
+            with path.open("w",newline="") as f:
+                writer=csv.DictWriter(f,fieldnames=rows[0].keys());writer.writeheader();writer.writerows(rows)
+            result=summarize(path,1,1)
+            self.assertEqual([r["filter_name"] for r in result],["Area","Bilinear","Bilinear"])
+            self.assertEqual([r["scale_mode"] for r in result],["downscale","downscale","native"])
+            self.assertTrue(all(r["selected_filter"]=="5" for r in result))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <list>
+#include "nxemu-module-spec/video.h"
 
 #include "yuzu_common/math_util.h"
 #include "yuzu_video_core/vulkan_common/vulkan_wrapper.h"
@@ -15,6 +16,7 @@ struct FramebufferLayout;
 namespace Tegra {
 struct FramebufferConfig;
 }
+enum class PresentSharpening;
 
 namespace Vulkan {
 
@@ -33,12 +35,20 @@ public:
 
     void Draw(RasterizerVulkan& rasterizer, Scheduler& scheduler, size_t image_index,
               std::list<Layer>& layers, std::span<const Tegra::FramebufferConfig> configs,
-              const Layout::FramebufferLayout& layout, Frame* dst);
+              const Layout::FramebufferLayout& layout, Frame* dst, ScalingFilter requested_filter,
+              PresentSharpening sharpening);
 
     VkDescriptorSetLayout GetDescriptorSetLayout();
     VkRenderPass GetRenderPass();
 
 private:
+    struct FallbackPipelines {
+        vk::Sampler sampler;
+        vk::ShaderModule shader;
+        vk::Pipeline opaque, premultiplied, coverage;
+    };
+    void CreateFallback(FallbackPipelines& target, ScalingFilter filter);
+    FallbackPipelines bilinear_fallback, area_fallback, cas_fallback, rcas_fallback;
     void CreateDescriptorSetLayout();
     void CreatePipelineLayout();
     void CreateVertexShader();

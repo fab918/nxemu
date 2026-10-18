@@ -907,10 +907,6 @@ msgstr "Gepauzeerd"
 msgid "The resolution games are drawn at"
 msgstr "De resolutie waarmee games worden weergegeven"
 
-#: assets/main_window.rml
-msgid "Window filter: only applies when the game's resolution is lower than the window size"
-msgstr "Vensterfilter: wordt alleen toegepast als de resolutie van het spel kleiner is dan het venster"
-
 #: assets/profiles_dialog.rml
 msgid "Profiles"
 msgstr "Profielen"
@@ -2397,10 +2393,6 @@ msgstr "Iets scherper dan bilineair, voor iets meer werk."
 msgid "Sharp edges, best for 2D games and drawings. Heavier."
 msgstr "Scherpe randen, het best voor 2D-spellen en tekeningen. Zwaarder."
 
-#: views/scaling_filters.h
-msgid "AMD FidelityFX Super Resolution: sharpens a picture drawn smaller than the window, best for 3D games. Moderate work."
-msgstr "AMD FidelityFX Super Resolution: verscherpt een beeld dat kleiner dan het venster is getekend, het best voor 3D-spellen. Matig werk."
-
 #: views/settings_context.cpp
 msgid "Volume"
 msgstr "Volume"
@@ -2531,3 +2523,45 @@ msgstr "Het spel kon niet worden geladen:\n%1\n\nLaadfout: %2. Controleer of de 
 
 msgid "Unable to load the interface. Check that NXEmu's ui folder is complete."
 msgstr "De interface kon niet worden geladen. Controleer of de ui-map van NXEmu volledig is."
+
+msgid "Optional sharpening at 1:1 and when downscaling; also with Nearest, Bilinear or Catmull-Rom upscaling. Off at 0%."
+msgstr "Optionele verscherping bij 1:1 en verkleining; ook bij vergroting met Naaste buur, Bilineair of Catmull-Rom. Uit bij 0%."
+
+msgid "AMD FidelityFX Super Resolution: edge-aware upscaling with adjustable sharpness. At 0%, sharpening is off."
+msgstr "AMD FidelityFX Super Resolution: randbewuste vergroting met instelbare scherpte. Bij 0% is verscherping uitgeschakeld."
+
+msgid "Five-sample approximation. Faster, with small changes around diagonal edges."
+msgstr "Benadering met vijf monsters. Sneller, met kleine afwijkingen bij diagonale randen."
+
+msgid "ScaleForce fast"
+msgstr "ScaleForce snel"
+
+msgid "Upscaling and downscaling filters: selected automatically from the image and display dimensions"
+msgstr "Vergrotings- en verkleiningsfilters: automatisch gekozen op basis van beeld- en weergaveafmetingen"
+
+msgid "CAS sharpness"
+msgstr "CAS-scherpte"
+
+msgid "Catmull-Rom fast"
+msgstr "Catmull-Rom snel"
+
+msgid "Sharper reconstruction with fine detail. May add halos around strong edges."
+msgstr "Scherpere reconstructie van fijne details. Kan halo’s rond sterke randen veroorzaken."
+
+msgid "Used automatically when the source image is larger than its display area. Lowest cost."
+msgstr "Wordt automatisch gebruikt als het bronbeeld groter is dan zijn weergavegebied. Laagste kosten."
+
+msgid "Downscaling filter"
+msgstr "Verkleiningsfilter"
+
+msgid "Downscale: Area"
+msgstr "Verkleinen: Area"
+
+msgid "Downscale: Bilinear"
+msgstr "Verkleinen: Bilineair"
+
+msgid "Area-weighted reduction. Filters the full source footprint to reduce aliasing."
+msgstr "Oppervlaktegewogen verkleining. Filtert het volledige bestreken brongebied om kartelranden te verminderen."
+
+msgid "Four-neighbor edge estimate. Faster, but diagonal contours may differ."
+msgstr "Randschatting met vier buren. Sneller, maar diagonale contouren kunnen afwijken."

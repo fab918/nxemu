@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "yuzu_video_core/fsr.h"
+#include <bit>
+#include "yuzu_video_core/area_sampling.h"
 #include "yuzu_video_core/framebuffer_config.h"
 #include "yuzu_video_core/present.h"
 #include "yuzu_video_core/renderer_opengl/gl_blit_screen.h"
@@ -39,7 +41,7 @@ GLuint Layer::ConfigureDraw(std::array<GLfloat, 3 * 2>& out_matrix,
                             ProgramManager& program_manager,
                             const Tegra::FramebufferConfig& framebuffer,
                             const Layout::FramebufferLayout& layout, bool invert_y,
-                            std::array<u32, 16>& easu_constants) {
+                            std::array<u32, 16>& easu_constants, ScalingFilter& effective_filter, ScalingFilter requested_filter) {
     easu_constants.fill(0);
     FramebufferTextureInfo info = PrepareRenderTarget(framebuffer);
     auto crop = Tegra::NormalizeCrop(framebuffer, info.width, info.height);
@@ -73,7 +75,21 @@ GLuint Layer::ConfigureDraw(std::array<GLfloat, 3 * 2>& out_matrix,
 
     glDisablei(GL_SCISSOR_TEST, 0);
 
-    const ScalingFilter scaling_filter = filters.get_scaling_filter();
+    const auto selection = ResolvePresentScale(requested_filter,
+        !filters.is_applet_capture && VideoCore::fsr_frame_state.downscale_filter == 1,
+        info.scaled_width, info.scaled_height, crop, layout.screen.GetWidth(), layout.screen.GetHeight());
+    const ScalingFilter scaling_filter = effective_filter = selection.filter;
+    VideoCore::NotePresentSelection(static_cast<unsigned>(scaling_filter), static_cast<unsigned>(selection.mode));
+    if (scaling_filter == ScalingFilter::Area) {
+        const std::array<float, 4> area{
+            std::abs(crop.right - crop.left) * info.scaled_width / layout.screen.GetWidth(),
+            std::abs(crop.bottom - crop.top) * info.scaled_height / layout.screen.GetHeight(),
+            1.0f / info.scaled_width, 1.0f / info.scaled_height};
+        for (size_t i = 0; i < area.size(); ++i) easu_constants[i] = std::bit_cast<u32>(area[i]);
+        easu_constants[4] = VideoCore::AreaSamplingGrid(info.scaled_width, info.scaled_height,
+            crop.left, crop.top, crop.right, crop.bottom,
+            layout.screen.GetWidth(), layout.screen.GetHeight());
+    }
     const bool use_fsr = scaling_filter == ScalingFilter::Fsr ||
                          scaling_filter == ScalingFilter::FsrEasu;
     if (scaling_filter == ScalingFilter::CatmullRom || scaling_filter == ScalingFilter::CasCatmullRom ||

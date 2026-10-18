@@ -211,6 +211,9 @@ void GeneralDialog::FillLists()
     Fill(Select(Document(), "filter"), choices,
          std::to_string(chosen_filter == static_cast<int>(ScalingFilter::FsrEasu)
                             ? static_cast<int>(ScalingFilter::Fsr) : chosen_filter));
+    Fill(Select(Document(), "downscale-filter"),
+         {Numbered(Tr("Bilinear"), 0, {}), Numbered("Area", 1, {})},
+         std::to_string(settings.GetInt(NXVideoSetting::DownscalingFilter)));
     Fill(Select(Document(), "aspect"), Aspects(), std::to_string(settings.GetInt(NXVideoSetting::AspectRatio)));
     Fill(Select(Document(), "vsync"), VSyncs(), std::to_string(settings.GetInt(NXVideoSetting::VSyncMode)));
 
@@ -271,7 +274,10 @@ void GeneralDialog::ShowValues()
     SetText("sharpness-text", legacy_easu || sharpness == 0 ? Tr("Off") : std::to_string(sharpness) + "%");
     const int selected = settings.GetInt(NXVideoSetting::ScalingFilter);
     const bool supports_cas = selected == static_cast<int>(ScalingFilter::NearestNeighbor) ||
-        selected == static_cast<int>(ScalingFilter::Bilinear) || (selected == static_cast<int>(ScalingFilter::CatmullRom) || selected == static_cast<int>(ScalingFilter::CatmullRomFast));
+        selected == static_cast<int>(ScalingFilter::Bilinear) || selected == static_cast<int>(ScalingFilter::CatmullRom) ||
+        selected == static_cast<int>(ScalingFilter::CatmullRomFast) ||
+        (settings.GetInt(NXVideoSetting::GraphicsAPI) == static_cast<int>(RendererBackend::Vulkan) &&
+         selected != static_cast<int>(ScalingFilter::Fsr) && selected != static_cast<int>(ScalingFilter::FsrEasu));
     const int cas_strength = supports_cas ? std::clamp(settings.GetInt(NXVideoSetting::CASSharpness), 0, 100) : 0;
     SetRange(Document(), "cas-sharpness-range", cas_strength);
     SetDisabled(Document(), "cas-sharpness-range", !supports_cas);
@@ -370,6 +376,10 @@ void GeneralDialog::ApplyChange(const std::string & id)
             return;
         }
         setting = id == "device" ? NXVideoSetting::VulkanDevice : NXVideoSetting::ResolutionSetup;
+    }
+    else if (id == "downscale-filter")
+    {
+        setting = NXVideoSetting::DownscalingFilter;
     }
     else if (id == "filter")
     {

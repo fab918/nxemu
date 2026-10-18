@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include "nxemu-module-spec/video.h"
 #include <vector>
 
 #include "yuzu_video_core/host1x/gpu_device_memory_manager.h"
@@ -55,7 +56,7 @@ public:
                          ProgramManager& program_manager,
                          const Tegra::FramebufferConfig& framebuffer,
                          const Layout::FramebufferLayout& layout, bool invert_y,
-                         std::array<u32, 16>& easu_constants);
+                         std::array<u32, 16>& easu_constants, ScalingFilter& effective_filter, ScalingFilter requested_filter);
 
 private:
     /// Loads framebuffer from emulated memory into the active OpenGL texture.

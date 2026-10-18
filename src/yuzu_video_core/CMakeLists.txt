@@ -12,6 +12,13 @@ if(LIBVA_FOUND)
 endif()
 
 if(NXEMU_BUILD_FSR_BENCHMARK)
+    add_executable(nxemu_reconstruction_tests ../../tests/fsr/reconstruction_tests.cpp)
+    target_include_directories(nxemu_reconstruction_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    target_link_libraries(nxemu_reconstruction_tests PRIVATE shader_recompiler yuzu_common)
+    add_test(NAME nxemu_reconstruction COMMAND nxemu_reconstruction_tests)
+    add_test(NAME nxemu_reconstruction_disabled COMMAND nxemu_reconstruction_tests --disabled)
+    set_tests_properties(nxemu_reconstruction_disabled PROPERTIES
+        ENVIRONMENT "NXEMU_HALF_RATE_RECONSTRUCTION=0")
     add_executable(nxemu_fsr_diagnostics_tests ../../tests/fsr/diagnostics_tests.cpp)
     target_include_directories(nxemu_fsr_diagnostics_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
     add_test(NAME nxemu_fsr_diagnostics COMMAND nxemu_fsr_diagnostics_tests)
@@ -19,6 +26,11 @@ if(NXEMU_BUILD_FSR_BENCHMARK)
     find_library(NXEMU_FSR_VULKAN_LOADER NAMES vulkan-1 vulkan
         HINTS "${_fsr_glslang_bin}/../Lib" "$ENV{VULKAN_SDK}/Lib")
     if(NXEMU_FSR_VULKAN_LOADER)
+        add_executable(nxemu-downscale-sharpen-tests ../../tests/fsr/downscale_sharpen_tests.cpp fsr.cpp)
+        add_dependencies(nxemu-downscale-sharpen-tests host_shaders)
+        target_include_directories(nxemu-downscale-sharpen-tests PRIVATE ${PROJECT_SOURCE_DIR}/src ${HOST_SHADERS_INCLUDE})
+        target_link_libraries(nxemu-downscale-sharpen-tests PRIVATE Vulkan::Headers ${NXEMU_FSR_VULKAN_LOADER} yuzu_common)
+        add_test(NAME nxemu_downscale_sharpen COMMAND nxemu-downscale-sharpen-tests)
         add_executable(nxemu-fsr-vulkan-benchmark ../../tests/fsr/vulkan_benchmark.cpp fsr.cpp)
         add_dependencies(nxemu-fsr-vulkan-benchmark host_shaders)
         target_include_directories(nxemu-fsr-vulkan-benchmark PRIVATE ${PROJECT_SOURCE_DIR}/src ${HOST_SHADERS_INCLUDE})
@@ -36,6 +48,17 @@ if(NXEMU_BUILD_FSR_BENCHMARK)
                 -o "${CMAKE_CURRENT_BINARY_DIR}/scaleforce_reference_spv.h"
                 "${PROJECT_SOURCE_DIR}/tests/fsr/scaleforce_reference.frag"
             DEPENDS "${PROJECT_SOURCE_DIR}/tests/fsr/scaleforce_reference.frag" VERBATIM)
+        add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/area_bundle_reference_spv.h"
+            COMMAND ${GLSLANGVALIDATOR} -V --target-env spirv1.3
+                --variable-name AREA_BUNDLE_REFERENCE_SPV
+                -o "${CMAKE_CURRENT_BINARY_DIR}/area_bundle_reference_spv.h"
+                "${PROJECT_SOURCE_DIR}/tests/fsr/area_bundle_reference.frag"
+            DEPENDS "${PROJECT_SOURCE_DIR}/tests/fsr/area_bundle_reference.frag" VERBATIM)
+        add_executable(nxemu-area-vulkan-benchmark ../../tests/fsr/area_benchmark.cpp
+            "${CMAKE_CURRENT_BINARY_DIR}/area_bundle_reference_spv.h")
+        add_dependencies(nxemu-area-vulkan-benchmark host_shaders)
+        target_include_directories(nxemu-area-vulkan-benchmark PRIVATE ${PROJECT_SOURCE_DIR}/src ${HOST_SHADERS_INCLUDE} "${CMAKE_CURRENT_BINARY_DIR}")
+        target_link_libraries(nxemu-area-vulkan-benchmark PRIVATE Vulkan::Headers ${NXEMU_FSR_VULKAN_LOADER})
         add_executable(nxemu-scaleforce-vulkan-benchmark ../../tests/fsr/scaleforce_benchmark.cpp
             "${CMAKE_CURRENT_BINARY_DIR}/scaleforce_reference_spv.h")
         add_dependencies(nxemu-scaleforce-vulkan-benchmark host_shaders)
@@ -152,6 +175,8 @@ add_library(video_core STATIC
     memory_manager.h
     precompiled_headers.h
     present.h
+    present_sharpening.h
+    area_sampling.h
     pte_kind.h
     query_cache/bank_base.h
     query_cache/query_base.h
@@ -232,6 +257,8 @@ add_library(video_core STATIC
     renderer_vulkan/present/fxaa.h
     renderer_vulkan/present/layer.cpp
     renderer_vulkan/present/layer.h
+    renderer_vulkan/present/scale_capture.h
+    renderer_vulkan/present/scale_trace.h
     renderer_vulkan/present/present_push_constants.h
     renderer_vulkan/present/smaa.cpp
     renderer_vulkan/present/smaa.h

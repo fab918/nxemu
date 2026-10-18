@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
+#include <array>
 
 #include "yuzu_common/math_util.h"
+#include "nxemu-module-spec/video.h"
 #include "yuzu_video_core/host1x/gpu_device_memory_manager.h"
 #include "yuzu_video_core/vulkan_common/vulkan_wrapper.h"
 
@@ -12,6 +14,8 @@ struct FramebufferLayout;
 }
 
 struct PresentFilters;
+struct PresentScaleSelection;
+enum class PresentSharpening;
 
 namespace Tegra {
 struct FramebufferConfig;
@@ -40,9 +44,9 @@ public:
                    const PresentFilters& filters);
     ~Layer();
 
-    void ConfigureDraw(PresentPushConstants* out_push_constants,
+    PresentScaleSelection ConfigureDraw(PresentPushConstants* out_push_constants,
                        VkDescriptorSet* out_descriptor_set, RasterizerVulkan& rasterizer,
-                       VkSampler sampler, size_t image_index,
+                       VkSampler sampler, VkSampler bilinear_sampler, VkSampler area_sampler, ScalingFilter requested_filter, PresentSharpening sharpening, size_t image_index,
                        const Tegra::FramebufferConfig& framebuffer,
                        const Layout::FramebufferLayout& layout);
 
@@ -90,6 +94,7 @@ private:
 
     std::unique_ptr<FSR> fsr{};
     std::unique_ptr<CatmullPass> catmull_pass{};
+    std::array<std::unique_ptr<CatmullPass>, 2> downscale_passes{};
     std::vector<u64> resource_ticks{};
 };
 

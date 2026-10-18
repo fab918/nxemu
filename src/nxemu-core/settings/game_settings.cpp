@@ -112,6 +112,7 @@ const std::vector<GameSettingDefinition> & GameSettings::Definitions()
         {NXOsSetting::AudioVolume, "volume", "Volume", false, 0, 200, {}},
         {NXOsSetting::AudioMuted, "volume", "Mute", true, 0, 0, {}},
         {NXVideoSetting::ScalingFilter, "filter", "Window filter", false, 0, 9, {"Nearest", "Bilinear", "Bicubic", "Gaussian", "ScaleForce", "FSR", "FSR EASU", "Catmull-Rom", "Catmull-Rom fast", "ScaleForce fast"}},
+        {NXVideoSetting::DownscalingFilter, "downscale-filter", "Downscaling filter", false, 0, 1, {"Bilinear", "Area"}},
         {NXVideoSetting::CASSharpness, "cas-sharpness-range", "CAS sharpness", false, 0, 100, {}},
         {NXVideoSetting::FSPSharpness, "sharpness-range", "Sharpness", false, 0, 200, {}},
         {NXVideoSetting::AntiAliasing, "antialiasing", "Anti-aliasing", false, 0, 2, {"None", "FXAA", "SMAA"}},

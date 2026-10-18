@@ -3,7 +3,9 @@
 
 #include "yuzu_video_core/framebuffer_config.h"
 #include "yuzu_video_core/present.h"
+#include "yuzu_video_core/present_sharpening.h"
 #include "yuzu_video_core/renderer_vulkan/present/filters.h"
+#include "yuzu_video_core/renderer_vulkan/present/scale_capture.h"
 #include "yuzu_video_core/renderer_vulkan/present/diagnostics.h"
 #include "yuzu_video_core/renderer_vulkan/present/layer.h"
 #include "yuzu_video_core/renderer_vulkan/vk_blit_screen.h"
@@ -78,7 +80,8 @@ void BlitScreen::DrawToFrame(RasterizerVulkan& rasterizer, Frame* frame,
                              size_t current_swapchain_image_count,
                              VkFormat current_swapchain_view_format) {
     VideoCore::BeginFsrFrame(videoSettings.fsr_sharpening_slider, videoSettings.cas_sharpening_slider,
-                            static_cast<unsigned>(videoSettings.scaling_filter));
+                            static_cast<unsigned>(videoSettings.scaling_filter), videoSettings.downscaling_filter);
+    ScaleCapture::Poll(filters.is_applet_capture);
     bool resource_update_required = false;
     bool presentation_recreate_required = false;
 
@@ -107,13 +110,9 @@ void BlitScreen::DrawToFrame(RasterizerVulkan& rasterizer, Frame* frame,
         .width = layout.screen.GetWidth(),
         .height = layout.screen.GetHeight(),
     };
-    const ScalingFilter requested_filter = filters.get_scaling_filter();
-    if ((requested_filter == ScalingFilter::Fsr ||
-         requested_filter == ScalingFilter::FsrEasu ||
-         requested_filter == ScalingFilter::CasCatmullRom ||
-         requested_filter == ScalingFilter::CasCatmullRomFast) &&
-        (layer_output_size.width != window_size.width ||
-         layer_output_size.height != window_size.height)) {
+    // Every filter may now own an output-sized downscale/sharpen intermediate.
+    if (layer_output_size.width != window_size.width ||
+        layer_output_size.height != window_size.height) {
         resource_update_required = true;
     }
 
@@ -148,7 +147,12 @@ void BlitScreen::DrawToFrame(RasterizerVulkan& rasterizer, Frame* frame,
         start = VideoCore::PresentDiagnostics::Clock::now();
     }
     // Perform the draw
-    window_adapt->Draw(rasterizer, scheduler, image_index, layers, framebuffers, layout, frame);
+    const auto sharpening = filters.is_applet_capture ? PresentSharpening::None
+        : GetPresentSharpening(static_cast<ScalingFilter>(VideoCore::fsr_frame_state.selected_filter),
+                               VideoCore::fsr_frame_state.cas_strength,
+                               VideoCore::fsr_frame_state.sharpness_stored);
+    window_adapt->Draw(rasterizer, scheduler, image_index, layers, framebuffers, layout, frame,
+                       scaling_filter, sharpening);
     if (measure) {
         auto sample = VideoCore::PresentDiagnostics::Begin(window_size.width, window_size.height,
             static_cast<unsigned>(framebuffers.size()), static_cast<unsigned>(scaling_filter));
@@ -156,6 +160,9 @@ void BlitScreen::DrawToFrame(RasterizerVulkan& rasterizer, Frame* frame,
         sample.cpu_ms = std::chrono::duration<double, std::milli>(VideoCore::PresentDiagnostics::Clock::now() - start).count();
         timer->End(sample);
     }
+
+    if (!filters.is_applet_capture && ScaleCapture::active)
+        ScaleCapture::Output(memory_allocator,scheduler,*frame->image,frame->width,frame->height,swapchain_view_format);
 
     // Advance to next image
     if (++image_index >= image_count) {

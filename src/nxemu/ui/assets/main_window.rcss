@@ -2095,7 +2095,7 @@ button.override-remove:hover { color: var(--danger); background-color: var(--dan
 
 /* An explicit choice in the status bar takes precedence over game settings. */
 #status-bar .overridden { color: var(--accent-text); }
-#scaling-filter-text { max-width: 144dp; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#scaling-filter-text { max-width: 220dp; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
 /* What hides the interface says how to get it back, over the game for a
    moment. */

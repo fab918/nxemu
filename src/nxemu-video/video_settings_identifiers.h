@@ -16,6 +16,7 @@ namespace NXVideoSetting
     constexpr const char * ScalingFilter = "nxvideo:ScalingFilter";
     constexpr const char * AntiAliasing = "nxvideo:AntiAliasing";
     constexpr const char * FSPSharpness = "nxvideo:FSPSharpness";
+    constexpr const char * DownscalingFilter = "nxvideo:DownscalingFilter";
     constexpr const char * CASSharpness = "nxvideo:CASSharpness";
     constexpr const char * FsrLegacyBenchmark = "nxvideo:FsrLegacyBenchmark";
     constexpr const char * EnableAsynchronousPresentation = "nxvideo:EnableAsynchronousPresentation";

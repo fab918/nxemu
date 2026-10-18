@@ -69,10 +69,14 @@
                 </div>
                 <select id="filter" class="short" />
               </div>
+              <div class="row">
+                <div class="row-texts"><div class="row-label">Downscaling filter</div></div>
+                <select id="downscale-filter" class="short" />
+              </div>
               <div class="row" id="cas-setting">
                 <div class="row-texts">
                   <div class="row-label">CAS sharpness</div>
-                  <div class="row-text">Optional sharpening for Bilinear and Catmull-Rom. Off at 0%.</div>
+                  <div class="row-text">Optional sharpening at 1:1 and when downscaling; also with Nearest, Bilinear or Catmull-Rom upscaling. Off at 0%.</div>
                 </div>
                 <div class="row-range">
                   <input id="cas-sharpness-range" class="range" type="range" min="0" max="100" step="1" value="0" />

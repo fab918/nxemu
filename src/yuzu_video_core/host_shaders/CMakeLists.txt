@@ -60,6 +60,7 @@ set(SHADER_FILES
     opengl_present_scaleforce.frag
     opengl_smaa.glsl
     pitch_unswizzle.comp
+    present_area.frag
     present_bicubic.frag
     present_catmull_rom.frag
     present_gaussian.frag
@@ -83,6 +84,7 @@ set(SHADER_FILES
     vulkan_fidelityfx_fsr_easu_fp32.frag
     vulkan_fidelityfx_fsr_rcas_fp16.frag
     vulkan_fidelityfx_fsr_rcas_fp32.frag
+    vulkan_present_capture.frag
     vulkan_present.frag
     vulkan_present_cas_quad.frag
     vulkan_present_cas_catmull_quad.frag

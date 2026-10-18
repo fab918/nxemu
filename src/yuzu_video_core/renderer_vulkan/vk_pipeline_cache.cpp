@@ -31,6 +31,7 @@
 #include "yuzu_video_core/renderer_vulkan/vk_compute_pipeline.h"
 #include "yuzu_video_core/renderer_vulkan/vk_descriptor_pool.h"
 #include "yuzu_video_core/renderer_vulkan/vk_pipeline_cache.h"
+#include "yuzu_shader_recompiler/scale_trace.h"
 #include "yuzu_video_core/renderer_vulkan/vk_scheduler.h"
 #include "yuzu_video_core/renderer_vulkan/vk_shader_util.h"
 #include "yuzu_video_core/renderer_vulkan/vk_update_descriptor.h"
@@ -963,6 +964,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
 
         const u32 cfg_offset{static_cast<u32>(env.StartAddress() + sizeof(Shader::ProgramHeader))};
         Shader::Maxwell::Flow::CFG cfg(env, pools.flow_block, cfg_offset, index == 0);
+        Shader::ScaleTrace::shader_hash = key.unique_hashes[index];
         if (!uses_vertex_a || index != 1) {
             // Normal path
             programs[index] = TranslateProgram(pools.inst, pools.block, env, cfg, host_info);
@@ -1182,6 +1184,11 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
             runtime_info.vertex_input_locations = mapping.locations;
         }
         const std::vector<u32> code{EmitSPIRV(profile, runtime_info, program, binding)};
+        if (program.stage == Shader::Stage::Fragment && Shader::ScaleTrace::Directory())
+        {
+            Shader::ScaleTrace::Text(key.unique_hashes[index], "-final.ir", Shader::IR::DumpProgram(program));
+            Shader::ScaleTrace::Spirv(key.unique_hashes[index], code);
+        }
         device.SaveShader(code);
         modules[stage_index] = BuildShader(device, code);
         if (device.HasDebuggingToolAttached()) {

@@ -907,10 +907,6 @@ msgstr "一時停止中"
 msgid "The resolution games are drawn at"
 msgstr "ゲームが表示される解像度"
 
-#: assets/main_window.rml
-msgid "Window filter: only applies when the game's resolution is lower than the window size"
-msgstr "ウィンドウフィルター：ゲームの解像度がウィンドウより小さいときのみ適用されます"
-
 #: assets/profiles_dialog.rml
 msgid "Profiles"
 msgstr "プロフィール"
@@ -2388,10 +2384,6 @@ msgstr "バイリニアより少しシャープで、負荷は少し増える。
 msgid "Sharp edges, best for 2D games and drawings. Heavier."
 msgstr "輪郭がくっきり。2Dゲームやイラストに最適。負荷は高め。"
 
-#: views/scaling_filters.h
-msgid "AMD FidelityFX Super Resolution: sharpens a picture drawn smaller than the window, best for 3D games. Moderate work."
-msgstr "AMD FidelityFX Super Resolution：ウィンドウより小さく描画された映像をシャープにする。3Dゲームに最適。負荷は中程度。"
-
 #: views/settings_context.cpp
 msgid "Volume"
 msgstr "ボリューム"
@@ -2522,3 +2514,45 @@ msgstr "ゲームを読み込めませんでした：\n%1\n\nローダーエラ�
 
 msgid "Unable to load the interface. Check that NXEmu's ui folder is complete."
 msgstr "インターフェースを読み込めません。NXEmu の ui フォルダーが完全か確認してください。"
+
+msgid "Optional sharpening at 1:1 and when downscaling; also with Nearest, Bilinear or Catmull-Rom upscaling. Off at 0%."
+msgstr "1:1表示と縮小時の任意のシャープ化。最近傍、バイリニア、Catmull-Romによる拡大にも適用。0%で無効。"
+
+msgid "AMD FidelityFX Super Resolution: edge-aware upscaling with adjustable sharpness. At 0%, sharpening is off."
+msgstr "AMD FidelityFX Super Resolution：輪郭に適応する拡大処理と調整可能なシャープネス。0%でシャープ化を無効にします。"
+
+msgid "Five-sample approximation. Faster, with small changes around diagonal edges."
+msgstr "5サンプルによる近似。高速ですが、斜めの輪郭にわずかな違いが生じます。"
+
+msgid "ScaleForce fast"
+msgstr "ScaleForce 高速"
+
+msgid "Upscaling and downscaling filters: selected automatically from the image and display dimensions"
+msgstr "拡大・縮小フィルター：画像と表示領域の大きさに応じて自動選択"
+
+msgid "CAS sharpness"
+msgstr "CASシャープネス"
+
+msgid "Catmull-Rom fast"
+msgstr "Catmull-Rom 高速"
+
+msgid "Sharper reconstruction with fine detail. May add halos around strong edges."
+msgstr "細部をより鮮明に復元します。強い輪郭の周囲にハローが生じる場合があります。"
+
+msgid "Used automatically when the source image is larger than its display area. Lowest cost."
+msgstr "元画像が表示領域より大きい場合に自動使用します。最も低負荷です。"
+
+msgid "Downscaling filter"
+msgstr "縮小フィルター"
+
+msgid "Downscale: Area"
+msgstr "縮小：Area"
+
+msgid "Downscale: Bilinear"
+msgstr "縮小：バイリニア"
+
+msgid "Area-weighted reduction. Filters the full source footprint to reduce aliasing."
+msgstr "面積で重み付けした縮小。元画像の対応範囲全体をフィルタリングし、ジャギーを軽減します。"
+
+msgid "Four-neighbor edge estimate. Faster, but diagonal contours may differ."
+msgstr "隣接する4点による輪郭推定。高速ですが、斜めの輪郭が変わる場合があります。"

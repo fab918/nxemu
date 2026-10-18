@@ -25,7 +25,7 @@ def summarize(path, settle, trim_end):
             try:
                 key = tuple(row.get(k, "unknown") for k in ("backend", "segment", "implementation", "filter",
                     "input_width", "input_height", "width", "height", "selected_filter",
-                    "sharpness_stored", "cas_strength", "viewport_width", "viewport_height"))
+                    "sharpness_stored", "cas_strength", "viewport_width", "viewport_height", "downscale_filter", "scale_mode"))
                 float(row["elapsed_s"])
                 float(row["gpu_ms"])
                 float(row["frame_interval_ms"])
@@ -42,11 +42,11 @@ def summarize(path, settle, trim_end):
             continue
         entry = dict(zip(("backend", "segment", "implementation", "filter", "input_width",
                           "input_height", "output_width", "output_height", "selected_filter",
-                          "sharpness_stored", "cas_strength", "viewport_width", "viewport_height"), key))
+                          "sharpness_stored", "cas_strength", "viewport_width", "viewport_height", "downscale_filter", "scale_mode"), key))
         labels = {"0": "Nearest", "1": "Bilinear", "2": "Bicubic", "3": "Gaussian",
                   "4": "ScaleForce", "5": "FSR", "6": "FSR EASU", "7": "Catmull-Rom",
                   "8": "Catmull-Rom fast", "9": "ScaleForce fast", "16": "Nearest + CAS", "17": "Bilinear + CAS",
-                  "18": "Catmull-Rom + CAS", "19": "Catmull-Rom fast + CAS",
+                  "18": "Catmull-Rom + CAS", "19": "Catmull-Rom fast + CAS", "20": "Area",
                   "10": "Bilinear + CAS", "11": "Catmull-Rom + CAS"}
         entry["filter_name"] = labels.get(entry["filter"], entry["filter"])
         if entry["filter"] == "9" and entry["selected_filter"] == "0":

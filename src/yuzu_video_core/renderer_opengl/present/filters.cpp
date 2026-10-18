@@ -9,6 +9,7 @@
 #include "yuzu_video_core/host_shaders/ffx_a_h.h"
 #include "yuzu_video_core/host_shaders/ffx_fsr1_h.h"
 #include "yuzu_video_core/host_shaders/opengl_present_scaleforce_frag.h"
+#include "yuzu_video_core/host_shaders/present_area_frag.h"
 #include "yuzu_video_core/host_shaders/present_bicubic_frag.h"
 #include "yuzu_video_core/host_shaders/present_gaussian_frag.h"
 #include "yuzu_video_core/renderer_opengl/present/filters.h"
@@ -35,6 +36,11 @@ std::unique_ptr<WindowAdaptPass> MakeCas(const Device& device, ScalingFilter fil
 std::unique_ptr<WindowAdaptPass> MakeNearestNeighbor(const Device& device) {
     return std::make_unique<WindowAdaptPass>(device, CreateNearestNeighborSampler(),
                                              HostShaders::OPENGL_PRESENT_FRAG);
+}
+
+std::unique_ptr<WindowAdaptPass> MakeArea(const Device& device) {
+    return std::make_unique<WindowAdaptPass>(device, CreateBilinearSampler(),
+        HostShaders::PRESENT_AREA_FRAG);
 }
 
 std::unique_ptr<WindowAdaptPass> MakeBilinear(const Device& device) {

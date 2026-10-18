@@ -64,6 +64,7 @@ struct VideoSettings
     Settings::ResolutionScalingInfo resolution_info;
     ResolutionSetup resolution_setup;
     ScalingFilter scaling_filter;
+    int32_t downscaling_filter; // 0: Bilinear, 1: Area; independent of the upscaler.
     AntiAliasing anti_aliasing;
     int32_t fsr_sharpening_slider;
     int32_t cas_sharpening_slider;

@@ -214,6 +214,12 @@ int main(int argc, char ** argv)
         Check(store.GetInt(NXVideoSetting::ScalingFilter) == 8,
               "Fast Catmull status override must survive reload");
         UiPreferences::SetStatusInt(NXVideoSetting::ScalingFilter, 5);
+        UiPreferences::SetStatusInt(NXVideoSetting::DownscalingFilter, 1);
+        Check(store.GetInt(NXVideoSetting::DownscalingFilter)==1,"Area downscaler selected live");
+        UiPreferences::SetStatusInt(NXVideoSetting::DownscalingFilter, 2);
+        Check(store.GetInt(NXVideoSetting::DownscalingFilter)==1,"Invalid downscaler rejected");
+        UiPreferences::SetStatusInt(NXVideoSetting::DownscalingFilter, 0);
+        Check(store.GetInt(NXVideoSetting::DownscalingFilter)==0,"Bilinear downscaler selected live");
         UiPreferences::SetStatusInt(NXVideoSetting::ScalingFilter, 999);
         UiPreferences::SetStatusInt(NXVideoSetting::CASSharpness, 50);
         Check(store.GetInt(NXVideoSetting::CASSharpness) == 50, "CAS status strength accepted");

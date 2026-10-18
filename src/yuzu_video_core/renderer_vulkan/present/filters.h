@@ -11,6 +11,7 @@ namespace Vulkan {
 class MemoryAllocator;
 
 std::unique_ptr<WindowAdaptPass> MakeNearestNeighbor(const Device& device, VkFormat frame_format);
+std::unique_ptr<WindowAdaptPass> MakeArea(const Device& device, VkFormat frame_format);
 std::unique_ptr<WindowAdaptPass> MakeBilinear(const Device& device, VkFormat frame_format);
 std::unique_ptr<WindowAdaptPass> MakeCatmullRom(const Device& device, VkFormat frame_format);
 std::unique_ptr<WindowAdaptPass> MakeCas(const Device& device, VkFormat frame_format, ScalingFilter filter);

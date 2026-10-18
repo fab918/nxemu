@@ -694,6 +694,13 @@ void MainWindow::Run(Action action)
     SettingsStore & settings = SettingsStore::GetInstance();
     switch (action)
     {
+    case Action::DownscaleBilinear:
+    case Action::DownscaleArea:
+        UiPreferences::SetStatusInt(NXVideoSetting::DownscalingFilter,
+                                   action == Action::DownscaleArea ? 1 : 0);
+        m_session.FlushSettings();
+        UpdateStatusWidgets();
+        break;
     case Action::FsrBenchmarkLegacy:
     case Action::FsrBenchmarkOptimized:
         if (settings.GetInt(NXVideoSetting::ScalingFilter) != static_cast<int>(ScalingFilter::Fsr) &&
@@ -2305,10 +2312,19 @@ void MainWindow::ShowSelectMenu(Rml::Element * origin)
         items.push_back(MenuItem::Choice(static_cast<int>(Action::FsrBenchmarkLegacy), "A - FSR original", legacy));
         items.push_back(MenuItem::Choice(static_cast<int>(Action::FsrBenchmarkOptimized), "B - FSR optimized", !legacy));
         const bool supports_cas = current == static_cast<int>(ScalingFilter::NearestNeighbor) ||
-            current == static_cast<int>(ScalingFilter::Bilinear) || (current == static_cast<int>(ScalingFilter::CatmullRom) || current == static_cast<int>(ScalingFilter::CatmullRomFast));
+            current == static_cast<int>(ScalingFilter::Bilinear) || current == static_cast<int>(ScalingFilter::CatmullRom) ||
+            current == static_cast<int>(ScalingFilter::CatmullRomFast) ||
+            (store.GetInt(NXVideoSetting::GraphicsAPI) == static_cast<int>(RendererBackend::Vulkan) &&
+             current != static_cast<int>(ScalingFilter::Fsr) && current != static_cast<int>(ScalingFilter::FsrEasu));
         items.push_back(MenuItem::Slider("CAS", MenuItem::Range{kCasSharpnessRange, 100,
             supports_cas ? store.GetInt(NXVideoSetting::CASSharpness) : 0, supports_cas,
-            Tr("Optional sharpening for Bilinear and Catmull-Rom. Off at 0%.")}));
+            Tr("Optional sharpening at 1:1 and when downscaling; also with Nearest, Bilinear or Catmull-Rom upscaling. Off at 0%.")}));
+        items.push_back(MenuItem::Separator());
+        const bool area = store.GetInt(NXVideoSetting::DownscalingFilter) == 1;
+        items.push_back(MenuItem::Check(static_cast<int>(Action::DownscaleBilinear), Tr("Downscale: Bilinear"), !area));
+        items.back().hint = Tr("Used automatically when the source image is larger than its display area. Lowest cost.");
+        items.push_back(MenuItem::Check(static_cast<int>(Action::DownscaleArea), Tr("Downscale: Area"), area));
+        items.back().hint = Tr("Area-weighted reduction. Filters the full source footprint to reduce aliasing.");
     }
     else if (origin->GetId() == "volume")
     {
@@ -2379,6 +2395,8 @@ void MainWindow::UpdateStatusWidgets()
               settings.GetInt(NXVideoSetting::ScalingFilter) == static_cast<int>(ScalingFilter::CatmullRomFast) ||
               settings.GetInt(NXVideoSetting::ScalingFilter) == static_cast<int>(ScalingFilter::NearestNeighbor)))
         filter_text += " + CAS";
+    filter_text += " / ↓ " + (settings.GetInt(NXVideoSetting::DownscalingFilter) == 1
+        ? std::string("Area") : Tr("Bilinear"));
     SetText("scaling-filter-text", filter_text);
     // A control that chose over the settings shows it.
     const auto mark = [this](const char * id, std::initializer_list<const char *> chosen) {
@@ -2389,7 +2407,7 @@ void MainWindow::UpdateStatusWidgets()
     };
     mark("docked-mode", {NXOsSetting::DockedMode});
     mark("resolution-scale", {NXVideoSetting::ResolutionSetup});
-    mark("scaling-filter", {NXVideoSetting::ScalingFilter, NXVideoSetting::FSPSharpness});
+    mark("scaling-filter", {NXVideoSetting::ScalingFilter, NXVideoSetting::FSPSharpness, NXVideoSetting::DownscalingFilter});
     mark("profile", {NXOsSetting::CurrentUser});
     mark("volume", {NXOsSetting::AudioVolume, NXOsSetting::AudioMuted});
     SetText("resolution-scale-text", scale.label);
