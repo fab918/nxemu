@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <optional>
@@ -693,6 +694,14 @@ void RendererVulkan::RenderAppletCaptureLayer(std::span<const Tegra::Framebuffer
         applet_frame.framebuffer = blit_applet.CreateFramebuffer(VideoCore::Capture::Layout, *applet_frame.image_view, CaptureFormat);
     }
 
-    blit_applet.DrawToFrame(rasterizer, &applet_frame, framebuffers, VideoCore::Capture::Layout, 1, CaptureFormat);
+    // Each layer updates a descriptor set (and possibly upload/filter resources) on the CPU.
+    // A single slot makes ConfigureDraw wait for the previous frame's GPU work every frame,
+    // even when the display itself has several frames in flight. Rotate those resources;
+    // Layer still waits before reusing a slot. The capture target can remain a single image:
+    // its render passes are ordered on the same queue and readback finishes the scheduler.
+    static const size_t capture_resource_count =
+        std::getenv("NXEMU_DISABLE_APPLET_CAPTURE_RING") ? 1 : 3;
+    blit_applet.DrawToFrame(rasterizer, &applet_frame, framebuffers, VideoCore::Capture::Layout,
+                           capture_resource_count, CaptureFormat);
 }
 } // namespace Vulkan
