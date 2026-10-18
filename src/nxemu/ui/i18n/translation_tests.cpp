@@ -194,7 +194,32 @@ int main(int argc, char ** argv)
             Check(store.GetInt(NXVideoSetting::ScalingFilter) == 1 && store.GetInt(NXOsSetting::AudioVolume) == 100 &&
                   !store.GetBool(NXOsSetting::AudioMuted), "Saving must preserve original global values");
         }
+        UiPreferences::SetStatusInt(NXVideoSetting::ScalingFilter, 6);
+        Check(store.GetInt(NXVideoSetting::ScalingFilter) == 6,
+              "EASU-only filter must be accepted as a status override");
+        UiPreferences::SetStatusInt(NXVideoSetting::ScalingFilter, 5);
+        // Switching away from fast Catmull must not make it impossible to return:
+        // both click-time validation and loading saved overrides use this range.
+        for (int filter : {8, 1, 9, 7, 8}) {
+            UiPreferences::SetStatusInt(NXVideoSetting::ScalingFilter, filter);
+            Check(store.GetInt(NXVideoSetting::ScalingFilter) == filter,
+                  "Every fast Catmull switch must reach the effective setting");
+        }
+        UiPreferences::SetStatusInt(NXVideoSetting::ScalingFilter, 10);
+        UiPreferences::SetStatusInt(NXVideoSetting::ScalingFilter, 16);
+        Check(store.GetInt(NXVideoSetting::ScalingFilter) == 8,
+              "Sentinel and runtime-only pipeline values must not become user choices");
+        Check(store.Initialize(config.path.string().c_str(), config.path.parent_path().string().c_str()), "Fast filter settings failed to reload");
+        UiPreferences::ApplyStatusOverrides();
+        Check(store.GetInt(NXVideoSetting::ScalingFilter) == 8,
+              "Fast Catmull status override must survive reload");
+        UiPreferences::SetStatusInt(NXVideoSetting::ScalingFilter, 5);
         UiPreferences::SetStatusInt(NXVideoSetting::ScalingFilter, 999);
+        UiPreferences::SetStatusInt(NXVideoSetting::CASSharpness, 50);
+        Check(store.GetInt(NXVideoSetting::CASSharpness) == 50, "CAS status strength accepted");
+        UiPreferences::SetStatusInt(NXVideoSetting::CASSharpness, 101);
+        Check(store.GetInt(NXVideoSetting::CASSharpness) == 50, "Invalid CAS strength rejected");
+        UiPreferences::ResetStatusOverride(NXVideoSetting::CASSharpness);
         Check(store.GetInt(NXVideoSetting::ScalingFilter) == 5, "Invalid persisted filter was accepted");
         Check(store.Initialize(config.path.string().c_str(), config.path.parent_path().string().c_str()), "Status settings failed to reload");
         UiPreferences::ApplyStatusOverrides();

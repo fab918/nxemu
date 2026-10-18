@@ -1,13 +1,17 @@
 // SPDX-FileCopyrightText: Copyright 2024 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
+
 #include "yuzu_video_core/present.h"
+#include "yuzu_video_core/fsr.h"
 #include "yuzu_video_core/renderer_vulkan/vk_rasterizer.h"
 
 #include "yuzu_common/settings.h"
 #include "video_settings.h"
 #include "yuzu_video_core/framebuffer_config.h"
 #include "yuzu_video_core/renderer_vulkan/present/fsr.h"
+#include "yuzu_video_core/renderer_vulkan/present/catmull_pass.h"
 #include "yuzu_video_core/renderer_vulkan/present/fxaa.h"
 #include "yuzu_video_core/renderer_vulkan/present/layer.h"
 #include "yuzu_video_core/renderer_vulkan/present/present_push_constants.h"
@@ -19,6 +23,12 @@
 namespace Vulkan {
 
 namespace {
+
+bool SupportsCatmullIntermediate(const Device& device) {
+    constexpr VkFormatFeatureFlags required = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
+        VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+    return (device.GetPhysical().GetFormatProperties(VK_FORMAT_R16G16B16A16_UNORM).optimalTilingFeatures & required) == required;
+}
 
 u32 GetBytesPerPixel(const Tegra::FramebufferConfig& framebuffer) {
     using namespace VideoCore::Surface;
@@ -50,14 +60,13 @@ VkFormat GetFormat(const Tegra::FramebufferConfig& framebuffer) {
 
 Layer::Layer(const Device& device_, MemoryAllocator& memory_allocator_, Scheduler& scheduler_,
              Tegra::MaxwellDeviceMemoryManager& device_memory_, size_t image_count_,
-             VkExtent2D output_size, VkDescriptorSetLayout layout, const PresentFilters& filters_)
+             VkExtent2D, VkDescriptorSetLayout layout, const PresentFilters& filters_)
     : device(device_), memory_allocator(memory_allocator_), scheduler(scheduler_),
-      device_memory(device_memory_), filters(filters_), image_count(image_count_) {
+      device_memory(device_memory_), filters(filters_), image_count(image_count_),
+      max_image_dimension(device_.GetPhysical().GetProperties().limits.maxImageDimension2D),
+      supports_catmull_intermediate(SupportsCatmullIntermediate(device_)) {
     CreateDescriptorPool();
     CreateDescriptorSets(layout);
-    if (filters.get_scaling_filter() == ScalingFilter::Fsr) {
-        CreateFSR(output_size);
-    }
 }
 
 Layer::~Layer() {
@@ -98,12 +107,47 @@ void Layer::ConfigureDraw(PresentPushConstants* out_push_constants,
     anti_alias->Draw(scheduler, image_index, &source_image, &source_image_view);
 
     auto crop_rect = Tegra::NormalizeCrop(framebuffer, texture_width, texture_height);
+    VideoCore::NotePresentInput(scaled_width, scaled_height,
+        static_cast<unsigned>(std::lround(std::abs(crop_rect.right - crop_rect.left) * scaled_width)),
+        static_cast<unsigned>(std::lround(std::abs(crop_rect.bottom - crop_rect.top) * scaled_height)));
     const VkExtent2D render_extent{
         .width = scaled_width,
         .height = scaled_height,
     };
 
-    if (fsr) {
+    const ScalingFilter scaling_filter = filters.get_scaling_filter();
+    const bool catmull_cas = scaling_filter == ScalingFilter::CasCatmullRom ||
+                             scaling_filter == ScalingFilter::CasCatmullRomFast;
+    // Avoid a second pass for native mapping and small targets where its setup costs more.
+    // High CAS strength amplifies tiny reconstruction-rounding differences; keep it fused.
+    const bool precompute_catmull = catmull_cas && supports_catmull_intermediate &&
+        videoSettings.cas_sharpening_slider <= 66 &&
+        u64(layout.screen.GetWidth()) * layout.screen.GetHeight() >= 1024U * 1024U &&
+        layout.screen.GetWidth() <= max_image_dimension - 2 &&
+        layout.screen.GetHeight() <= max_image_dimension - 2 &&
+        !CanUseNativeRcas(scaled_width, scaled_height, crop_rect,
+                         layout.screen.GetWidth(), layout.screen.GetHeight());
+    if (precompute_catmull) {
+        if (!catmull_pass) {
+            catmull_pass = std::make_unique<CatmullPass>(device, memory_allocator, image_count,
+                VkExtent2D{layout.screen.GetWidth(), layout.screen.GetHeight()});
+        }
+        source_image_view = catmull_pass->Draw(scheduler, image_index, source_image,
+            source_image_view, crop_rect, scaling_filter == ScalingFilter::CasCatmullRomFast);
+        crop_rect = catmull_pass->OutputCrop();
+        VideoCore::NoteFsrInput(scaled_width, scaled_height, 1U);
+    }
+    const bool use_fsr = scaling_filter == ScalingFilter::Fsr ||
+                         scaling_filter == ScalingFilter::FsrEasu;
+    const bool skip_easu = !VideoCore::LegacyFsr() && use_fsr && CanUseNativeRcas(
+        scaled_width, scaled_height, crop_rect, layout.screen.GetWidth(),
+        layout.screen.GetHeight());
+    if (use_fsr) VideoCore::NoteFsrInput(scaled_width, scaled_height,
+        VideoCore::LegacyFsr() ? 2U : (scaling_filter == ScalingFilter::Fsr && !skip_easu ? 1U : 0U));
+    if (scaling_filter == ScalingFilter::Fsr && !skip_easu) {
+        if (!fsr) {
+            CreateFSR({layout.screen.GetWidth(), layout.screen.GetHeight()}, !VideoCore::LegacyFsr());
+        }
         source_image_view = fsr->Draw(scheduler, image_index, source_image, source_image_view,
                                       render_extent, crop_rect);
         crop_rect = {0, 0, 1, 1};
@@ -111,6 +155,30 @@ void Layer::ConfigureDraw(PresentPushConstants* out_push_constants,
 
     SetMatrixData(*out_push_constants, layout);
     SetVertexData(*out_push_constants, layout, crop_rect);
+    if (scaling_filter == ScalingFilter::CatmullRom || scaling_filter == ScalingFilter::CasCatmullRom ||
+        scaling_filter == ScalingFilter::CatmullRomFast || scaling_filter == ScalingFilter::CasCatmullRomFast) {
+        out_push_constants->filter_constants[1] = CanUseNativeRcas(scaled_width, scaled_height,
+            crop_rect, layout.screen.GetWidth(), layout.screen.GetHeight()) ? 1U : 0U;
+        if (scaling_filter == ScalingFilter::CatmullRomFast || scaling_filter == ScalingFilter::CasCatmullRomFast)
+            out_push_constants->filter_constants[1] |= 2U;
+    }
+
+    if (precompute_catmull) out_push_constants->filter_constants[1] |= 4U;
+
+    if (scaling_filter == ScalingFilter::FsrEasu && !skip_easu) {
+        std::array<u32, 16> easu_constants{};
+        const float input_width = static_cast<float>(scaled_width);
+        const float input_height = static_cast<float>(scaled_height);
+        const float viewport_width = (crop_rect.right - crop_rect.left) * input_width;
+        const float viewport_height = (crop_rect.bottom - crop_rect.top) * input_height;
+        ::FSR::FsrEasuConOffset(easu_constants.data(), easu_constants.data() + 4,
+                                easu_constants.data() + 8, easu_constants.data() + 12,
+                                viewport_width, viewport_height, input_width, input_height,
+                                static_cast<float>(layout.screen.GetWidth()),
+                                static_cast<float>(layout.screen.GetHeight()),
+                                crop_rect.left * input_width, crop_rect.top * input_height);
+        std::copy_n(easu_constants.begin(), 12, out_push_constants->filter_constants.begin());
+    }
 
     UpdateDescriptorSet(source_image_view, sampler, image_index);
     *out_descriptor_set = descriptor_sets[image_index];
@@ -154,8 +222,8 @@ void Layer::CreateRawImages(const Tegra::FramebufferConfig& framebuffer) {
     }
 }
 
-void Layer::CreateFSR(VkExtent2D output_size) {
-    fsr = std::make_unique<FSR>(device, memory_allocator, image_count, output_size);
+void Layer::CreateFSR(VkExtent2D output_size, bool easu_only) {
+    fsr = std::make_unique<FSR>(device, memory_allocator, image_count, output_size, easu_only);
 }
 
 void Layer::RefreshResources(const Tegra::FramebufferConfig& framebuffer) {
@@ -218,8 +286,8 @@ u64 Layer::GetRawImageOffset(const Tegra::FramebufferConfig& framebuffer,
 
 void Layer::SetMatrixData(PresentPushConstants& data,
                           const Layout::FramebufferLayout& layout) const {
-    data.modelview_matrix =
-        MakeOrthographicMatrix(static_cast<f32>(layout.width), static_cast<f32>(layout.height));
+    data.transform =
+        MakeOrthographicTransform(static_cast<f32>(layout.width), static_cast<f32>(layout.height));
 }
 
 void Layer::SetVertexData(PresentPushConstants& data, const Layout::FramebufferLayout& layout,

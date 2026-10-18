@@ -3,6 +3,7 @@
 #include <nxemu-cpu/cpu_settings_identifiers.h>
 #include <nxemu-os/os_settings_identifiers.h>
 #include <nxemu-video/video_settings_identifiers.h>
+#include <nxemu-module-spec/fsr_sharpness.h>
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -90,8 +91,10 @@ std::string GameSettingDefinition::Display(const JsonValue & value) const
     {
         return "Follow language";
     }
-    return std::to_string(number) + (std::string(key) == NXOsSetting::AudioVolume || std::string(key) == NXOsSetting::SpeedLimit ||
-                                    std::string(key) == NXVideoSetting::FSPSharpness ? "%" : "");
+    if (std::string(key) == NXVideoSetting::FSPSharpness) {
+        return std::to_string(FsrSharpness::ToDisplay(static_cast<int>(number))) + "%";
+    }
+    return std::to_string(number) + (std::string(key) == NXOsSetting::AudioVolume || std::string(key) == NXOsSetting::SpeedLimit || std::string(key) == NXVideoSetting::CASSharpness ? "%" : "");
 }
 
 const std::vector<GameSettingDefinition> & GameSettings::Definitions()
@@ -108,7 +111,8 @@ const std::vector<GameSettingDefinition> & GameSettings::Definitions()
         {NXOsSetting::AudioMode, "audio-mode", "Audio mode", false, 0, 2, {"Mono", "Stereo", "Surround"}},
         {NXOsSetting::AudioVolume, "volume", "Volume", false, 0, 200, {}},
         {NXOsSetting::AudioMuted, "volume", "Mute", true, 0, 0, {}},
-        {NXVideoSetting::ScalingFilter, "filter", "Window filter", false, 0, 5, {"Nearest", "Bilinear", "Bicubic", "Gaussian", "ScaleForce", "FSR"}},
+        {NXVideoSetting::ScalingFilter, "filter", "Window filter", false, 0, 9, {"Nearest", "Bilinear", "Bicubic", "Gaussian", "ScaleForce", "FSR", "FSR EASU", "Catmull-Rom", "Catmull-Rom fast", "ScaleForce fast"}},
+        {NXVideoSetting::CASSharpness, "cas-sharpness-range", "CAS sharpness", false, 0, 100, {}},
         {NXVideoSetting::FSPSharpness, "sharpness-range", "Sharpness", false, 0, 200, {}},
         {NXVideoSetting::AntiAliasing, "antialiasing", "Anti-aliasing", false, 0, 2, {"None", "FXAA", "SMAA"}},
         {NXVideoSetting::AnisotropicFiltering, "anisotropy", "Anisotropic filtering", false, 0, 5, {"Automatic", "As requested", "2x", "4x", "8x", "16x"}},

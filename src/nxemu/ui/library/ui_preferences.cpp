@@ -4,6 +4,7 @@
 #include <nxemu-core/settings/settings.h>
 #include <nxemu-os/os_settings_identifiers.h>
 #include <nxemu-video/video_settings_identifiers.h>
+#include <nxemu-module-spec/video.h>
 #include <algorithm>
 #include <cstring>
 #include <iterator>
@@ -15,7 +16,8 @@ constexpr const char * kSection = "UI";
 constexpr const char * kStatusOverrides = "StatusOverrides";
 constexpr struct { const char * key; int min; int max; } kStatusInts[] = {
     {NXOsSetting::DockedMode, 0, 1}, {NXVideoSetting::ResolutionSetup, 0, 10},
-    {NXVideoSetting::ScalingFilter, 0, 5}, {NXOsSetting::AudioVolume, 0, 200},
+    {NXVideoSetting::ScalingFilter, 0, static_cast<int>(ScalingFilter::MaxEnum) - 1}, {NXOsSetting::AudioVolume, 0, 200},
+    {NXVideoSetting::CASSharpness, 0, 100},
     {NXOsSetting::CurrentUser, 0, 7}, {NXVideoSetting::FSPSharpness, 0, 200},
 };
 

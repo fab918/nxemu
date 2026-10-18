@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "yuzu_common/settings.h"
+#include "yuzu_video_core/fsr.h"
 #include "video_settings.h"
 #include "yuzu_video_core/framebuffer_config.h"
 #include "yuzu_video_core/host_shaders/opengl_present_vert.h"
+#include "yuzu_video_core/host_shaders/opengl_present_frag.h"
 #include "yuzu_video_core/renderer_opengl/gl_device.h"
 #include "yuzu_video_core/renderer_opengl/gl_shader_manager.h"
 #include "yuzu_video_core/renderer_opengl/gl_shader_util.h"
@@ -15,8 +17,8 @@
 namespace OpenGL {
 
 WindowAdaptPass::WindowAdaptPass(const Device& device_, OGLSampler&& sampler_,
-                                 std::string_view frag_source)
-    : device(device_), sampler(std::move(sampler_)) {
+                                 std::string_view frag_source, bool use_rcas_, bool use_easu_, bool use_catmull_, bool use_cas_)
+    : device(device_), use_rcas(use_rcas_), use_easu(use_easu_), use_catmull(use_catmull_), use_cas(use_cas_), sampler(std::move(sampler_)) {
     vert = CreateProgram(HostShaders::OPENGL_PRESENT_VERT, GL_VERTEX_SHADER);
     frag = CreateProgram(frag_source, GL_FRAGMENT_SHADER);
 
@@ -46,13 +48,14 @@ void WindowAdaptPass::DrawToFramebuffer(ProgramManager& program_manager, std::li
 
     const size_t layer_count = framebuffers.size();
     std::vector<GLuint> textures(layer_count);
+    std::vector<std::array<u32, 16>> easu_constants(layer_count);
     std::vector<std::array<GLfloat, 3 * 2>> matrices(layer_count);
     std::vector<std::array<ScreenRectVertex, 4>> vertices(layer_count);
 
     auto layer_it = layers.begin();
     for (size_t i = 0; i < layer_count; i++) {
         textures[i] = layer_it->ConfigureDraw(matrices[i], vertices[i], program_manager,
-                                              framebuffers[i], layout, invert_y);
+                                              framebuffers[i], layout, invert_y, easu_constants[i]);
         layer_it++;
     }
 
@@ -60,6 +63,12 @@ void WindowAdaptPass::DrawToFramebuffer(ProgramManager& program_manager, std::li
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, old_draw_fb);
 
     program_manager.BindPresentPrograms(vert.handle, frag.handle);
+    if (use_rcas) {
+        std::array<u32, 4> constants{};
+        ::FSR::FsrRcasCon(constants.data(),
+                          static_cast<float>(videoSettings.fsr_sharpening_slider) / 100.0f);
+        glProgramUniform4uiv(frag.handle, 0, 1, constants.data());
+    }
 
     glDisable(GL_FRAMEBUFFER_SRGB);
     glViewportIndexedf(0, 0.0f, 0.0f, static_cast<GLfloat>(layout.width),
@@ -108,7 +117,18 @@ void WindowAdaptPass::DrawToFramebuffer(ProgramManager& program_manager, std::li
             break;
         }
 
+        if (use_easu) {
+            const auto& screen = layout.screen;
+            glProgramUniform4uiv(frag.handle, 0, 4, easu_constants[i].data());
+            glProgramUniform4f(frag.handle, 4, static_cast<float>(screen.left),
+                               static_cast<float>(layout.height - screen.bottom),
+                               static_cast<float>(layout.height - screen.top),
+                               invert_y ? 1.0f : 0.0f);
+            glProgramUniform1i(frag.handle, 5, easu_constants[i][0] != 0u ? 1 : 0);
+        }
         glBindTextureUnit(0, textures[i]);
+        if (use_catmull) glProgramUniform1ui(frag.handle, 1, easu_constants[i][0]);
+        if (use_cas) glProgramUniform1f(frag.handle, 0, static_cast<float>(videoSettings.cas_sharpening_slider) / 100.0f);
         glProgramUniformMatrix3x2fv(vert.handle, ModelViewMatrixLocation, 1, GL_FALSE,
                                     matrices[i].data());
         glNamedBufferSubData(vertex_buffer.handle, 0, sizeof(vertices[i]), std::data(vertices[i]));

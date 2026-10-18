@@ -27,7 +27,8 @@ class RasterizerVulkan;
 class WindowAdaptPass final {
 public:
     explicit WindowAdaptPass(const Device& device, VkFormat frame_format, vk::Sampler&& sampler,
-                             vk::ShaderModule&& fragment_shader);
+                             vk::ShaderModule&& fragment_shader, bool use_rcas = false,
+                             bool use_catmull = false, bool use_cas = false);
     ~WindowAdaptPass();
 
     void Draw(RasterizerVulkan& rasterizer, Scheduler& scheduler, size_t image_index,
@@ -46,6 +47,9 @@ private:
 
 private:
     const Device& device;
+    const bool use_rcas;
+    const bool use_catmull;
+    const bool use_cas;
     vk::DescriptorSetLayout descriptor_set_layout;
     vk::PipelineLayout pipeline_layout;
     vk::Sampler sampler;

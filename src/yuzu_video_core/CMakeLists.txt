@@ -3,10 +3,52 @@
 
 add_subdirectory(host_shaders)
 
+option(NXEMU_BUILD_FSR_BENCHMARK "Build the offscreen FSR GPU A/B benchmarks" OFF)
+
 if(LIBVA_FOUND)
     set_source_files_properties(host1x/ffmpeg/ffmpeg.cpp
         PROPERTIES COMPILE_DEFINITIONS LIBVA_FOUND=1)
     list(APPEND FFmpeg_LIBRARIES ${LIBVA_LIBRARIES})
+endif()
+
+if(NXEMU_BUILD_FSR_BENCHMARK)
+    add_executable(nxemu_fsr_diagnostics_tests ../../tests/fsr/diagnostics_tests.cpp)
+    target_include_directories(nxemu_fsr_diagnostics_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    add_test(NAME nxemu_fsr_diagnostics COMMAND nxemu_fsr_diagnostics_tests)
+    get_filename_component(_fsr_glslang_bin "${GLSLANGVALIDATOR}" DIRECTORY)
+    find_library(NXEMU_FSR_VULKAN_LOADER NAMES vulkan-1 vulkan
+        HINTS "${_fsr_glslang_bin}/../Lib" "$ENV{VULKAN_SDK}/Lib")
+    if(NXEMU_FSR_VULKAN_LOADER)
+        add_executable(nxemu-fsr-vulkan-benchmark ../../tests/fsr/vulkan_benchmark.cpp fsr.cpp)
+        add_dependencies(nxemu-fsr-vulkan-benchmark host_shaders)
+        target_include_directories(nxemu-fsr-vulkan-benchmark PRIVATE ${PROJECT_SOURCE_DIR}/src ${HOST_SHADERS_INCLUDE})
+        target_link_libraries(nxemu-fsr-vulkan-benchmark PRIVATE Vulkan::Headers ${NXEMU_FSR_VULKAN_LOADER} yuzu_common)
+        add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/catmull_reference_spv.h"
+            COMMAND ${GLSLANGVALIDATOR} -V --target-env spirv1.3
+                --variable-name CATMULL_REFERENCE_SPV
+                -o "${CMAKE_CURRENT_BINARY_DIR}/catmull_reference_spv.h"
+                "${PROJECT_SOURCE_DIR}/tests/fsr/catmull_reference.frag"
+            DEPENDS "${PROJECT_SOURCE_DIR}/tests/fsr/catmull_reference.frag"
+            VERBATIM)
+        add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/scaleforce_reference_spv.h"
+            COMMAND ${GLSLANGVALIDATOR} -V --target-env spirv1.3
+                --variable-name SCALEFORCE_REFERENCE_SPV
+                -o "${CMAKE_CURRENT_BINARY_DIR}/scaleforce_reference_spv.h"
+                "${PROJECT_SOURCE_DIR}/tests/fsr/scaleforce_reference.frag"
+            DEPENDS "${PROJECT_SOURCE_DIR}/tests/fsr/scaleforce_reference.frag" VERBATIM)
+        add_executable(nxemu-scaleforce-vulkan-benchmark ../../tests/fsr/scaleforce_benchmark.cpp
+            "${CMAKE_CURRENT_BINARY_DIR}/scaleforce_reference_spv.h")
+        add_dependencies(nxemu-scaleforce-vulkan-benchmark host_shaders)
+        target_include_directories(nxemu-scaleforce-vulkan-benchmark PRIVATE ${PROJECT_SOURCE_DIR}/src ${HOST_SHADERS_INCLUDE} "${CMAKE_CURRENT_BINARY_DIR}")
+        target_link_libraries(nxemu-scaleforce-vulkan-benchmark PRIVATE Vulkan::Headers ${NXEMU_FSR_VULKAN_LOADER})
+        add_executable(nxemu-scaling-vulkan-benchmark ../../tests/fsr/scaling_benchmark.cpp
+            "${CMAKE_CURRENT_BINARY_DIR}/catmull_reference_spv.h")
+        add_dependencies(nxemu-scaling-vulkan-benchmark host_shaders)
+        target_include_directories(nxemu-scaling-vulkan-benchmark PRIVATE ${PROJECT_SOURCE_DIR}/src ${HOST_SHADERS_INCLUDE})
+        target_link_libraries(nxemu-scaling-vulkan-benchmark PRIVATE Vulkan::Headers ${NXEMU_FSR_VULKAN_LOADER})
+        target_compile_definitions(nxemu-scaling-vulkan-benchmark PRIVATE NXEMU_SCALING_TEST_SOURCE="${PROJECT_SOURCE_DIR}/tests/fsr")
+        target_include_directories(nxemu-scaling-vulkan-benchmark PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+    endif()
 endif()
 
 add_library(video_core STATIC
@@ -184,6 +226,8 @@ add_library(video_core STATIC
     renderer_vulkan/present/filters.h
     renderer_vulkan/present/fsr.cpp
     renderer_vulkan/present/fsr.h
+    renderer_vulkan/present/catmull_pass.cpp
+    renderer_vulkan/present/catmull_pass.h
     renderer_vulkan/present/fxaa.cpp
     renderer_vulkan/present/fxaa.h
     renderer_vulkan/present/layer.cpp
@@ -524,3 +568,10 @@ if(ANDROID)
 endif()
 
 create_target_directory_groups(video_core)
+
+if(NXEMU_BUILD_FSR_BENCHMARK AND TARGET SDL2::SDL2)
+    add_executable(nxemu-fsr-benchmark ../../tests/fsr/benchmark.cpp fsr.cpp)
+    target_include_directories(nxemu-fsr-benchmark PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    target_link_libraries(nxemu-fsr-benchmark PRIVATE glad SDL2::SDL2 yuzu_common)
+    target_compile_definitions(nxemu-fsr-benchmark PRIVATE SDL_MAIN_HANDLED)
+endif()

@@ -8,6 +8,7 @@
 #include <RmlUi/Core.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <common/path.h>
 #include <nxemu-core/notification.h>
 #include <nxemu-core/settings/identifiers.h>
@@ -87,6 +88,7 @@ constexpr uint64_t kGameHintMs = 4000;         // how long what hides the interf
 constexpr int kCoverTitleDelayMs = 1200;       // a cover names its game to a mouse that stays
 // The ranges of the menus.
 constexpr int kFilterSharpnessRange = 1;
+constexpr int kCasSharpnessRange = 5;
 constexpr int kPerformanceSizeRange = 2;
 constexpr int kPerformanceRateRange = 3;
 constexpr int kPerformanceLengthRange = 4;
@@ -580,6 +582,11 @@ void MainWindow::OnModulesReleasing()
 
 void MainWindow::OnModulesReady()
 {
+    // A launch-time default; the A/B menu can still switch it during the session.
+    const char * legacy = std::getenv("NXEMU_FSR_LEGACY");
+    if (legacy != nullptr && (legacy[0] == '0' || legacy[0] == '1') && legacy[1] == '\0' &&
+        !SettingsStore::GetInstance().HasControlOverride(NXVideoSetting::FsrLegacyBenchmark))
+        SettingsStore::GetInstance().SetControlOverride(NXVideoSetting::FsrLegacyBenchmark, JsonValue(legacy[0] == '1'));
     m_firmwareDialog->SetLoader(m_session.Modules().Systemloader());
     AttachVideo();
 }
@@ -687,6 +694,16 @@ void MainWindow::Run(Action action)
     SettingsStore & settings = SettingsStore::GetInstance();
     switch (action)
     {
+    case Action::FsrBenchmarkLegacy:
+    case Action::FsrBenchmarkOptimized:
+        if (settings.GetInt(NXVideoSetting::ScalingFilter) != static_cast<int>(ScalingFilter::Fsr) &&
+            settings.GetInt(NXVideoSetting::ScalingFilter) != static_cast<int>(ScalingFilter::FsrEasu))
+            UiPreferences::SetStatusInt(NXVideoSetting::ScalingFilter, static_cast<int>(ScalingFilter::Fsr));
+        settings.SetControlOverride(NXVideoSetting::FsrLegacyBenchmark,
+                                   JsonValue(action == Action::FsrBenchmarkLegacy));
+        m_session.FlushSettings();
+        UpdateStatusWidgets();
+        break;
     case Action::LoadFile: LoadFile(); break;
     case Action::Exit: RequestQuit(); break;
     case Action::OpenAppDirectory: OpenDirectory(Common::FS::GetYuzuPathString(Common::FS::YuzuPath::YuzuDir)); break;
@@ -911,7 +928,10 @@ void MainWindow::Run(Action action)
         const int filter = static_cast<int>(action) - static_cast<int>(Action::ScalingFilterFirst);
         if (FindScalingFilter(filter) != nullptr)
         {
+            const bool migrate_easu = filter == static_cast<int>(ScalingFilter::Fsr) &&
+                SettingsStore::GetInstance().GetInt(NXVideoSetting::ScalingFilter) == static_cast<int>(ScalingFilter::FsrEasu);
             UiPreferences::SetStatusInt(NXVideoSetting::ScalingFilter, filter);
+            if (migrate_easu) UiPreferences::SetStatusInt(NXVideoSetting::FSPSharpness, FsrSharpness::StoredMaximum);
             // The game's filter comes back with the game's sharpness.
             if (!UiPreferences::HasStatusOverride({NXVideoSetting::ScalingFilter}))
             {
@@ -2191,6 +2211,17 @@ void MainWindow::SetDockedMode(bool docked)
 // value already.
 void MainWindow::SetMenuRange(int id, int value)
 {
+    if (id == kCasSharpnessRange) {
+        const auto& settings = SettingsStore::GetInstance();
+        const int filter = settings.GetInt(NXVideoSetting::ScalingFilter);
+        if (filter != static_cast<int>(ScalingFilter::NearestNeighbor) &&
+            filter != static_cast<int>(ScalingFilter::Bilinear) &&
+            filter != static_cast<int>(ScalingFilter::CatmullRom) && filter != static_cast<int>(ScalingFilter::CatmullRomFast)) return;
+        if (value == settings.GetInt(NXVideoSetting::CASSharpness)) return;
+        UiPreferences::SetStatusInt(NXVideoSetting::CASSharpness, std::clamp(value, 0, 100));
+        UpdateStatusWidgets();
+        return;
+    }
     if (id == kPerformanceSizeRange)
     {
         m_performance->SetSize(value);
@@ -2204,9 +2235,13 @@ void MainWindow::SetMenuRange(int id, int value)
         m_performance->SetLength(value);
     }
     // A menu that opens shows the sharpness: that is not the user choosing it.
-    if (id == kFilterSharpnessRange && value != SettingsStore::GetInstance().GetInt(NXVideoSetting::FSPSharpness))
+    if (id == kFilterSharpnessRange &&
+        value != (SettingsStore::GetInstance().GetInt(NXVideoSetting::ScalingFilter) == static_cast<int>(ScalingFilter::FsrEasu)
+                      ? 0 : FsrSharpness::ToDisplay(SettingsStore::GetInstance().GetInt(NXVideoSetting::FSPSharpness))))
     {
-        UiPreferences::SetStatusInt(NXVideoSetting::FSPSharpness, value);
+        if (SettingsStore::GetInstance().GetInt(NXVideoSetting::ScalingFilter) == static_cast<int>(ScalingFilter::FsrEasu))
+            UiPreferences::SetStatusInt(NXVideoSetting::ScalingFilter, static_cast<int>(ScalingFilter::Fsr));
+        UiPreferences::SetStatusInt(NXVideoSetting::FSPSharpness, FsrSharpness::ToStored(value));
         UpdateStatusWidgets();
     }
 }
@@ -2246,8 +2281,10 @@ void MainWindow::ShowSelectMenu(Rml::Element * origin)
     }
     else if (origin->GetId() == "scaling-filter")
     {
-        const int current = store.GetInt(NXVideoSetting::ScalingFilter);
-        const int game = store.GetIntWithoutControl(NXVideoSetting::ScalingFilter);
+        const int saved_filter = store.GetInt(NXVideoSetting::ScalingFilter);
+        const int current = saved_filter == static_cast<int>(ScalingFilter::FsrEasu) ? static_cast<int>(ScalingFilter::Fsr) : saved_filter;
+        const int saved_game = store.GetIntWithoutControl(NXVideoSetting::ScalingFilter);
+        const int game = saved_game == static_cast<int>(ScalingFilter::FsrEasu) ? static_cast<int>(ScalingFilter::Fsr) : saved_game;
         for (const auto & filter : kScalingFilters)
         {
             const int value = static_cast<int>(filter.value);
@@ -2259,10 +2296,19 @@ void MainWindow::ShowSelectMenu(Rml::Element * origin)
             if (filter.value == ScalingFilter::Fsr)
             {
                 // Only FSR has a sharpness; it is set once FSR is the filter.
-                item.range = MenuItem::Range{kFilterSharpnessRange, kSharpnessMax, std::clamp(store.GetInt(NXVideoSetting::FSPSharpness), 0, kSharpnessMax),
+                item.range = MenuItem::Range{kFilterSharpnessRange, kSharpnessMax, saved_filter == static_cast<int>(ScalingFilter::FsrEasu) ? 0 : FsrSharpness::ToDisplay(store.GetInt(NXVideoSetting::FSPSharpness)),
                                              value == current, value == current ? Tr("Sharpness of the FSR filter") : Tr("Sharpness: once FSR is the filter")};
             }
         }
+        items.push_back(MenuItem::Separator());
+        const bool legacy = store.GetBool(NXVideoSetting::FsrLegacyBenchmark);
+        items.push_back(MenuItem::Choice(static_cast<int>(Action::FsrBenchmarkLegacy), "A - FSR original", legacy));
+        items.push_back(MenuItem::Choice(static_cast<int>(Action::FsrBenchmarkOptimized), "B - FSR optimized", !legacy));
+        const bool supports_cas = current == static_cast<int>(ScalingFilter::NearestNeighbor) ||
+            current == static_cast<int>(ScalingFilter::Bilinear) || (current == static_cast<int>(ScalingFilter::CatmullRom) || current == static_cast<int>(ScalingFilter::CatmullRomFast));
+        items.push_back(MenuItem::Slider("CAS", MenuItem::Range{kCasSharpnessRange, 100,
+            supports_cas ? store.GetInt(NXVideoSetting::CASSharpness) : 0, supports_cas,
+            Tr("Optional sharpening for Bilinear and Catmull-Rom. Off at 0%.")}));
     }
     else if (origin->GetId() == "volume")
     {
@@ -2323,7 +2369,17 @@ void MainWindow::UpdateStatusWidgets()
     }
     // The only filter no longer offered is the one the settings may still name.
     const ScalingFilterChoice * filter = FindScalingFilter(settings.GetInt(NXVideoSetting::ScalingFilter));
-    SetText("scaling-filter-text", filter != nullptr ? Tr(filter->label) : Tr("Gaussian"));
+    std::string filter_text = filter != nullptr ? Tr(filter->label) : Tr("Gaussian");
+    if (settings.GetInt(NXVideoSetting::ScalingFilter) == static_cast<int>(ScalingFilter::Fsr) ||
+        settings.GetInt(NXVideoSetting::ScalingFilter) == static_cast<int>(ScalingFilter::FsrEasu))
+        filter_text += settings.GetBool(NXVideoSetting::FsrLegacyBenchmark) ? " [A]" : " [B]";
+    else if (settings.GetInt(NXVideoSetting::CASSharpness) > 0 &&
+             (settings.GetInt(NXVideoSetting::ScalingFilter) == static_cast<int>(ScalingFilter::Bilinear) ||
+              settings.GetInt(NXVideoSetting::ScalingFilter) == static_cast<int>(ScalingFilter::CatmullRom) ||
+              settings.GetInt(NXVideoSetting::ScalingFilter) == static_cast<int>(ScalingFilter::CatmullRomFast) ||
+              settings.GetInt(NXVideoSetting::ScalingFilter) == static_cast<int>(ScalingFilter::NearestNeighbor)))
+        filter_text += " + CAS";
+    SetText("scaling-filter-text", filter_text);
     // A control that chose over the settings shows it.
     const auto mark = [this](const char * id, std::initializer_list<const char *> chosen) {
         if (Rml::Element * element = m_document->GetElementById(id))

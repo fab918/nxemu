@@ -24,6 +24,7 @@ enum class PixelFormat : u32;
 namespace Vulkan {
 
 class AntiAliasPass;
+class CatmullPass;
 class Device;
 class FSR;
 class MemoryAllocator;
@@ -50,7 +51,7 @@ private:
     void CreateDescriptorSets(VkDescriptorSetLayout layout);
     void CreateStagingBuffer(const Tegra::FramebufferConfig& framebuffer);
     void CreateRawImages(const Tegra::FramebufferConfig& framebuffer);
-    void CreateFSR(VkExtent2D output_size);
+    void CreateFSR(VkExtent2D output_size, bool easu_only);
 
     void RefreshResources(const Tegra::FramebufferConfig& framebuffer);
     void SetAntiAliasPass();
@@ -72,6 +73,8 @@ private:
     Tegra::MaxwellDeviceMemoryManager& device_memory;
     const PresentFilters& filters;
     const size_t image_count{};
+    const u32 max_image_dimension;
+    const bool supports_catmull_intermediate;
     vk::DescriptorPool descriptor_pool{};
     vk::DescriptorSets descriptor_sets{};
 
@@ -86,6 +89,7 @@ private:
     std::unique_ptr<AntiAliasPass> anti_alias{};
 
     std::unique_ptr<FSR> fsr{};
+    std::unique_ptr<CatmullPass> catmull_pass{};
     std::vector<u64> resource_ticks{};
 };
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "yuzu_video_core/fsr.h"
 #include "yuzu_video_core/framebuffer_config.h"
 #include "yuzu_video_core/present.h"
 #include "yuzu_video_core/renderer_opengl/gl_blit_screen.h"
@@ -37,9 +38,14 @@ GLuint Layer::ConfigureDraw(std::array<GLfloat, 3 * 2>& out_matrix,
                             std::array<ScreenRectVertex, 4>& out_vertices,
                             ProgramManager& program_manager,
                             const Tegra::FramebufferConfig& framebuffer,
-                            const Layout::FramebufferLayout& layout, bool invert_y) {
+                            const Layout::FramebufferLayout& layout, bool invert_y,
+                            std::array<u32, 16>& easu_constants) {
+    easu_constants.fill(0);
     FramebufferTextureInfo info = PrepareRenderTarget(framebuffer);
     auto crop = Tegra::NormalizeCrop(framebuffer, info.width, info.height);
+    VideoCore::NotePresentInput(info.scaled_width, info.scaled_height,
+        static_cast<unsigned>(std::lround(std::abs(crop.right - crop.left) * info.scaled_width)),
+        static_cast<unsigned>(std::lround(std::abs(crop.bottom - crop.top) * info.scaled_height)));
     GLuint texture = info.display_texture;
 
     auto anti_aliasing = filters.get_anti_aliasing();
@@ -67,13 +73,41 @@ GLuint Layer::ConfigureDraw(std::array<GLfloat, 3 * 2>& out_matrix,
 
     glDisablei(GL_SCISSOR_TEST, 0);
 
-    if (filters.get_scaling_filter() == ScalingFilter::Fsr) {
-        if (!fsr || fsr->NeedsRecreation(layout.screen)) {
-            fsr = std::make_unique<FSR>(layout.screen.GetWidth(), layout.screen.GetHeight());
+    const ScalingFilter scaling_filter = filters.get_scaling_filter();
+    const bool use_fsr = scaling_filter == ScalingFilter::Fsr ||
+                         scaling_filter == ScalingFilter::FsrEasu;
+    if (scaling_filter == ScalingFilter::CatmullRom || scaling_filter == ScalingFilter::CasCatmullRom ||
+        scaling_filter == ScalingFilter::CatmullRomFast || scaling_filter == ScalingFilter::CasCatmullRomFast) {
+        easu_constants[0] = CanUseNativeRcas(info.scaled_width, info.scaled_height, crop,
+            layout.screen.GetWidth(), layout.screen.GetHeight()) ? 1U : 0U;
+        if (scaling_filter == ScalingFilter::CatmullRomFast || scaling_filter == ScalingFilter::CasCatmullRomFast)
+            easu_constants[0] |= 2U;
+    }
+    const bool skip_easu = !VideoCore::LegacyFsr() && use_fsr && CanUseNativeRcas(
+        info.scaled_width, info.scaled_height, crop, layout.screen.GetWidth(),
+        layout.screen.GetHeight());
+    if (use_fsr) VideoCore::NoteFsrInput(info.scaled_width, info.scaled_height,
+        VideoCore::LegacyFsr() ? 2U : (scaling_filter == ScalingFilter::Fsr && !skip_easu ? 1U : 0U));
+    if (scaling_filter == ScalingFilter::Fsr && !skip_easu) {
+        if (!fsr || fsr->NeedsRecreation(layout.screen, !VideoCore::LegacyFsr())) {
+            fsr = std::make_unique<FSR>(layout.screen.GetWidth(), layout.screen.GetHeight(),
+                                        !VideoCore::LegacyFsr());
         }
-
         texture = fsr->Draw(program_manager, texture, info.scaled_width, info.scaled_height, crop);
         crop = {0, 0, 1, 1};
+    }
+
+    if (scaling_filter == ScalingFilter::FsrEasu && !skip_easu) {
+        const float input_width = static_cast<float>(info.scaled_width);
+        const float input_height = static_cast<float>(info.scaled_height);
+        ::FSR::FsrEasuConOffset(easu_constants.data(), easu_constants.data() + 4,
+                                easu_constants.data() + 8, easu_constants.data() + 12,
+                                (crop.right - crop.left) * input_width,
+                                (crop.bottom - crop.top) * input_height,
+                                input_width, input_height,
+                                static_cast<float>(layout.screen.GetWidth()),
+                                static_cast<float>(layout.screen.GetHeight()),
+                                crop.left * input_width, crop.top * input_height);
     }
 
     out_matrix =

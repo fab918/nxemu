@@ -5,6 +5,7 @@
 #include <nxemu-cpu/cpu_settings_identifiers.h>
 #include <nxemu-video/video_settings.h>
 #include <nxemu-video/video_settings_identifiers.h>
+#include <yuzu_video_core/present.h>
 #include <nxemu-os/os_settings_identifiers.h>
 #include <chrono>
 #include <fstream>
@@ -53,6 +54,22 @@ int main(int argc, char ** argv)
         auto root = Read(argv[1]);
         std::string error;
         Check(GameSettings::Validate(root, error), "shipped database is valid");
+        const auto* filter_definition = GameSettings::Definition(NXVideoSetting::ScalingFilter);
+        Check(filter_definition && filter_definition->Accepts(JsonValue(7)) &&
+              filter_definition->Display(JsonValue(7)) == "Catmull-Rom", "Catmull-Rom override accepted");
+        Check(static_cast<int>(ScalingFilter::Fsr) == 5 && static_cast<int>(ScalingFilter::CatmullRom) == 7,
+              "persisted filter IDs preserved");
+        Check(filter_definition->Accepts(JsonValue(8)) &&
+              filter_definition->Display(JsonValue(8)) == "Catmull-Rom fast" &&
+              !filter_definition->Accepts(JsonValue(16)), "fast filter accepted, runtime pipeline rejected");
+        Check(filter_definition->Accepts(JsonValue(9)) && filter_definition->Display(JsonValue(9)) == "ScaleForce fast", "ScaleForce fast override accepted");
+        const auto* cas_definition = GameSettings::Definition(NXVideoSetting::CASSharpness);
+        Check(cas_definition && cas_definition->Accepts(JsonValue(0)) &&
+              cas_definition->Accepts(JsonValue(100)) && !cas_definition->Accepts(JsonValue(101)),
+              "CAS strength bounds accepted");
+        Check(filter_definition && filter_definition->Accepts(JsonValue(6)) &&
+              filter_definition->Display(JsonValue(6)) == "FSR EASU",
+              "new EASU filter is accepted in per-game settings");
         Check(root["games"][GameSettings::TitleId(title)]["settings"][NXVideoSetting::AccuracyLevel].asInt64() == 1, "shipped profile uses High");
         root["games"][GameSettings::TitleId(title)]["settings"][NXVideoSetting::GpuCommandSynchronization] = true;
         root["games"][GameSettings::TitleId(title)]["settings"][NXCpuSetting::CpuAccuracy] = 1;
@@ -107,6 +124,24 @@ int main(int argc, char ** argv)
         store.SetGameOverrides(snapshot);
         SetupVideoSetting();
         Check(videoSettings.scaling_filter == ScalingFilter::Bicubic, "video module reads game filter");
+        store.SetControlOverride(NXVideoSetting::ScalingFilter, JsonValue(7));
+        store.SetControlOverride(NXVideoSetting::CASSharpness, JsonValue(0));
+        Check(GetScalingFilter() == ScalingFilter::CatmullRom, "CAS zero bypasses sharpening pipeline");
+        store.SetControlOverride(NXVideoSetting::CASSharpness, JsonValue(50));
+        Check(GetScalingFilter() == ScalingFilter::CasCatmullRom, "CAS uses Catmull reconstruction");
+        store.SetControlOverride(NXVideoSetting::ScalingFilter, JsonValue(8));
+        Check(GetScalingFilter() == ScalingFilter::CasCatmullRomFast, "CAS uses fast Catmull reconstruction");
+        store.SetControlOverride(NXVideoSetting::CASSharpness, JsonValue(0));
+        Check(GetScalingFilter() == ScalingFilter::CatmullRomFast, "Fast Catmull bypasses CAS at zero");
+        store.SetControlOverride(NXVideoSetting::CASSharpness, JsonValue(50));
+        store.SetControlOverride(NXVideoSetting::ScalingFilter, JsonValue(1));
+        Check(GetScalingFilter() == ScalingFilter::CasBilinear, "CAS uses Bilinear reconstruction");
+        store.SetControlOverride(NXVideoSetting::ScalingFilter, JsonValue(5));
+        Check(GetScalingFilter() == ScalingFilter::Fsr, "CAS never adds sharpening over FSR");
+        store.SetControlOverride(NXVideoSetting::ScalingFilter, JsonValue(9));
+        Check(GetScalingFilter() == ScalingFilter::ScaleForceFast, "CAS never adds sharpening over ScaleForce fast");
+        store.ClearControlOverride(NXVideoSetting::ScalingFilter);
+        store.ClearControlOverride(NXVideoSetting::CASSharpness);
         store.SetControlOverride(NXVideoSetting::ScalingFilter, JsonValue(static_cast<int>(ScalingFilter::Bilinear)));
         Check(videoSettings.scaling_filter == ScalingFilter::Bilinear, "explicit filter applies live over game snapshot");
         store.SetInt(NXVideoSetting::ScalingFilter, static_cast<int>(ScalingFilter::Fsr));

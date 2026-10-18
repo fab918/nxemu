@@ -226,7 +226,15 @@ const char* ScalingFilterToString(ScalingFilter value)
     case ScalingFilter::Bicubic: return "Bicubic";
     case ScalingFilter::Gaussian: return "Gaussian";
     case ScalingFilter::ScaleForce: return "ScaleForce";
+    case ScalingFilter::ScaleForceFast: return "ScaleForceFast";
     case ScalingFilter::Fsr: return "Fsr";
+    case ScalingFilter::FsrEasu: return "FsrEasu";
+    case ScalingFilter::CatmullRom: return "CatmullRom";
+    case ScalingFilter::CatmullRomFast: return "CatmullRomFast";
+    case ScalingFilter::CasNearest:
+    case ScalingFilter::CasBilinear:
+    case ScalingFilter::CasCatmullRom:
+    case ScalingFilter::CasCatmullRomFast: return "Bilinear";
     case ScalingFilter::MaxEnum: return "MaxEnum";
     }
     return "NearestNeighbor";
@@ -239,7 +247,11 @@ ScalingFilter ScalingFilterFromString(std::string_view str)
     if (str == "Bicubic") return ScalingFilter::Bicubic;
     if (str == "Gaussian") return ScalingFilter::Gaussian;
     if (str == "ScaleForce") return ScalingFilter::ScaleForce;
+    if (str == "ScaleForceFast") return ScalingFilter::ScaleForceFast;
     if (str == "Fsr") return ScalingFilter::Fsr;
+    if (str == "FsrEasu") return ScalingFilter::FsrEasu;
+    if (str == "CatmullRom") return ScalingFilter::CatmullRom;
+    if (str == "CatmullRomFast") return ScalingFilter::CatmullRomFast;
     if (str == "MaxEnum") return ScalingFilter::MaxEnum;
     return ScalingFilter::NearestNeighbor;
 }

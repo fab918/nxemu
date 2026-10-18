@@ -26,7 +26,8 @@ class ProgramManager;
 class WindowAdaptPass final {
 public:
     explicit WindowAdaptPass(const Device& device, OGLSampler&& sampler,
-                             std::string_view frag_source);
+                             std::string_view frag_source, bool use_rcas = false, bool use_easu = false,
+                             bool use_catmull = false, bool use_cas = false);
     ~WindowAdaptPass();
 
     void DrawToFramebuffer(ProgramManager& program_manager, std::list<Layer>& layers,
@@ -35,6 +36,10 @@ public:
 
 private:
     const Device& device;
+    const bool use_rcas;
+    const bool use_easu;
+    const bool use_catmull;
+    const bool use_cas;
     OGLSampler sampler;
     OGLProgram vert;
     OGLProgram frag;

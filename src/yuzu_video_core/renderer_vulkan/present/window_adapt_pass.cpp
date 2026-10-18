@@ -1,9 +1,14 @@
 // SPDX-FileCopyrightText: Copyright 2024 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
+#include <bit>
+
 #include "frontend/framebuffer_layout.h"
+#include "yuzu_video_core/fsr.h"
 #include "yuzu_video_core/framebuffer_config.h"
 #include "yuzu_video_core/host_shaders/vulkan_present_vert_spv.h"
+#include "yuzu_video_core/host_shaders/vulkan_present_frag_spv.h"
 #include "yuzu_video_core/renderer_vulkan/present/layer.h"
 #include "yuzu_video_core/renderer_vulkan/present/present_push_constants.h"
 #include "yuzu_video_core/renderer_vulkan/present/util.h"
@@ -17,8 +22,10 @@
 namespace Vulkan {
 
 WindowAdaptPass::WindowAdaptPass(const Device& device_, VkFormat frame_format,
-                                 vk::Sampler&& sampler_, vk::ShaderModule&& fragment_shader_)
-    : device(device_), sampler(std::move(sampler_)), fragment_shader(std::move(fragment_shader_)) {
+                                 vk::Sampler&& sampler_, vk::ShaderModule&& fragment_shader_,
+                                 bool use_rcas_, bool use_catmull_, bool use_cas_)
+    : device(device_), use_rcas(use_rcas_), use_catmull(use_catmull_), use_cas(use_cas_), sampler(std::move(sampler_)),
+      fragment_shader(std::move(fragment_shader_)) {
     CreateDescriptorSetLayout();
     CreatePipelineLayout();
     CreateVertexShader();
@@ -46,6 +53,12 @@ void WindowAdaptPass::Draw(RasterizerVulkan& rasterizer, Scheduler& scheduler, s
     std::vector<VkDescriptorSet> descriptor_sets(layer_count);
     std::vector<VkPipeline> graphics_pipelines(layer_count);
 
+    std::array<u32, 4> rcas_constants{};
+    if (use_rcas) {
+        ::FSR::FsrRcasCon(rcas_constants.data(),
+                          static_cast<float>(videoSettings.fsr_sharpening_slider) / 100.0f);
+    }
+
     auto layer_it = layers.begin();
     for (size_t i = 0; i < layer_count; i++) {
         switch (configs[i].blending) {
@@ -63,6 +76,14 @@ void WindowAdaptPass::Draw(RasterizerVulkan& rasterizer, Scheduler& scheduler, s
 
         layer_it->ConfigureDraw(&push_constants[i], &descriptor_sets[i], rasterizer, *sampler,
                                 image_index, configs[i], layout);
+        if (use_rcas) {
+            std::copy(rcas_constants.begin(), rcas_constants.end(),
+                      push_constants[i].filter_constants.begin());
+        }
+        if (use_cas) {
+            push_constants[i].filter_constants[0] = std::bit_cast<u32>(
+                static_cast<float>(videoSettings.cas_sharpening_slider) / 100.0f);
+        }
         layer_it++;
     }
 
@@ -93,7 +114,8 @@ void WindowAdaptPass::Draw(RasterizerVulkan& rasterizer, Scheduler& scheduler, s
 
         for (size_t i = 0; i < layer_count; i++) {
             cmdbuf.BindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipelines[i]);
-            cmdbuf.PushConstants(graphics_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT,
+            cmdbuf.PushConstants(graphics_pipeline_layout,
+                                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                                  push_constants[i]);
             cmdbuf.BindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline_layout, 0,
                                       descriptor_sets[i], {});
@@ -119,7 +141,7 @@ void WindowAdaptPass::CreateDescriptorSetLayout() {
 
 void WindowAdaptPass::CreatePipelineLayout() {
     const VkPushConstantRange range{
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         .offset = 0,
         .size = sizeof(PresentPushConstants),
     };

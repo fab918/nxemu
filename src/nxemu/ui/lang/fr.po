@@ -2531,3 +2531,24 @@ msgstr "Impossible de charger le jeu :\n%1\n\nErreur du chargeur : %2. Vérifiez
 
 msgid "Unable to load the interface. Check that NXEmu's ui folder is complete."
 msgstr "Impossible de charger l'interface. Vérifiez que le dossier ui de NXEmu est complet."
+
+msgid "CAS sharpness"
+msgstr "Netteté CAS"
+
+msgid "Optional sharpening for Bilinear and Catmull-Rom. Off at 0%."
+msgstr "Netteté optionnelle pour Bilinéaire et Catmull-Rom. Désactivée à 0 %."
+
+msgid "Sharper reconstruction with fine detail. May add halos around strong edges."
+msgstr "Reconstruction plus nette des détails fins. Peut créer des halos sur les contours marqués."
+
+msgid "Catmull-Rom fast"
+msgstr "Catmull-Rom rapide"
+
+msgid "Five-sample approximation. Faster, with small changes around diagonal edges."
+msgstr "Approximation à cinq lectures. Plus rapide, avec de légères différences sur les diagonales."
+
+msgid "ScaleForce fast"
+msgstr "ScaleForce rapide"
+
+msgid "Four-neighbor edge estimate. Faster, but diagonal contours may differ."
+msgstr "Estimation des contours sur quatre voisins. Plus rapide, mais les diagonales peuvent différer."

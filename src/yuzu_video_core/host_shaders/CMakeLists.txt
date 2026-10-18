@@ -9,7 +9,10 @@ set(FIDELITYFX_FILES
 )
 
 set(GLSL_INCLUDES
+    catmull_rom.glsl
     fidelityfx_fsr.frag
+    present_rcas.frag
+    present_easu.frag
     ${FIDELITYFX_FILES}
 )
 
@@ -52,11 +55,13 @@ set(SHADER_FILES
     opengl_fidelityfx_fsr_rcas.frag
     opengl_lmem_warmup.comp
     opengl_present.frag
+    opengl_present_cas.frag
     opengl_present.vert
     opengl_present_scaleforce.frag
     opengl_smaa.glsl
     pitch_unswizzle.comp
     present_bicubic.frag
+    present_catmull_rom.frag
     present_gaussian.frag
     queries_prefix_scan_sum.comp
     queries_prefix_scan_sum_nosubgroups.comp
@@ -79,7 +84,17 @@ set(SHADER_FILES
     vulkan_fidelityfx_fsr_rcas_fp16.frag
     vulkan_fidelityfx_fsr_rcas_fp32.frag
     vulkan_present.frag
+    vulkan_present_cas_quad.frag
+    vulkan_present_cas_catmull_quad.frag
+    vulkan_present_cas.frag
+    vulkan_present_cas_catmull.frag
+    vulkan_present_easu_fp16.frag
+    vulkan_present_easu_fp32.frag
+    vulkan_present_rcas_fp16.frag
+    vulkan_present_rcas_fp32.frag
     vulkan_present.vert
+    vulkan_present_scaleforce_fast_fp16.frag
+    vulkan_present_scaleforce_fast_fp32.frag
     vulkan_present_scaleforce_fp16.frag
     vulkan_present_scaleforce_fp32.frag
     vulkan_quad_indexed.comp
@@ -142,6 +157,20 @@ foreach(FILENAME IN ITEMS ${SHADER_FILES})
         )
         set(SHADER_HEADERS ${SHADER_HEADERS} ${SOURCE_HEADER_FILE})
     endif()
+    set(SPIRV_INCLUDE_DEPENDENCIES)
+    if(FILENAME MATCHES "^vulkan_present_cas")
+        set(SPIRV_INCLUDE_DEPENDENCIES opengl_present_cas.frag catmull_rom.glsl)
+    elseif(FILENAME STREQUAL "present_catmull_rom.frag")
+        set(SPIRV_INCLUDE_DEPENDENCIES catmull_rom.glsl)
+    elseif(FILENAME MATCHES "^vulkan_present_scaleforce_")
+        set(SPIRV_INCLUDE_DEPENDENCIES opengl_present_scaleforce.frag)
+    elseif(FILENAME MATCHES "^vulkan_present_easu_")
+        set(SPIRV_INCLUDE_DEPENDENCIES present_easu.frag ${FIDELITYFX_FILES})
+    elseif(FILENAME MATCHES "^vulkan_present_rcas_")
+        set(SPIRV_INCLUDE_DEPENDENCIES present_rcas.frag ${FIDELITYFX_FILES})
+    elseif(FILENAME MATCHES "^vulkan_fidelityfx_fsr_(easu|rcas)_")
+        set(SPIRV_INCLUDE_DEPENDENCIES fidelityfx_fsr.frag ${FIDELITYFX_FILES})
+    endif()
     # Skip compiling to SPIR-V OpenGL exclusive files
     if (NOT ${FILENAME} MATCHES "opengl.*")
         string(TOUPPER ${SHADER_NAME}_SPV SPIRV_VARIABLE_NAME)
@@ -153,12 +182,14 @@ foreach(FILENAME IN ITEMS ${SHADER_FILES})
                 ${GLSLANGVALIDATOR} -V ${QUIET_FLAG} -I"${FIDELITYFX_INCLUDE_DIR}" ${GLSL_FLAGS} --variable-name ${SPIRV_VARIABLE_NAME} -o ${SPIRV_HEADER_FILE} ${SOURCE_FILE} --target-env ${SPIR_V_VERSION}
             MAIN_DEPENDENCY
                 ${SOURCE_FILE}
+            DEPENDS
+                ${SPIRV_INCLUDE_DEPENDENCIES}
         )
         set(SHADER_HEADERS ${SHADER_HEADERS} ${SPIRV_HEADER_FILE})
     endif()
 endforeach()
 
-foreach(FILEPATH IN ITEMS ${FIDELITYFX_FILES})
+foreach(FILEPATH IN ITEMS ${FIDELITYFX_FILES} ${CMAKE_CURRENT_SOURCE_DIR}/catmull_rom.glsl)
     get_filename_component(FILENAME ${FILEPATH} NAME)
     string(REPLACE "." "_" HEADER_NAME ${FILENAME})
     set(SOURCE_FILE ${FILEPATH})

@@ -97,7 +97,16 @@ enum class ScalingFilter : uint32_t
     Gaussian,
     ScaleForce,
     Fsr,
+    FsrEasu,
+    CatmullRom,
+    CatmullRomFast,
+    ScaleForceFast,
     MaxEnum,
+    // Presentation pipelines only, not persisted as filter choices.
+    CasNearest = 16,
+    CasBilinear,
+    CasCatmullRom,
+    CasCatmullRomFast,
 };
 
 enum class AntiAliasing : uint32_t
