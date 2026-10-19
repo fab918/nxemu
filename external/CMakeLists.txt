@@ -28,8 +28,8 @@ if(APPLE)
     endif()
 endif()
 
-# Keep macOS controller support self-contained in the application bundle.
-if(APPLE AND ENABLE_SDL2 AND NOT TARGET SDL2::SDL2)
+# Build the bundled SDL for desktop platforms without a system SDL package.
+if((APPLE OR WIN32) AND ENABLE_SDL2 AND NOT TARGET SDL2::SDL2)
     set(SDL_SHARED ON CACHE BOOL "Build shared SDL" FORCE)
     set(SDL_STATIC OFF CACHE BOOL "Build static SDL" FORCE)
     set(SDL_TEST OFF CACHE BOOL "Build SDL test library" FORCE)
@@ -80,6 +80,17 @@ if(NOT TARGET Boost::headers)
     add_subdirectory("${_NXEMU_BOOST_ROOT}/libs/core" "${CMAKE_BINARY_DIR}/external/boost/libs/core")
     add_subdirectory("${_NXEMU_BOOST_ROOT}/libs/predef" "${CMAKE_BINARY_DIR}/external/boost/libs/predef")
     add_subdirectory("${_NXEMU_BOOST_ROOT}/libs/context" "${CMAKE_BINARY_DIR}/external/boost/libs/context")
+    if(MSVC AND BOOST_CONTEXT_ASSEMBLER STREQUAL "masm")
+        # Keep Boost's Windows assembly assigned to MASM even when another
+        # dependency also enables the generic ASM language.
+        get_target_property(_nxemu_context_sources boost_context SOURCES)
+        foreach(_nxemu_context_source IN LISTS _nxemu_context_sources)
+            if(_nxemu_context_source MATCHES "[.]asm$")
+                set_source_files_properties("${_NXEMU_BOOST_ROOT}/libs/context/${_nxemu_context_source}"
+                    DIRECTORY "${_NXEMU_BOOST_ROOT}/libs/context" PROPERTIES LANGUAGE ASM_MASM)
+            endif()
+        endforeach()
+    endif()
 endif()
 
 # Oaknut

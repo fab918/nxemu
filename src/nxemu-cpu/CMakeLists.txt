@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(nxemu-cpu LANGUAGES C CXX ASM)
+project(nxemu-cpu LANGUAGES C CXX)
  
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -326,7 +326,6 @@ if(ARCHITECTURE_x86_64)
     target_sources(nxemu-cpu PRIVATE
         dynarmic/common/spin_lock_x64.cpp
         dynarmic/common/x64_disassemble.cpp
-        dynarmic/backend/exception_handler_posix.cpp
         dynarmic/backend/x64/a32_emit_x64.cpp
         dynarmic/backend/x64/a32_emit_x64_memory.cpp
         dynarmic/backend/x64/a32_interface.cpp
@@ -369,6 +368,12 @@ if(ARCHITECTURE_x86_64)
         dynarmic/backend/x64/verbose_debugging_output.h
     )
  
+    if(WIN32)
+        target_sources(nxemu-cpu PRIVATE dynarmic/backend/exception_handler_windows.cpp)
+    else()
+        target_sources(nxemu-cpu PRIVATE dynarmic/backend/exception_handler_posix.cpp)
+    endif()
+
     target_link_libraries(nxemu-cpu PRIVATE Zydis)
 endif()
 

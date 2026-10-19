@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(nxemu-video LANGUAGES C CXX ASM)
+project(nxemu-video LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -34,13 +34,11 @@ target_include_directories(nxemu-video PRIVATE
 target_link_libraries(nxemu-video PRIVATE yuzu_common)
 target_link_libraries(nxemu-video PRIVATE video_core)
 
-if(NOT ANDROID)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_package(PkgConfig REQUIRED)
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        find_package(X11 REQUIRED)
-        pkg_check_modules(WAYLAND_CLIENT wayland-client REQUIRED IMPORTED_TARGET)
-        target_link_libraries(nxemu-video PRIVATE X11::X11 PkgConfig::WAYLAND_CLIENT)
-    endif()
+    find_package(X11 REQUIRED)
+    pkg_check_modules(WAYLAND_CLIENT wayland-client REQUIRED IMPORTED_TARGET)
+    target_link_libraries(nxemu-video PRIVATE X11::X11 PkgConfig::WAYLAND_CLIENT)
 endif()
 
 if(ANDROID)

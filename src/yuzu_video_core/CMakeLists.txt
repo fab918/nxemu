@@ -343,6 +343,12 @@ if (YUZU_USE_BUNDLED_FFMPEG AND NOT (WIN32 OR ANDROID OR APPLE))
     add_dependencies(video_core ffmpeg-build)
 endif()
 
+if(WIN32 AND NOT FFmpeg_LIBRARIES)
+    foreach(_ffmpeg_library avcodec avdevice avfilter avformat avutil swresample swscale)
+        list(APPEND FFmpeg_LIBRARIES "${CMAKE_SOURCE_DIR}/external/ffmpeg/lib/lib${_ffmpeg_library}.lib")
+    endforeach()
+endif()
+
 if(APPLE AND NOT FFmpeg_LIBRARIES)
     if(NOT ARCHITECTURE_arm64)
         message(FATAL_ERROR
@@ -423,7 +429,7 @@ if(ANDROID AND NOT FFmpeg_LIBRARIES)
     endif()
 endif()
 
-target_include_directories(video_core PRIVATE ${FFmpeg_INCLUDE_DIR})
+target_include_directories(video_core SYSTEM PRIVATE ${FFmpeg_INCLUDE_DIR})
 target_link_libraries(video_core PRIVATE ${FFmpeg_LIBRARIES})
 if(APPLE)
     foreach(framework CoreFoundation CoreMedia CoreVideo VideoToolbox)

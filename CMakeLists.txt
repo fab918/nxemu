@@ -17,6 +17,12 @@ endif()
 
 find_package(Threads REQUIRED)
 
+if(WIN32)
+    add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE
+        BOOST_ALL_NO_LIB _CRT_SECURE_NO_WARNINGS)
+    option(ENABLE_SDL2 "Enable SDL game controller input" ON)
+endif()
+
 if(APPLE)
     option(ENABLE_SDL2 "Enable SDL game controller input" ON)
     # Use Boost.Container for overlapping ICL interval lookups on libc++.

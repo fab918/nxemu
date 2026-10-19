@@ -129,6 +129,9 @@ target_link_libraries(nxemu PRIVATE
     ${CMAKE_DL_LIBS}
 )
 nxemu_set_app_output(nxemu)
+if(WIN32)
+    set_target_properties(nxemu PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
 if(NOT APPLE OR NOT NXEMU_MACOS_BUNDLE)
     include(nxemu_setup_environment)
     nxemu_setup_environment(nxemu)
