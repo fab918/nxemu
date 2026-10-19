@@ -389,7 +389,7 @@ GraphicsPipeline::GraphicsPipeline(
     PipelineStatistics* pipeline_statistics, RenderPassCache& render_pass_cache,
     const GraphicsPipelineCacheKey& key_, std::array<vk::ShaderModule, NUM_STAGES> stages,
     const std::array<const Shader::Info*, NUM_STAGES>& infos, bool rasterizes_lines_,
-    std::unique_ptr<VtgPipelineInfo> vtg_info)
+    std::unique_ptr<VtgPipelineInfo> vtg_info, bool urgent_build)
     : key{key_}, device{device_}, texture_cache{texture_cache_}, buffer_cache{buffer_cache_},
       pipeline_cache(pipeline_cache_), scheduler{scheduler_},
       guest_descriptor_queue{guest_descriptor_queue_}, spv_modules{std::move(stages)},
@@ -613,7 +613,8 @@ GraphicsPipeline::GraphicsPipeline(
         }
     }};
     if (worker_thread) {
-        worker_thread->QueueWork(std::move(func));
+        queued_build = std::move(func);
+        worker_thread->QueueWork([this] { BuildIfQueued(); }, urgent_build);
     } else {
         func();
     }
@@ -637,6 +638,14 @@ void GraphicsPipeline::Configure(bool is_indexed) {
 }
 
 // A pipeline can be shared by several keys, so the transition is keyed explicitly.
+void GraphicsPipeline::BuildIfQueued() {
+    // A thread about to wait for this pipeline builds it itself when no compiler took it yet,
+    // instead of waiting behind every pipeline queued before it.
+    if (queued_build && !build_claimed.exchange(true, std::memory_order_acq_rel)) {
+        queued_build();
+    }
+}
+
 void GraphicsPipeline::AddTransition(GraphicsPipeline* transition,
                                      const GraphicsPipelineCacheKey& transition_key) {
     transition_keys.push_back(transition_key);
@@ -1105,6 +1114,7 @@ void GraphicsPipeline::ConfigureVtg(bool is_indexed) {
 
     if (runs && !build_complete.load(std::memory_order_acquire)) {
         scheduler.Record([this](vk::CommandBuffer) {
+            BuildIfQueued();
             std::unique_lock lock{build_mutex};
             build_condvar.wait(lock,
                                [this] { return build_complete.load(std::memory_order_acquire); });
@@ -1365,6 +1375,7 @@ void GraphicsPipeline::ConfigureTransformFeedback(bool is_indexed) {
 
     if (!build_complete.load(std::memory_order_acquire)) {
         scheduler.Record([this](vk::CommandBuffer) {
+            BuildIfQueued();
             std::unique_lock lock{build_mutex};
             build_condvar.wait(lock,
                                [this] { return build_complete.load(std::memory_order_acquire); });
@@ -1535,6 +1546,7 @@ void GraphicsPipeline::ConfigureDraw(const RescalingPushConstant& rescaling,
     if (!build_complete.load(std::memory_order_acquire)) {
         // Completion includes failure, so a failed build cannot strand this worker.
         scheduler.Record([this](vk::CommandBuffer) {
+            BuildIfQueued();
             std::unique_lock lock{build_mutex};
             build_condvar.wait(lock, [this] { return build_complete.load(std::memory_order_acquire); });
         });

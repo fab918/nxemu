@@ -26,7 +26,7 @@ public:
     // This is a metadata backlog, not the number of concurrent Metal compilers.
     // A cold frame can require over 200 small passes. A 64-ticket limit blocked
     // their producer behind native compilation before it could expose the burst.
-    static constexpr size_t MaxPendingBuilds = 256;
+    static constexpr size_t MaxPendingBuilds = 1024;
 
     explicit NativePipelineBuildQueue(size_t num_workers)
         : workers(num_workers, "VkRuntimeNative") {}
@@ -101,6 +101,15 @@ public:
         // releases its slot.
         request->work();
         return true;
+    }
+
+    // Withdraws a request that no worker has started yet. Returns false if a worker took it.
+    bool Cancel(const Handle& request) {
+        if (!request) {
+            return false;
+        }
+        std::scoped_lock lock{requests_mutex};
+        return Remove(critical_requests, request) || Remove(background_requests, request);
     }
 
     void WaitForRequests() {

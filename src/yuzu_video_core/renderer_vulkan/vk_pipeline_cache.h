@@ -120,6 +120,15 @@ public:
 
     [[nodiscard]] GraphicsPipeline* CurrentGraphicsPipeline();
 
+    /// Waits for the pipeline of the current draw when CurrentGraphicsPipeline skipped it only
+    /// because its build had not finished. Returns null otherwise.
+    [[nodiscard]] GraphicsPipeline* WaitForCurrentGraphicsPipeline();
+
+    /// True when the last CurrentGraphicsPipeline skipped a pipeline whose build has not finished
+    [[nodiscard]] bool SkippedUnfinished() const noexcept {
+        return skipped_unfinished;
+    }
+
     [[nodiscard]] ComputePipeline* CurrentComputePipeline();
 
     void LoadDiskResources(u64 title_id, std::stop_token stop_loading,
@@ -127,6 +136,7 @@ public:
 
 private:
     struct PendingGraphicsPipeline {
+        GraphicsPipelineCacheKey key;
         GraphicsEnvironments environments;
         AsyncPipelineBuild<GraphicsPipeline> build;
         NativePipelineBuildQueue::Handle request;
@@ -136,18 +146,25 @@ private:
     bool ShouldWaitForAsyncPipeline() const noexcept;
     bool QueueGraphicsPipeline(const GraphicsPipelineCacheKey& key);
     void FinishGraphicsPipeline(const GraphicsPipelineCacheKey& key);
+    bool WithdrawGraphicsPipeline(const std::shared_ptr<PendingGraphicsPipeline>& job);
     void FinalizeReadyGraphicsPipelines();
     void SerializeGraphicsEnvironments(const GraphicsPipelineCacheKey& key,
                                        GraphicsEnvironments& environments);
 
     [[nodiscard]] GraphicsPipeline* CurrentGraphicsPipelineSlowPath();
 
-    [[nodiscard]] GraphicsPipeline* BuiltPipeline(GraphicsPipeline* pipeline) const noexcept;
+    [[nodiscard]] GraphicsPipeline* BuiltPipeline(GraphicsPipeline* pipeline) noexcept;
 
     /// Clears the constant buffer and texture pool sizes the key's shaders do not depend on
     void NormalizeCbufSizes(GraphicsPipelineCacheKey& key) const;
 
-    std::shared_ptr<GraphicsPipeline> CreateGraphicsPipeline();
+    /// Key of the pending build whose translation tells which sizes the current key keeps
+    [[nodiscard]] static GraphicsPipelineCacheKey WithoutSizes(GraphicsPipelineCacheKey key);
+
+    [[nodiscard]] bool HasUnknownSizes(const GraphicsPipelineCacheKey& key) const;
+
+    /// Builds the pipeline of the current draw. An urgent build goes before every queued one.
+    std::shared_ptr<GraphicsPipeline> CreateGraphicsPipeline(bool urgent = false);
 
     std::unique_ptr<GraphicsPipeline> CreateGraphicsPipeline(
         ShaderPools& pools, const GraphicsPipelineCacheKey& key,
@@ -180,6 +197,9 @@ private:
     TextureCache& texture_cache;
     VideoCore::ShaderNotify& shader_notify;
     bool use_asynchronous_shaders{};
+    bool urgent_graphics_build{};
+    bool skipped_unfinished{};
+    bool wait_for_current_draw{};
     bool large_texture_arrays_in_table{};
     bool use_vulkan_pipeline_cache{};
 
@@ -210,6 +230,10 @@ private:
     DynamicFeatures dynamic_features;
     VideoCommon::GraphicsEnvironment::SnapshotCache snapshot_cache;
     std::unordered_map<GraphicsPipelineCacheKey, std::shared_ptr<PendingGraphicsPipeline>> pending_graphics;
+    // First pending build of each set of shaders whose constant buffer dependencies are unknown,
+    // by its key without constant buffer and texture pool sizes. Translation is what reveals them.
+    std::unordered_map<GraphicsPipelineCacheKey, std::shared_ptr<PendingGraphicsPipeline>>
+        pending_unknown_sizes;
     size_t pending_snapshot_bytes{};
     std::mutex completed_mutex;
     std::vector<GraphicsPipelineCacheKey> completed_graphics;

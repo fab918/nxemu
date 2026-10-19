@@ -242,9 +242,27 @@ void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func) {
 
     query_cache.NotifySegment(true);
 
-    GraphicsPipeline* const pipeline{pipeline_cache.CurrentGraphicsPipeline()};
+    GraphicsPipeline* pipeline{pipeline_cache.CurrentGraphicsPipeline()};
     if (!pipeline) {
-        return;
+        if (!pipeline_cache.SkippedUnfinished()) {
+            return;
+        }
+        // Skipping a draw whose pipeline is still compiling only hides it until a later frame
+        // draws it again. A target never drawn in an earlier frame may be drawn only this once
+        // (a texture the game renders once and keeps), so the draw waits for its pipeline.
+        bool drawn_before{};
+        {
+            std::scoped_lock lock{texture_cache.mutex};
+            texture_cache.UpdateRenderTargets(false);
+            drawn_before = texture_cache.RenderTargetsDrawnBefore();
+        }
+        if (drawn_before) {
+            return;
+        }
+        pipeline = pipeline_cache.WaitForCurrentGraphicsPipeline();
+        if (!pipeline) {
+            return;
+        }
     }
     std::scoped_lock lock{buffer_cache.mutex, texture_cache.mutex};
     // update engine as channel may be different.
