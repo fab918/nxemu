@@ -170,7 +170,9 @@ if(ARCHITECTURE_arm64)
     )
 endif()
 
-set_source_files_properties(stb.cpp PROPERTIES COMPILE_OPTIONS "-Wno-implicit-fallthrough;-Wno-missing-declarations;-Wno-missing-field-initializers")
+if(NOT MSVC)
+    set_source_files_properties(stb.cpp PROPERTIES COMPILE_OPTIONS "-Wno-implicit-fallthrough;-Wno-missing-declarations;-Wno-missing-field-initializers")
+endif()
 
 set_source_files_properties(zbic_compression.cpp PROPERTIES
     INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/external/zbic/src"
