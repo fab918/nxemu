@@ -60,7 +60,8 @@ public:
     void HandleEvent(const SDL_Event & event);
     // Draws a frame and hands it to the video module, which shows the game
     // through the interface in `gameArea`, or no game when it is null.
-    void Render(const PixelRect * gameArea);
+    // Returns false when nothing could be drawn.
+    bool Render(const PixelRect * gameArea);
     // Paces event/input updates independently of interface redraws.
     void PaceFrame();
     void SyncNativeState();

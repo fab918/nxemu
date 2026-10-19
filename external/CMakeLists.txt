@@ -303,7 +303,7 @@ if(APPLE)
 
         ExternalProject_Add(nxemu_moltenvk
             GIT_REPOSITORY "https://github.com/fab918/MoltenVK.git"
-            GIT_TAG "d82e7254152dfa697655ed464532fb45f4f70eb1"
+            GIT_TAG "03cd2c52c8fc34df1175b9530bd0f4a7d3058380"
             GIT_SHALLOW FALSE
             UPDATE_COMMAND ""
             SOURCE_DIR "${_nxemu_moltenvk_source}"

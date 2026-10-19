@@ -74,8 +74,9 @@ public:
         case VK_SUCCESS:
             return;
         case VK_ERROR_DEVICE_LOST:
+            // The queries will never finish, so their results stay empty.
             device.ReportLoss();
-            [[fallthrough]];
+            return;
         default:
             throw vk::Exception(query_result);
         }
