@@ -802,16 +802,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             LOG_ERROR(Render_Vulkan, "Cached graphics shader environment count mismatch");
             return;
         }
-        for (size_t stage = 0; stage < key.cbuf_sizes.size(); ++stage) {
-            const u32 mask = cbuf_size_dependencies.Mask(key.unique_hashes[stage + 1]) |
-                (stage == 0 ? cbuf_size_dependencies.Mask(key.unique_hashes[0]) : 0);
-            CbufSizeDependencies::Normalize(key.cbuf_sizes[stage], mask);
-        }
-        if (std::ranges::none_of(key.unique_hashes, [this](u64 hash) {
-                return (cbuf_size_dependencies.Mask(hash) & VideoCommon::TEXTURE_POOL_SIZE_BIT) != 0;
-            })) {
-            key.texture_pool = {};
-        }
+        NormalizeCbufSizes(key);
         if (!loaded_graphics_keys.insert(key).second) {
             return;
         }
@@ -898,11 +889,35 @@ GraphicsPipeline* PipelineCache::CurrentGraphicsPipelineSlowPath() {
     if (!pipeline) {
         return nullptr;
     }
+    if (is_new) {
+        // The key of shaders seen for the first time holds every constant buffer size, since only
+        // translation tells which ones they depend on. Later draws use the narrower key, which
+        // must find this pipeline instead of building it again.
+        GraphicsPipelineCacheKey normalized_key{graphics_key};
+        NormalizeCbufSizes(normalized_key);
+        if (normalized_key != graphics_key &&
+            graphics_cache.try_emplace(normalized_key, pipeline).second) {
+            pipeline->SetSharedKey(normalized_key);
+        }
+    }
     if (current_pipeline) {
         current_pipeline->AddTransition(pipeline.get(), graphics_key);
     }
     current_pipeline = pipeline.get();
     return BuiltPipeline(current_pipeline);
+}
+
+void PipelineCache::NormalizeCbufSizes(GraphicsPipelineCacheKey& key) const {
+    for (size_t stage = 0; stage < key.cbuf_sizes.size(); ++stage) {
+        const u32 mask = cbuf_size_dependencies.Mask(key.unique_hashes[stage + 1]) |
+            (stage == 0 ? cbuf_size_dependencies.Mask(key.unique_hashes[0]) : 0);
+        CbufSizeDependencies::Normalize(key.cbuf_sizes[stage], mask);
+    }
+    if (std::ranges::none_of(key.unique_hashes, [this](u64 hash) {
+            return (cbuf_size_dependencies.Mask(hash) & VideoCommon::TEXTURE_POOL_SIZE_BIT) != 0;
+        })) {
+        key.texture_pool = {};
+    }
 }
 
 GraphicsPipeline* PipelineCache::BuiltPipeline(GraphicsPipeline* pipeline) const noexcept {
