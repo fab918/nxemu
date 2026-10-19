@@ -242,6 +242,7 @@ void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func) {
 
     query_cache.NotifySegment(true);
 
+    ++frame_draws;
     GraphicsPipeline* pipeline{pipeline_cache.CurrentGraphicsPipeline()};
     if (!pipeline) {
         if (!pipeline_cache.SkippedUnfinished()) {
@@ -257,6 +258,7 @@ void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func) {
             drawn_before = texture_cache.RenderTargetsDrawnBefore();
         }
         if (drawn_before) {
+            ++frame_skipped_draws;
             return;
         }
         pipeline = pipeline_cache.WaitForCurrentGraphicsPipeline();
@@ -1011,6 +1013,16 @@ void RasterizerVulkan::FlushCommands() {
     }
     draw_counter = 0;
     scheduler.Flush();
+}
+
+RasterizerVulkan::FrameDraws RasterizerVulkan::TakeFrameDraws() {
+    bool new_render_targets{};
+    {
+        std::scoped_lock lock{texture_cache.mutex};
+        new_render_targets = texture_cache.TakeNewRenderTargets();
+    }
+    return {std::exchange(frame_draws, 0), std::exchange(frame_skipped_draws, 0),
+            new_render_targets};
 }
 
 void RasterizerVulkan::TickFrame() {

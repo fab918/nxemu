@@ -157,6 +157,7 @@ private:
 
     /// Clears the constant buffer and texture pool sizes the key's shaders do not depend on
     void NormalizeCbufSizes(GraphicsPipelineCacheKey& key) const;
+    [[nodiscard]] GraphicsPipelineCacheKey Normalized(GraphicsPipelineCacheKey key) const;
 
     /// Key of the pending build whose translation tells which sizes the current key keeps
     [[nodiscard]] static GraphicsPipelineCacheKey WithoutSizes(GraphicsPipelineCacheKey key);

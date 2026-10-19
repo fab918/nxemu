@@ -753,7 +753,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         CbufSizeDependencies::Normalize(key.cbuf_sizes,
                                        cbuf_size_dependencies.Mask(key.unique_hash));
         if (!loaded_compute_keys.insert(key).second) {
-            return;
+            return false;
         }
 
         workers.QueueWork([this, key, env_ = std::move(env), &state, &callback]() mutable {
@@ -769,6 +769,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             }
         });
         ++state.total;
+        return true;
     }};
     const auto queue_graphics{[&](const GraphicsPipelineCacheKey& key,
                                   std::vector<FileEnvironment> envs) {
@@ -809,18 +810,18 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             if (hash != 0) {
                 if (env_index >= envs.size()) {
                     LOG_ERROR(Render_Vulkan, "Cached graphics shader environment count mismatch");
-                    return;
+                    return false;
                 }
                 cbuf_size_dependencies.Observe(hash, envs[env_index++].CbufSizeMask());
             }
         }
         if (env_index != envs.size()) {
             LOG_ERROR(Render_Vulkan, "Cached graphics shader environment count mismatch");
-            return;
+            return false;
         }
         NormalizeCbufSizes(key);
         if (!loaded_graphics_keys.insert(key).second) {
-            return;
+            return false;
         }
 
         if ((key.state.extended_dynamic_state != 0) !=
@@ -837,7 +838,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             (key.state.vertex_stride_workaround != 0) !=
                 (dynamic_features.has_vertex_stride_workaround &&
                  !dynamic_features.has_dynamic_vertex_input)) {
-            return;
+            return true;
         }
         using EngineHint = Tegra::Engines::Maxwell3D::EngineHint;
         if (key.state.app_stage != EngineHint::OnHLEMacro) {
@@ -846,9 +847,10 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                                         [](const auto& env) { return env.HasHLEMacroState(); })) {
             hle_unreplaced_keys.insert(key);
             hle_unreplaced.push_back({key, std::move(envs)});
-            return;
+            return true;
         }
         queue_graphics(key, std::move(envs));
+        return true;
     }};
     VideoCommon::LoadPipelines(stop_loading, pipeline_cache_filename, CACHE_VERSION, load_compute,
                                load_graphics);
@@ -1110,13 +1112,15 @@ GraphicsPipeline* PipelineCache::CurrentGraphicsPipelineSlowPath() {
             FinishGraphicsPipeline(graphics_key);
         }
     }
-    if (use_asynchronous_shaders && HasUnknownSizes(graphics_key) &&
+    if (use_asynchronous_shaders && !pending_unknown_sizes.empty() &&
         !graphics_cache.contains(graphics_key)) {
         // Until the first build of these shaders is translated, every draw specializes on all
         // constant buffer sizes, so draws that differ only in unused sizes would each queue a build
-        // of the same pipeline. They wait for that first build instead.
+        // of the same pipeline. They wait for that first build instead. So do draws whose key
+        // became narrower while it builds, after another pipeline translated the same shaders.
         if (const auto it = pending_unknown_sizes.find(WithoutSizes(graphics_key));
-            it != pending_unknown_sizes.end()) {
+            it != pending_unknown_sizes.end() &&
+            (HasUnknownSizes(graphics_key) || Normalized(it->second->key) == graphics_key)) {
             const auto job = it->second;
             bool withdrawn{};
             if (!job->build.IsComplete() && ShouldWaitForAsyncPipeline()) {
@@ -1191,6 +1195,11 @@ GraphicsPipelineCacheKey PipelineCache::WithoutSizes(GraphicsPipelineCacheKey ke
 bool PipelineCache::HasUnknownSizes(const GraphicsPipelineCacheKey& key) const {
     return std::ranges::any_of(key.unique_hashes,
                                [this](u64 hash) { return !cbuf_size_dependencies.IsKnown(hash); });
+}
+
+GraphicsPipelineCacheKey PipelineCache::Normalized(GraphicsPipelineCacheKey key) const {
+    NormalizeCbufSizes(key);
+    return key;
 }
 
 void PipelineCache::NormalizeCbufSizes(GraphicsPipelineCacheKey& key) const {

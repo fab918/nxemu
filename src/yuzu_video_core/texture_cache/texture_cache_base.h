@@ -210,6 +210,11 @@ public:
     /// skipped now is redrawn by a later frame. UpdateRenderTargets should be called before this
     [[nodiscard]] bool RenderTargetsDrawnBefore() const;
 
+    /// True when an image was drawn to for the first time since the previous call
+    [[nodiscard]] bool TakeNewRenderTargets() {
+        return std::exchange(has_new_render_targets, false);
+    }
+
     /// Find a framebuffer with the currently bound render targets
     /// UpdateRenderTargets should be called before this
     Framebuffer* GetFramebuffer();
@@ -485,6 +490,7 @@ private:
     DAddr virtual_invalid_space{};
 
     bool has_deleted_images = false;
+    bool has_new_render_targets = false;
     bool is_rescaling = false;
 
     /// Pass in which each descriptor index was last visited by FillImageViews, and its view

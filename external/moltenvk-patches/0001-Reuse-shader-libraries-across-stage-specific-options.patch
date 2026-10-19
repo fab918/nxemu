@@ -1,0 +1,51 @@
+From 7b2623f6aa124afa6ffd909ed146f4ee218295e9 Mon Sep 17 00:00:00 2001
+From: Bruno <mrfabzzz@gmail.com>
+Date: Mon, 19 Oct 2026 18:23:44 +0200
+Subject: [PATCH 1/2] Reuse shader libraries across stage-specific options
+
+Pipelines differing only in options that a stage ignores share its compiled library.
+---
+ .../SPIRVToMSLConverter.cpp                   | 25 ++++++++++++++++++-
+ 1 file changed, 24 insertions(+), 1 deletion(-)
+
+diff --git a/MoltenVKShaderConverter/MoltenVKShaderConverter/SPIRVToMSLConverter.cpp b/MoltenVKShaderConverter/MoltenVKShaderConverter/SPIRVToMSLConverter.cpp
+index 7a6272ca..b2241dbb 100644
+--- a/MoltenVKShaderConverter/MoltenVKShaderConverter/SPIRVToMSLConverter.cpp
++++ b/MoltenVKShaderConverter/MoltenVKShaderConverter/SPIRVToMSLConverter.cpp
+@@ -46,9 +46,32 @@ bool containsMatching(const vector<T>& vec, const T& val) {
+     return false;
+ }
+ 
++// Pipelines set some options for a single stage, but every stage of the pipeline gets them.
++// Clears the ones the entry point stage ignores, so that a shader used in pipelines that differ
++// only in them reuses the same library instead of compiling the same source again.
++static void clearIgnoredMSLOptions(CompilerMSL::Options& options, ExecutionModel stage) {
++	if (stage == ExecutionModelVertex) {
++		options.enable_frag_output_mask = 0;
++		options.enable_frag_depth_builtin = false;
++		options.enable_frag_stencil_ref_builtin = false;
++	} else if (stage == ExecutionModelFragment) {
++		options.shader_output_buffer_index = 0;
++		options.shader_index_buffer_index = 0;
++		options.draw_id_buffer_index = 0;
++		options.enable_point_size_builtin = false;
++		options.enable_point_size_default = false;
++	}
++}
++
+ MVK_PUBLIC_SYMBOL bool SPIRVToMSLConversionOptions::matches(const SPIRVToMSLConversionOptions& other) const {
+-	if (memcmp(&mslOptions, &other.mslOptions, sizeof(mslOptions)) != 0) { return false; }
+ 	if (entryPointStage != other.entryPointStage) { return false; }
++	// Byte copies keep the padding the constructor cleared, which memcmp compares too.
++	CompilerMSL::Options lhs, rhs;
++	memcpy(&lhs, &mslOptions, sizeof(lhs));
++	memcpy(&rhs, &other.mslOptions, sizeof(rhs));
++	clearIgnoredMSLOptions(lhs, entryPointStage);
++	clearIgnoredMSLOptions(rhs, entryPointStage);
++	if (memcmp(&lhs, &rhs, sizeof(lhs)) != 0) { return false; }
+ 	if (entryPointName != other.entryPointName) { return false; }
+ 	if (tessPatchKind != other.tessPatchKind) { return false; }
+ 	if (numTessControlPoints != other.numTessControlPoints) { return false; }
+-- 
+2.55.0
+

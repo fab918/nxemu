@@ -670,7 +670,10 @@ void TextureCache<P>::MarkRenderTarget(ImageViewId view_id) {
     const ImageViewBase& view = slot_image_views[view_id];
     if (!view.IsBuffer()) {
         Image& image = slot_images[view.image_id];
-        image.first_render_frame = std::min(image.first_render_frame, frame_tick);
+        if (image.first_render_frame > frame_tick) {
+            image.first_render_frame = frame_tick;
+            has_new_render_targets = true;
+        }
     }
 }
 
