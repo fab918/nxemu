@@ -479,6 +479,11 @@ private:
 
     bool has_deleted_images = false;
     bool is_rescaling = false;
+
+    /// Pass in which each descriptor index was last visited by FillImageViews, and its view
+    std::vector<u32> visited_pass;
+    std::vector<ImageViewId> visited_view_ids;
+    u32 current_visit_pass = 0;
     u64 total_used_memory = 0;
     u64 minimum_memory;
     u64 expected_memory;

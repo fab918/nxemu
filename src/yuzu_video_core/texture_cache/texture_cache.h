@@ -381,29 +381,31 @@ void TextureCache<P>::CheckFeedbackLoop(std::span<const ImageViewInOut> views) {
     }
 
     const bool requires_barrier = [&] {
+        std::array<ImageId, NUM_RT + 1> target_images;
+        size_t num_targets = 0;
+        for (const auto& ct_view_id : render_targets.color_buffer_ids) {
+            if (ct_view_id) {
+                target_images[num_targets++] = slot_image_views[ct_view_id].image_id;
+            }
+        }
+        if (render_targets.depth_buffer_id) {
+            target_images[num_targets++] = slot_image_views[render_targets.depth_buffer_id].image_id;
+        }
+        if (num_targets == 0) {
+            return false;
+        }
+        const std::span targets{target_images.data(), num_targets};
+        // Large bindless arrays repeat their views, often back to back
+        ImageViewId last_checked{};
         for (const auto& view : views) {
             // A whole texture table usually holds the render targets too
-            if (!view.id || view.is_table) {
+            if (!view.id || view.is_table || view.id == last_checked) {
                 continue;
             }
-            auto& image_view = slot_image_views[view.id];
-
-            // Check color targets
-            for (const auto& ct_view_id : render_targets.color_buffer_ids) {
-                if (ct_view_id) {
-                    auto& ct_view = slot_image_views[ct_view_id];
-                    if (image_view.image_id == ct_view.image_id) {
-                        return true;
-                    }
-                }
-            }
-
-            // Check zeta target
-            if (render_targets.depth_buffer_id) {
-                auto& zt_view = slot_image_views[render_targets.depth_buffer_id];
-                if (image_view.image_id == zt_view.image_id) {
-                    return true;
-                }
+            last_checked = view.id;
+            const ImageId image_id = slot_image_views[view.id].image_id;
+            if (std::ranges::find(targets, image_id) != targets.end()) {
+                return true;
             }
         }
 
@@ -688,17 +690,40 @@ template <bool has_blacklists>
 void TextureCache<P>::FillImageViews(DescriptorTable<TICEntry>& table,
                                      std::span<ImageViewId> cached_image_view_ids,
                                      std::span<ImageViewInOut> views) {
+    // Large bindless arrays repeat the same few handles. Within a pass, a later visit of an
+    // index would read the same descriptor and find the same view, so it reuses the result.
+    // Nothing is kept across passes: guest memory may change between them.
+    const bool skip_repeats = views.size() >= 64;
+    if (skip_repeats && visited_pass.size() <= table.Limit()) {
+        visited_pass.resize(size_t{table.Limit()} + 1, 0);
+        visited_view_ids.resize(visited_pass.size());
+    }
     bool has_blacklisted = false;
     do {
         has_deleted_images = false;
         if constexpr (has_blacklists) {
             has_blacklisted = false;
         }
+        if (skip_repeats && ++current_visit_pass == 0) {
+            std::ranges::fill(visited_pass, 0);
+            current_visit_pass = 1;
+        }
         static const bool batch = std::getenv("NXEMU_DISABLE_DESCRIPTOR_READ_BATCH") == nullptr;
         VisitDescriptorRuns<TICEntry>(views, table.Limit(), batch,
             [&](u32 first, std::span<TICEntry> descriptors) { table.ReadRange(first, descriptors); },
             [&](ImageViewInOut& view, const TICEntry* snapshot) {
-                view.id = VisitImageView(table, cached_image_view_ids, view.index, snapshot);
+                if (skip_repeats && view.index <= table.Limit()) {
+                    u32& pass = visited_pass[view.index];
+                    ImageViewId& visited_id = visited_view_ids[view.index];
+                    if (pass != current_visit_pass) {
+                        pass = current_visit_pass;
+                        visited_id =
+                            VisitImageView(table, cached_image_view_ids, view.index, snapshot);
+                    }
+                    view.id = visited_id;
+                } else {
+                    view.id = VisitImageView(table, cached_image_view_ids, view.index, snapshot);
+                }
                 if constexpr (has_blacklists) {
                     if (view.blacklist && view.id != NULL_IMAGE_VIEW_ID) {
                         const ImageViewBase& image_view{slot_image_views[view.id]};
