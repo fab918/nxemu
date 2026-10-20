@@ -1,6 +1,13 @@
 // SPDX-FileCopyrightText: Copyright 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
+#include <cstring>
+#include <iterator>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 #include "yuzu_common/scope_exit.h"
 #include "yuzu_common/settings.h"
 #include "core/core.h"
@@ -94,6 +101,35 @@ void ClearBackingRegion(Core::System & system, KPhysicalAddress addr, u64 size, 
 {
     system.DeviceMemory().buffer.ClearBackingRegion(addr.GetValue() - Core::DramMemoryMap::Base,
                                                     size, fill_value);
+}
+
+// Guest pages per host page: 4 on 16 KiB hosts, 1 where host and guest pages match.
+size_t GuestPagesPerHostPage()
+{
+#ifdef _WIN32
+    return 1;
+#else
+    static const size_t ratio = std::max<size_t>(1, static_cast<size_t>(sysconf(_SC_PAGESIZE)) / PageSize);
+    return ratio;
+#endif
+}
+
+void CopyPageGroupToPhysical(Core::System & system, KPhysicalAddress dst, const KPageGroup & pg)
+{
+    for (const auto & block : pg)
+    {
+        std::memcpy(system.DeviceMemory().GetPointer<u8>(dst), system.DeviceMemory().GetPointer<u8>(block.GetAddress()), block.GetSize());
+        dst += block.GetSize();
+    }
+}
+
+void CopyPhysicalToPageGroup(Core::System & system, const KPageGroup & pg, KPhysicalAddress src)
+{
+    for (const auto & block : pg)
+    {
+        std::memcpy(system.DeviceMemory().GetPointer<u8>(block.GetAddress()), system.DeviceMemory().GetPointer<u8>(src), block.GetSize());
+        src += block.GetSize();
+    }
 }
 
 template <typename AddressType>
@@ -486,6 +522,12 @@ void KPageTableBase::Finalize() {
         KScopedLightLock lk(m_general_lock);
         m_memory_block_manager.Finalize(m_memory_block_slab_manager, std::move(BlockCallback));
     }
+
+    // Release the pages of host-aligned stacks; their mappings were closed with the blocks above.
+    for (const auto& [address, alias] : m_host_aligned_aliases) {
+        m_kernel.MemoryManager().Close(alias.block, alias.block_pages);
+    }
+    m_host_aligned_aliases.clear();
 
     // Free any unsafe mapped memory.
     if (m_mapped_unsafe_physical_memory) {
@@ -1010,6 +1052,33 @@ Result KPageTableBase::QueryMappingImpl(KProcessAddress* out, KPhysicalAddress a
 
 Result KPageTableBase::MapMemory(KProcessAddress dst_address, KProcessAddress src_address,
                                  size_t size) {
+    // On hosts with pages larger than the guest's, the stack only lands on whole host pages if its
+    // physical pages share its offset within a host page, which the heap source rarely does. Give
+    // it its own pages, covering the host pages it touches, so it can be mapped directly. The
+    // source is locked and inaccessible while the alias exists, so the data is copied on map and
+    // copied back on unmap. If the allocation fails, the stack aliases the source as before.
+    const size_t host_ratio = GuestPagesPerHostPage();
+    const size_t host_page_size = host_ratio * PageSize;
+    KProcessAddress block_address = 0;
+    size_t block_pages = 0;
+    KPhysicalAddress block = 0;
+    bool keep_block = false;
+    if (host_ratio > 1 && size != 0) {
+        block_address = Common::AlignDown(dst_address.GetValue(), host_page_size);
+        block_pages = (Common::AlignUp(dst_address.GetValue() + size, host_page_size) -
+                       block_address.GetValue()) /
+                      PageSize;
+        block = m_kernel.MemoryManager().AllocateAndOpenContinuous(
+            block_pages, host_ratio,
+            KMemoryManager::EncodeOption(KMemoryManager::Pool::System,
+                                         KMemoryManager::Direction::FromBack));
+    }
+    SCOPE_EXIT {
+        if (block != 0 && !keep_block) {
+            m_kernel.MemoryManager().Close(block, block_pages);
+        }
+    };
+
     // Lock the table.
     KScopedLightLock lk(m_general_lock);
 
@@ -1054,6 +1123,17 @@ Result KPageTableBase::MapMemory(KProcessAddress dst_address, KProcessAddress sr
         // Create the page group representing the source.
         R_TRY(this->MakePageGroup(pg, src_address, num_pages));
 
+        // Use the host-aligned pages unless the source is already one block at the right offset.
+        const KPhysicalAddress stack_phys = block + (dst_address - block_address);
+        const bool source_aligned =
+            pg.begin() != pg.end() && std::next(pg.begin()) == pg.end() &&
+            ((pg.begin()->GetAddress().GetValue() - dst_address.GetValue()) % host_page_size) == 0;
+        const bool use_block = block != 0 && !source_aligned;
+        KPageGroup block_pg(m_kernel, m_block_info_manager);
+        if (use_block) {
+            R_TRY(block_pg.AddBlock(stack_phys, num_pages));
+        }
+
         // We're going to perform an update, so create a helper.
         KScopedPageTableUpdater updater(this);
 
@@ -1075,11 +1155,18 @@ Result KPageTableBase::MapMemory(KProcessAddress dst_address, KProcessAddress sr
                                    unprotect_properties, OperationType::ChangePermissions, true));
         };
 
+        // Fill the host-aligned pages: the stack gets the source data, the rest of the host pages
+        // it touches is cleared.
+        if (use_block) {
+            ClearBackingRegion(m_system, block, block_pages * PageSize, 0);
+            CopyPageGroupToPhysical(m_system, stack_phys, pg);
+        }
+
         // Map the alias pages.
         const KPageProperties dst_map_properties = {KMemoryPermission::UserReadWrite, false, false,
                                                     DisableMergeAttribute::DisableHead};
-        R_TRY(this->MapPageGroupImpl(updater.GetPageList(), dst_address, pg, dst_map_properties,
-                                     false));
+        R_TRY(this->MapPageGroupImpl(updater.GetPageList(), dst_address, use_block ? block_pg : pg,
+                                     dst_map_properties, false));
 
         // Apply the memory block updates.
         m_memory_block_manager.Update(std::addressof(src_allocator), src_address, num_pages,
@@ -1090,6 +1177,12 @@ Result KPageTableBase::MapMemory(KProcessAddress dst_address, KProcessAddress sr
             std::addressof(dst_allocator), dst_address, num_pages, KMemoryState::Stack,
             KMemoryPermission::UserReadWrite, KMemoryAttribute::None,
             KMemoryBlockDisableMergeAttribute::Normal, KMemoryBlockDisableMergeAttribute::None);
+
+        if (use_block) {
+            m_host_aligned_aliases[dst_address.GetValue()] = {src_address, size, block,
+                                                               block_pages, stack_phys};
+            keep_block = true;
+        }
     }
 
     R_SUCCEED();
@@ -1142,8 +1235,23 @@ Result KPageTableBase::UnmapMemory(KProcessAddress dst_address, KProcessAddress 
         // Create the page group representing the destination.
         R_TRY(this->MakePageGroup(pg, dst_address, num_pages));
 
-        // Ensure the page group is the valid for the source.
-        R_UNLESS(this->IsValidPageGroup(pg, src_address, num_pages), ResultInvalidMemoryRegion);
+        // A host-aligned stack has its own pages: check them, and get the source pages to copy
+        // the stack back into. Otherwise the stack aliases the source pages.
+        const auto aligned_alias = m_host_aligned_aliases.find(dst_address.GetValue());
+        const bool is_aligned_alias = aligned_alias != m_host_aligned_aliases.end() &&
+                                      aligned_alias->second.src_address == src_address &&
+                                      aligned_alias->second.size == size;
+        KPageGroup src_pg(m_kernel, m_block_info_manager);
+        if (is_aligned_alias) {
+            KPageGroup expected(m_kernel, m_block_info_manager);
+            R_TRY(expected.AddBlock(aligned_alias->second.stack_phys, num_pages));
+            R_UNLESS(pg.IsEquivalentTo(expected), ResultInvalidMemoryRegion);
+            R_TRY(this->MakePageGroup(src_pg, src_address, num_pages));
+        } else {
+            // Ensure the page group is the valid for the source.
+            R_UNLESS(this->IsValidPageGroup(pg, src_address, num_pages),
+                     ResultInvalidMemoryRegion);
+        }
 
         // We're going to perform an update, so create a helper.
         KScopedPageTableUpdater updater(this);
@@ -1158,6 +1266,11 @@ Result KPageTableBase::UnmapMemory(KProcessAddress dst_address, KProcessAddress 
         ON_RESULT_FAILURE {
             this->RemapPageGroup(updater.GetPageList(), dst_address, size, pg);
         };
+
+        // The stack is no longer reachable by the guest: copy it back to the source.
+        if (is_aligned_alias) {
+            CopyPhysicalToPageGroup(m_system, src_pg, aligned_alias->second.stack_phys);
+        }
 
         // Try to set the permissions for the source pages back to what they should be.
         const KPageProperties src_properties = {KMemoryPermission::UserReadWrite, false, false,
@@ -1174,6 +1287,13 @@ Result KPageTableBase::UnmapMemory(KProcessAddress dst_address, KProcessAddress 
             std::addressof(dst_allocator), dst_address, num_pages, KMemoryState::None,
             KMemoryPermission::None, KMemoryAttribute::None,
             KMemoryBlockDisableMergeAttribute::None, KMemoryBlockDisableMergeAttribute::Normal);
+
+        // Release the host-aligned pages.
+        if (is_aligned_alias) {
+            m_kernel.MemoryManager().Close(aligned_alias->second.block,
+                                           aligned_alias->second.block_pages);
+            m_host_aligned_aliases.erase(aligned_alias);
+        }
     }
 
     R_SUCCEED();

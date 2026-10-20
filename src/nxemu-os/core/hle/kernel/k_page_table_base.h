@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <map>
 #include <memory>
 
 #include "yuzu_common/common_funcs.h"
@@ -208,6 +209,17 @@ private:
     size_t m_mapped_unsafe_physical_memory{};
     size_t m_mapped_insecure_memory{};
     size_t m_mapped_ipc_server_memory{};
+
+    // Stack aliases (svcMapMemory) given their own pages, aligned like the guest address on
+    // host pages larger than the guest page, so they can be mapped directly. Keyed by stack address.
+    struct HostAlignedAlias {
+        KProcessAddress src_address;
+        size_t size;
+        KPhysicalAddress block;     // whole host pages covering the stack, opened once
+        size_t block_pages;
+        KPhysicalAddress stack_phys; // first page of the stack inside block
+    };
+    std::map<u64, HostAlignedAlias> m_host_aligned_aliases;
     mutable KLightLock m_general_lock;
     mutable KLightLock m_map_physical_memory_lock;
     KLightLock m_device_map_lock;
