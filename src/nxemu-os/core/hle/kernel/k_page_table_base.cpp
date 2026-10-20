@@ -4,9 +4,6 @@
 #include <algorithm>
 #include <cstring>
 #include <iterator>
-#ifndef _WIN32
-#include <unistd.h>
-#endif
 
 #include "yuzu_common/scope_exit.h"
 #include "yuzu_common/settings.h"
@@ -101,17 +98,6 @@ void ClearBackingRegion(Core::System & system, KPhysicalAddress addr, u64 size, 
 {
     system.DeviceMemory().buffer.ClearBackingRegion(addr.GetValue() - Core::DramMemoryMap::Base,
                                                     size, fill_value);
-}
-
-// Guest pages per host page: 4 on 16 KiB hosts, 1 where host and guest pages match.
-size_t GuestPagesPerHostPage()
-{
-#ifdef _WIN32
-    return 1;
-#else
-    static const size_t ratio = std::max<size_t>(1, static_cast<size_t>(sysconf(_SC_PAGESIZE)) / PageSize);
-    return ratio;
-#endif
 }
 
 void CopyPageGroupToPhysical(Core::System & system, KPhysicalAddress dst, const KPageGroup & pg)
@@ -1057,7 +1043,7 @@ Result KPageTableBase::MapMemory(KProcessAddress dst_address, KProcessAddress sr
     // it its own pages, covering the host pages it touches, so it can be mapped directly. The
     // source is locked and inaccessible while the alias exists, so the data is copied on map and
     // copied back on unmap. If the allocation fails, the stack aliases the source as before.
-    const size_t host_ratio = GuestPagesPerHostPage();
+    const size_t host_ratio = KMemoryManager::GuestPagesPerHostPage();
     const size_t host_page_size = host_ratio * PageSize;
     KProcessAddress block_address = 0;
     size_t block_pages = 0;
@@ -1123,12 +1109,15 @@ Result KPageTableBase::MapMemory(KProcessAddress dst_address, KProcessAddress sr
         // Create the page group representing the source.
         R_TRY(this->MakePageGroup(pg, src_address, num_pages));
 
-        // Use the host-aligned pages unless the source is already one block at the right offset.
+        // Use the host-aligned pages unless the source is already one block at the right offset
+        // covering whole host pages: otherwise the rest of those host pages belongs to others.
         const KPhysicalAddress stack_phys = block + (dst_address - block_address);
         const bool source_aligned =
             pg.begin() != pg.end() && std::next(pg.begin()) == pg.end() &&
             ((pg.begin()->GetAddress().GetValue() - dst_address.GetValue()) % host_page_size) == 0;
-        const bool use_block = block != 0 && !source_aligned;
+        const bool whole_host_pages = Common::IsAligned(dst_address.GetValue(), host_page_size) &&
+                                      Common::IsAligned(size, host_page_size);
+        const bool use_block = block != 0 && !(source_aligned && whole_host_pages);
         KPageGroup block_pg(m_kernel, m_block_info_manager);
         if (use_block) {
             R_TRY(block_pg.AddBlock(stack_phys, num_pages));
