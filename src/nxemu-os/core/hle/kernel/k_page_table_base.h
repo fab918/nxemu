@@ -4,6 +4,7 @@
 #pragma once
 
 #include <map>
+#include <unordered_map>
 #include <memory>
 
 #include "yuzu_common/common_funcs.h"
@@ -108,6 +109,7 @@ protected:
 
         MapFirstGroupPhysical = 65000,
         UnmapPhysical = 65001,
+        MapGroupPhysical = 65002,
     };
 
     static constexpr size_t MaxPhysicalMapAlignment = 1_GiB;
@@ -220,6 +222,11 @@ private:
         KPhysicalAddress stack_phys; // first page of the stack inside block
     };
     std::map<u64, HostAlignedAlias> m_host_aligned_aliases;
+
+    // Physical memory mapped by MapPhysicalMemory on host pages larger than the guest page: each
+    // host page it touches gets its own block of one host page, opened once, so the pages map
+    // directly and the guest pages left free on it belong to this process. Keyed by host page.
+    std::unordered_map<u64, KPhysicalAddress> m_host_physical_blocks;
     mutable KLightLock m_general_lock;
     mutable KLightLock m_map_physical_memory_lock;
     KLightLock m_device_map_lock;
@@ -459,6 +466,10 @@ private:
 
     void RemapPageGroup(PageLinkedList* page_list, KProcessAddress address, size_t size,
                         const KPageGroup& pg);
+
+    Result MapHostPhysicalPages(PageLinkedList* page_list, KProcessAddress address,
+                                size_t num_pages, const KPageProperties properties);
+    void ReleaseFreeHostPhysicalBlocks(KProcessAddress address, size_t size);
 
     Result MakePageGroup(KPageGroup& pg, KProcessAddress addr, size_t num_pages);
     bool IsValidPageGroup(const KPageGroup& pg, KProcessAddress addr, size_t num_pages);

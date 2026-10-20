@@ -514,6 +514,10 @@ void KPageTableBase::Finalize() {
         m_kernel.MemoryManager().Close(alias.block, alias.block_pages);
     }
     m_host_aligned_aliases.clear();
+    for (const auto& [address, block] : m_host_physical_blocks) {
+        m_kernel.MemoryManager().Close(block, KMemoryManager::GuestPagesPerHostPage());
+    }
+    m_host_physical_blocks.clear();
 
     // Free any unsafe mapped memory.
     if (m_mapped_unsafe_physical_memory) {
@@ -5283,11 +5287,15 @@ Result KPageTableBase::MapPhysicalMemory(KProcessAddress address, size_t size) {
                 m_resource_limit, Svc::LimitableResource::PhysicalMemoryMax, size - mapped_size);
             R_UNLESS(memory_reservation.Succeeded(), ResultLimitReached);
 
-            // Allocate pages for the new memory.
+            // Allocate pages for the new memory. On hosts with larger pages, the pages come from
+            // per-host-page blocks when they are mapped instead.
+            const size_t host_ratio = KMemoryManager::GuestPagesPerHostPage();
             KPageGroup pg(m_kernel, m_block_info_manager);
-            R_TRY(m_kernel.MemoryManager().AllocateForProcess(
-                std::addressof(pg), (size - mapped_size) / PageSize, m_allocate_option,
-                GetCurrentProcess(m_kernel).GetId(), m_heap_fill_value));
+            if (host_ratio == 1) {
+                R_TRY(m_kernel.MemoryManager().AllocateForProcess(
+                    std::addressof(pg), (size - mapped_size) / PageSize, m_allocate_option,
+                    GetCurrentProcess(m_kernel).GetId(), m_heap_fill_value));
+            }
 
             // If we fail in the next bit (or retry), we need to cleanup the pages.
             auto pg_guard = SCOPE_GUARD {
@@ -5365,8 +5373,8 @@ Result KPageTableBase::MapPhysicalMemory(KProcessAddress address, size_t size) {
 
                 // Prepare to iterate over the memory.
                 auto pg_it = pg.begin();
-                KPhysicalAddress pg_phys_addr = pg_it->GetAddress();
-                size_t pg_pages = pg_it->GetNumPages();
+                KPhysicalAddress pg_phys_addr = pg_it != pg.end() ? pg_it->GetAddress() : 0;
+                size_t pg_pages = pg_it != pg.end() ? pg_it->GetNumPages() : 0;
 
                 // Reset the current tracking address, and make sure we clean up on failure.
                 pg_guard.Cancel();
@@ -5415,13 +5423,17 @@ Result KPageTableBase::MapPhysicalMemory(KProcessAddress address, size_t size) {
                     }
 
                     // Release any remaining unmapped memory.
-                    m_kernel.MemoryManager().OpenFirst(pg_phys_addr, pg_pages);
-                    m_kernel.MemoryManager().Close(pg_phys_addr, pg_pages);
-                    for (++pg_it; pg_it != pg.end(); ++pg_it) {
-                        m_kernel.MemoryManager().OpenFirst(pg_it->GetAddress(),
+                    if (pg_it != pg.end()) {
+                        m_kernel.MemoryManager().OpenFirst(pg_phys_addr, pg_pages);
+                        m_kernel.MemoryManager().Close(pg_phys_addr, pg_pages);
+                        for (++pg_it; pg_it != pg.end(); ++pg_it) {
+                            m_kernel.MemoryManager().OpenFirst(pg_it->GetAddress(),
+                                                               pg_it->GetNumPages());
+                            m_kernel.MemoryManager().Close(pg_it->GetAddress(),
                                                            pg_it->GetNumPages());
-                        m_kernel.MemoryManager().Close(pg_it->GetAddress(), pg_it->GetNumPages());
+                        }
                     }
+                    this->ReleaseFreeHostPhysicalBlocks(address, size);
                 };
 
                 auto it = m_memory_block_manager.FindIterator(cur_address);
@@ -5446,7 +5458,10 @@ Result KPageTableBase::MapPhysicalMemory(KProcessAddress address, size_t size) {
                             PageSize;
 
                         // While we have pages to map, map them.
-                        {
+                        if (host_ratio > 1) {
+                            R_TRY(this->MapHostPhysicalPages(updater.GetPageList(), cur_address,
+                                                             map_pages, map_properties));
+                        } else {
                             // Create a page group for the current mapping range.
                             KPageGroup cur_pg(m_kernel, m_block_info_manager);
                             {
@@ -5660,8 +5675,109 @@ Result KPageTableBase::UnmapPhysicalMemory(KProcessAddress address, size_t size)
                                   KMemoryAttribute::None, KMemoryBlockDisableMergeAttribute::None,
                                   clear_merge_attr);
 
+    // Release the host page blocks that no longer hold mapped pages.
+    this->ReleaseFreeHostPhysicalBlocks(address, size);
+
     // We succeeded.
     R_SUCCEED();
+}
+
+Result KPageTableBase::MapHostPhysicalPages(PageLinkedList* page_list, KProcessAddress address,
+                                            size_t num_pages, const KPageProperties properties) {
+    const size_t host_ratio = KMemoryManager::GuestPagesPerHostPage();
+    const size_t host_page_size = host_ratio * PageSize;
+
+    // Unmap what we mapped if we fail part way.
+    const KProcessAddress start_address = address;
+    ON_RESULT_FAILURE {
+        if (address > start_address) {
+            const KPageProperties unmap_properties = {KMemoryPermission::None, false, false,
+                                                      DisableMergeAttribute::None};
+            R_ASSERT(this->Operate(page_list, start_address,
+                                   (address - start_address) / PageSize, 0, false,
+                                   unmap_properties, OperationType::UnmapPhysical, true));
+        }
+    };
+
+    while (num_pages > 0) {
+        // Get the block of the host page, allocating it the first time.
+        const u64 host_address = Common::AlignDown(address.GetValue(), host_page_size);
+        auto it = m_host_physical_blocks.find(host_address);
+        if (it == m_host_physical_blocks.end()) {
+            const KPhysicalAddress block = m_kernel.MemoryManager().AllocateAndOpenContinuous(
+                host_ratio, host_ratio, m_allocate_option);
+            if (block != 0) {
+                it = m_host_physical_blocks.emplace(host_address, block).first;
+            }
+        }
+
+        // Map the pages of this host page at their offset in the block, cleared like new memory.
+        // Without a block, fall back to single pages owned by the mapping alone.
+        const size_t offset_pages = (address.GetValue() - host_address) / PageSize;
+        const size_t cur_pages = std::min(host_ratio - offset_pages, num_pages);
+        const bool has_block = it != m_host_physical_blocks.end();
+        KPageGroup pg(m_kernel, m_block_info_manager);
+        ON_RESULT_FAILURE_2 {
+            if (!has_block) {
+                pg.Close();
+            }
+        };
+        if (has_block) {
+            R_TRY(pg.AddBlock(it->second + offset_pages * PageSize, cur_pages));
+        } else {
+            for (size_t i = 0; i < cur_pages; i++) {
+                const KPhysicalAddress page =
+                    m_kernel.MemoryManager().AllocateAndOpenContinuous(1, 1, m_allocate_option);
+                R_UNLESS(page != 0, ResultOutOfMemory);
+                ON_RESULT_FAILURE_2 {
+                    m_kernel.MemoryManager().Close(page, 1);
+                };
+                R_TRY(pg.AddBlock(page, 1));
+            }
+        }
+        for (const auto& block : pg) {
+            ClearBackingRegion(m_system, block.GetAddress(), block.GetSize(), m_heap_fill_value);
+        }
+        R_TRY(this->Operate(page_list, address, cur_pages, pg, properties,
+                            OperationType::MapGroupPhysical, false));
+        if (!has_block) {
+            pg.Close();
+        }
+
+        address += cur_pages * PageSize;
+        num_pages -= cur_pages;
+    }
+
+    R_SUCCEED();
+}
+
+void KPageTableBase::ReleaseFreeHostPhysicalBlocks(KProcessAddress address, size_t size) {
+    if (m_host_physical_blocks.empty() || size == 0) {
+        return;
+    }
+
+    const size_t host_ratio = KMemoryManager::GuestPagesPerHostPage();
+    const size_t host_page_size = host_ratio * PageSize;
+    const u64 end = Common::AlignUp(address.GetValue() + size, host_page_size);
+    for (u64 host_address = Common::AlignDown(address.GetValue(), host_page_size);
+         host_address < end; host_address += host_page_size) {
+        const auto it = m_host_physical_blocks.find(host_address);
+        if (it == m_host_physical_blocks.end()) {
+            continue;
+        }
+
+        // Keep the block while any guest page of the host page is in use.
+        bool in_use = false;
+        for (size_t i = 0; i < host_ratio && !in_use; i++) {
+            const auto info_it = m_memory_block_manager.FindIterator(host_address + i * PageSize);
+            in_use = info_it != m_memory_block_manager.end() &&
+                     info_it->GetState() != KMemoryState::Free;
+        }
+        if (!in_use) {
+            m_kernel.MemoryManager().Close(it->second, host_ratio);
+            m_host_physical_blocks.erase(it);
+        }
+    }
 }
 
 Result KPageTableBase::MapPhysicalMemoryUnsafe(KProcessAddress address, size_t size) {
@@ -5874,11 +5990,14 @@ Result KPageTableBase::Operate(PageLinkedList* page_list, KProcessAddress virt_a
     switch (operation) {
     case OperationType::MapGroup:
     case OperationType::MapFirstGroup:
-    case OperationType::MapFirstGroupPhysical: {
-        const bool separate_heap = operation == OperationType::MapFirstGroupPhysical;
+    case OperationType::MapFirstGroupPhysical:
+    case OperationType::MapGroupPhysical: {
+        const bool separate_heap = operation == OperationType::MapFirstGroupPhysical ||
+                                   operation == OperationType::MapGroupPhysical;
 
         // We want to maintain a new reference to every page in the group.
-        KScopedPageGroup spg(page_group, operation == OperationType::MapGroup);
+        KScopedPageGroup spg(page_group, operation == OperationType::MapGroup ||
+                                             operation == OperationType::MapGroupPhysical);
 
         for (const auto& node : page_group) {
             const size_t size{node.GetNumPages() * PageSize};

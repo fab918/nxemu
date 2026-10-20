@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "core/hle/kernel/k_process.h"
+#include "core/hle/kernel/board/nintendo/nx/k_system_control.h"
 #include "core/arm/debug.h"
 #include "core/core.h"
 #include "core/hle/kernel/k_scoped_resource_reservation.h"
@@ -1307,7 +1308,11 @@ Result KProcess::LoadFromMetadata(const IProgramMetadata & metadata, std::size_t
 {
     // Create a resource limit for the process.
     const auto pool = (KMemoryManager::Pool)metadata.GetPoolPartition();
-    const auto physical_memory_size = m_kernel.MemoryManager().GetSize(pool);
+    auto physical_memory_size = m_kernel.MemoryManager().GetSize(pool);
+    if (pool == KMemoryManager::Pool::Application) {
+        // The host page margin is not memory the process can use.
+        physical_memory_size -= Board::Nintendo::Nx::KSystemControl::Init::GetHostPageMemoryMargin();
+    }
     auto * res_limit = Kernel::CreateResourceLimitForProcess(m_kernel.System(), physical_memory_size);
 
     // Ensure we maintain a clean state on exit.
