@@ -65,7 +65,7 @@ private:
     void ConfigureFramebufferTexture(const Tegra::FramebufferConfig& framebuffer);
 
     void CreateFXAA();
-    void CreateSMAA();
+    void CreateSMAA(bool ultra);
 
 private:
     RasterizerOpenGL& rasterizer;
@@ -81,6 +81,7 @@ private:
     std::unique_ptr<FSR> fsr;
     std::unique_ptr<FXAA> fxaa;
     std::unique_ptr<SMAA> smaa;
+    bool smaa_ultra{true};
 };
 
 } // namespace OpenGL

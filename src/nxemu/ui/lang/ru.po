@@ -2574,3 +2574,15 @@ msgstr "Уменьшение с весами по площади. Фильтру
 
 msgid "Four-neighbor edge estimate. Faster, but diagonal contours may differ."
 msgstr "Оценка границ по четырём соседям. Быстрее, но диагональные контуры могут отличаться."
+
+msgid "Anti-aliasing: change while a game is running"
+msgstr "Сглаживание: можно менять во время игры"
+
+msgid "Intel CMAA2 compute anti-aliasing. Vulkan only."
+msgstr "Сглаживание Intel CMAA2 вычислительными шейдерами. Только Vulkan."
+
+msgid "Morphological anti-aliasing with three graphics passes."
+msgstr "Морфологическое сглаживание в три графических прохода."
+
+msgid "Intel conservative morphological anti-aliasing. Experimental; Vulkan only."
+msgstr "Консервативное морфологическое сглаживание Intel. Экспериментальная функция; только Vulkan."

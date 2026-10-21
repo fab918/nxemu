@@ -2565,3 +2565,15 @@ msgstr "Netteté facultative en 1:1 et en réduction ; aussi en agrandissement a
 
 msgid "AMD FidelityFX Super Resolution: edge-aware upscaling with adjustable sharpness. At 0%, sharpening is off."
 msgstr "AMD FidelityFX Super Resolution : agrandissement adapté aux contours avec une netteté réglable. À 0 %, la netteté est désactivée."
+
+msgid "Anti-aliasing: change while a game is running"
+msgstr "Anticrénelage : modifiable pendant le jeu"
+
+msgid "Intel CMAA2 compute anti-aliasing. Vulkan only."
+msgstr "Anticrénelage Intel CMAA2 par calcul GPU. Vulkan uniquement."
+
+msgid "Morphological anti-aliasing with three graphics passes."
+msgstr "Anticrénelage morphologique en trois passes graphiques."
+
+msgid "Intel conservative morphological anti-aliasing. Experimental; Vulkan only."
+msgstr "Anticrénelage morphologique conservateur Intel. Expérimental ; Vulkan uniquement."

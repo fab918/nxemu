@@ -2556,3 +2556,15 @@ msgstr "面積で重み付けした縮小。元画像の対応範囲全体をフ
 
 msgid "Four-neighbor edge estimate. Faster, but diagonal contours may differ."
 msgstr "隣接する4点による輪郭推定。高速ですが、斜めの輪郭が変わる場合があります。"
+
+msgid "Anti-aliasing: change while a game is running"
+msgstr "アンチエイリアス：ゲーム中に変更可能"
+
+msgid "Intel CMAA2 compute anti-aliasing. Vulkan only."
+msgstr "GPU演算によるIntel CMAA2アンチエイリアス。Vulkan専用。"
+
+msgid "Morphological anti-aliasing with three graphics passes."
+msgstr "3回の描画パスによる形態学的アンチエイリアス。"
+
+msgid "Intel conservative morphological anti-aliasing. Experimental; Vulkan only."
+msgstr "Intelの保守的な形態学的アンチエイリアス。実験的機能、Vulkan専用。"

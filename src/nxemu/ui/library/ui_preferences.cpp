@@ -15,6 +15,7 @@ namespace
 constexpr const char * kSection = "UI";
 constexpr const char * kStatusOverrides = "StatusOverrides";
 constexpr struct { const char * key; int min; int max; } kStatusInts[] = {
+    {NXVideoSetting::AntiAliasing, 0, static_cast<int>(AntiAliasing::MaxEnum) - 1},
     {NXOsSetting::DockedMode, 0, 1}, {NXVideoSetting::ResolutionSetup, 0, 10},
     {NXVideoSetting::ScalingFilter, 0, static_cast<int>(ScalingFilter::MaxEnum) - 1}, {NXOsSetting::AudioVolume, 0, 200},
     {NXVideoSetting::DownscalingFilter, 0, 1},

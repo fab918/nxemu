@@ -107,6 +107,10 @@ set(SHADER_FILES
     watermark.vert
 )
 
+if (NXEMU_ENABLE_INTEL_CMAA2)
+    list(APPEND SHADER_FILES intel_cmaa2_apply.vert intel_cmaa2_apply.frag)
+endif()
+
 find_program(GLSLANGVALIDATOR "glslangValidator" HINTS "$ENV{VULKAN_SDK}/Bin")
 if ("${GLSLANGVALIDATOR}" STREQUAL "GLSLANGVALIDATOR-NOTFOUND")
     message(FATAL_ERROR "Required program `glslangValidator` not found.")
@@ -164,6 +168,8 @@ foreach(FILENAME IN ITEMS ${SHADER_FILES})
         set(SPIRV_INCLUDE_DEPENDENCIES opengl_present_cas.frag catmull_rom.glsl)
     elseif(FILENAME STREQUAL "present_catmull_rom.frag")
         set(SPIRV_INCLUDE_DEPENDENCIES catmull_rom.glsl)
+    elseif(FILENAME MATCHES "^smaa_")
+        set(SPIRV_INCLUDE_DEPENDENCIES opengl_smaa.glsl)
     elseif(FILENAME MATCHES "^vulkan_present_scaleforce_")
         set(SPIRV_INCLUDE_DEPENDENCIES opengl_present_scaleforce.frag)
     elseif(FILENAME MATCHES "^vulkan_present_easu_")
@@ -189,6 +195,27 @@ foreach(FILENAME IN ITEMS ${SHADER_FILES})
         )
         set(SHADER_HEADERS ${SHADER_HEADERS} ${SPIRV_HEADER_FILE})
     endif()
+endforeach()
+
+# High is a preset of the same source used by Ultra. Generate both even when
+# the optional Intel/DXC backend and all benchmarks are disabled.
+foreach(_stage IN ITEMS edge_detection blending_weight_calculation neighborhood_blending)
+    foreach(_ext IN ITEMS vert frag)
+        set(_original "${CMAKE_CURRENT_SOURCE_DIR}/smaa_${_stage}.${_ext}")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_original}")
+        file(READ "${_original}" _high_text)
+        string(REPLACE "#define SMAA_PRESET_ULTRA" "#define SMAA_PRESET_HIGH" _high_text "${_high_text}")
+        set(_high_source "${CMAKE_CURRENT_BINARY_DIR}/smaa_high_${_stage}.${_ext}")
+        file(GENERATE OUTPUT "${_high_source}" CONTENT "${_high_text}")
+        set(_high_header "${SHADER_DIR}/smaa_high_${_stage}_${_ext}_spv.h")
+        string(TOUPPER "SMAA_HIGH_${_stage}_${_ext}_SPV" _high_symbol)
+        add_custom_command(OUTPUT "${_high_header}"
+            COMMAND ${GLSLANGVALIDATOR} -V ${QUIET_FLAG} "-I${CMAKE_CURRENT_SOURCE_DIR}" ${GLSL_FLAGS}
+                --variable-name "${_high_symbol}" -o "${_high_header}" "${_high_source}"
+                --target-env ${SPIR_V_VERSION}
+            DEPENDS "${_high_source}" "${CMAKE_CURRENT_SOURCE_DIR}/opengl_smaa.glsl" VERBATIM)
+        list(APPEND SHADER_HEADERS "${_high_header}")
+    endforeach()
 endforeach()
 
 foreach(FILEPATH IN ITEMS ${FIDELITYFX_FILES} ${CMAKE_CURRENT_SOURCE_DIR}/catmull_rom.glsl)
@@ -219,3 +246,59 @@ add_custom_target(host_shaders
     SOURCES
         ${SHADER_SOURCES}
 )
+
+# Intel CMAA2 uses the original Intel HLSL compute kernels for detection and
+# candidates; the fullscreen fragment shader resolves the result without a copy.
+# Opt-in avoids affecting ordinary builds.
+if (NXEMU_ENABLE_INTEL_CMAA2)
+    find_program(INTEL_CMAA2_DXC dxc HINTS "$ENV{VULKAN_SDK}/Bin" REQUIRED)
+    find_program(INTEL_CMAA2_SPIRV_VAL spirv-val HINTS "$ENV{VULKAN_SDK}/Bin" REQUIRED)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set(INTEL_CMAA2_UPSTREAM
+        "${CMAKE_SOURCE_DIR}/src/3rd_party/intel_cmaa2/CMAA2.hlsl")
+    if (NOT EXISTS "${INTEL_CMAA2_UPSTREAM}")
+        message(FATAL_ERROR "Intel CMAA2 source not found. Run tools/cmaa2/fetch_intel_cmaa2.py src/3rd_party/intel_cmaa2/CMAA2.hlsl")
+    endif()
+    set(INTEL_CMAA2_PREPARED "${CMAKE_CURRENT_BINARY_DIR}/intel_cmaa2_prepared.hlsl")
+    add_custom_command(
+        OUTPUT "${INTEL_CMAA2_PREPARED}"
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/cmaa2/prepare_intel_shader.py"
+                "${INTEL_CMAA2_UPSTREAM}" "${INTEL_CMAA2_PREPARED}"
+        DEPENDS "${INTEL_CMAA2_UPSTREAM}" "${CMAKE_SOURCE_DIR}/tools/cmaa2/prepare_intel_shader.py"
+        VERBATIM)
+    foreach(_stage IN ITEMS edges args candidates)
+        if (_stage STREQUAL "edges")
+            set(_entry "EdgesColor2x2CS")
+        elseif(_stage STREQUAL "args")
+            set(_entry "ComputeDispatchArgsCS")
+        elseif(_stage STREQUAL "candidates")
+            set(_entry "ProcessCandidatesCS")
+        endif()
+        set(_spv "${CMAKE_CURRENT_BINARY_DIR}/intel_cmaa2_${_stage}.spv")
+        set(_hdr "${SHADER_DIR}/intel_cmaa2_${_stage}_spv.h")
+        string(TOUPPER "INTEL_CMAA2_${_stage}_SPV" _var)
+        add_custom_command(
+            OUTPUT "${_hdr}"
+            COMMAND ${INTEL_CMAA2_DXC}
+                    -spirv -T cs_6_0 -E "${_entry}" -fspv-entrypoint-name=main -fspv-target-env=vulkan1.1
+                    -fvk-u-shift 0 0 -fvk-t-shift 8 0 -fvk-s-shift 12 0
+                    -DCMAA2_UAV_STORE_TYPED=1
+                    -DCMAA2_UAV_STORE_TYPED_UNORM_FLOAT=0
+                    -DCMAA2_UAV_STORE_CONVERT_TO_SRGB=0
+                    -DCMAA2_SUPPORT_HDR_COLOR_RANGE=1
+                    -DCMAA2_EDGE_DETECTION_LUMA_PATH=1
+                    -DCMAA2_STATIC_QUALITY_PRESET=1
+                    -DCMAA2_USE_HALF_FLOAT_PRECISION=0
+                    -Fo "${_spv}" "${INTEL_CMAA2_PREPARED}"
+            COMMAND ${INTEL_CMAA2_SPIRV_VAL} --target-env vulkan1.1 "${_spv}"
+            COMMAND ${Python3_EXECUTABLE}
+                    "${CMAKE_SOURCE_DIR}/tools/cmaa2/spirv_to_header.py"
+                    "${_spv}" "${_hdr}" "${_var}"
+            DEPENDS "${INTEL_CMAA2_PREPARED}"
+                    "${CMAKE_SOURCE_DIR}/tools/cmaa2/spirv_to_header.py"
+            VERBATIM)
+        list(APPEND INTEL_CMAA2_SHADER_HEADERS "${_hdr}")
+    endforeach()
+    add_custom_target(intel_cmaa2_shaders DEPENDS ${INTEL_CMAA2_SHADER_HEADERS})
+    add_dependencies(host_shaders intel_cmaa2_shaders)
+endif()

@@ -992,6 +992,10 @@ msgid "Upscaling and downscaling filters: selected automatically from the image 
 msgstr ""
 
 #: assets/main_window.rml
+msgid "Anti-aliasing: change while a game is running"
+msgstr ""
+
+#: assets/main_window.rml
 msgid "Version copied to clipboard"
 msgstr ""
 
@@ -1323,19 +1327,31 @@ msgid "Vulkan could not be initialised. Update the graphics driver and try again
 msgstr ""
 
 #: views/advanced_dialog.cpp
+#: views/main_window.cpp
 msgid "None"
 msgstr ""
 
 #: views/advanced_dialog.cpp
+#: views/main_window.cpp
 msgid "The picture as the game draws it."
 msgstr ""
 
 #: views/advanced_dialog.cpp
+#: views/main_window.cpp
 msgid "Light work, a little blur. The steadier picture at low resolutions."
 msgstr ""
 
 #: views/advanced_dialog.cpp
+#: views/main_window.cpp
+msgid "Morphological anti-aliasing with three graphics passes."
+msgstr ""
+
+#: views/advanced_dialog.cpp
 msgid "The best picture, for more work."
+msgstr ""
+
+#: views/advanced_dialog.cpp
+msgid "Intel CMAA2 compute anti-aliasing. Vulkan only."
 msgstr ""
 
 #: views/advanced_dialog.cpp
@@ -2399,6 +2415,10 @@ msgstr ""
 
 #: views/main_window.cpp
 msgid "Default"
+msgstr ""
+
+#: views/main_window.cpp
+msgid "Intel conservative morphological anti-aliasing. Experimental; Vulkan only."
 msgstr ""
 
 #: views/main_window.cpp

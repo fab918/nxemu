@@ -932,6 +932,13 @@ void MainWindow::Run(Action action)
             }
             break;
         }
+        const int aa = static_cast<int>(action) - static_cast<int>(Action::AntiAliasingFirst);
+        if (aa >= 0 && aa < static_cast<int>(AntiAliasing::MaxEnum))
+        {
+            UiPreferences::SetStatusInt(NXVideoSetting::AntiAliasing, aa);
+            m_session.FlushSettings();
+            break;
+        }
         const int filter = static_cast<int>(action) - static_cast<int>(Action::ScalingFilterFirst);
         if (FindScalingFilter(filter) != nullptr)
         {
@@ -1017,7 +1024,7 @@ void MainWindow::BindEvents()
     UiEvents::Listen(m_document->GetElementById("icon-size-slider"), "change", [this](Rml::Event & event) {
         m_pendingIconSize = std::clamp(static_cast<int>(std::lround(event.GetParameter<float>("value", 0.0f))), kGameIconMin, kGameIconMax);
     });
-    for (const char * id : {"games-sort", "docked-mode", "resolution-scale", "scaling-filter", "profile"})
+    for (const char * id : {"games-sort", "docked-mode", "resolution-scale", "scaling-filter", "anti-aliasing", "profile"})
     {
         Rml::Element * select = m_document->GetElementById(id);
         UiEvents::Listen(select, "click", [this, select](Rml::Event &) {
@@ -2286,6 +2293,25 @@ void MainWindow::ShowSelectMenu(Rml::Element * origin)
         choice(static_cast<int>(Action::SetDockedMode), Tr("Docked"), docked);
         choice(static_cast<int>(Action::SetHandheldMode), Tr("Handheld"), !docked);
     }
+    else if (origin->GetId() == "anti-aliasing")
+    {
+        const int current = store.GetInt(NXVideoSetting::AntiAliasing);
+        const int game = store.GetIntWithoutControl(NXVideoSetting::AntiAliasing);
+        const auto add = [&](AntiAliasing aa, const char * label, const char * hint) {
+            const int value = static_cast<int>(aa);
+            auto & item = choice(static_cast<int>(Action::AntiAliasingFirst) + value, label, value == current);
+            item.tag = value == game ? Tr("Default") : std::string();
+            item.hint = Tr(hint);
+        };
+        add(AntiAliasing::None, Tr("None").c_str(), TrMark("The picture as the game draws it."));
+        add(AntiAliasing::Fxaa, "FXAA", TrMark("Light work, a little blur. The steadier picture at low resolutions."));
+        add(AntiAliasing::SmaaHigh, "SMAA High", TrMark("Morphological anti-aliasing with three graphics passes."));
+        add(AntiAliasing::Smaa, "SMAA Ultra", TrMark("Morphological anti-aliasing with three graphics passes."));
+#ifdef NXEMU_ENABLE_INTEL_CMAA2
+        if (store.GetInt(NXVideoSetting::GraphicsAPI) == static_cast<int>(RendererBackend::Vulkan))
+            add(AntiAliasing::Cmaa2Intel, "CMAA2", TrMark("Intel conservative morphological anti-aliasing. Experimental; Vulkan only."));
+#endif
+    }
     else if (origin->GetId() == "scaling-filter")
     {
         const int saved_filter = store.GetInt(NXVideoSetting::ScalingFilter);
@@ -2398,6 +2424,12 @@ void MainWindow::UpdateStatusWidgets()
     filter_text += " / ↓ " + (settings.GetInt(NXVideoSetting::DownscalingFilter) == 1
         ? std::string("Area") : Tr("Bilinear"));
     SetText("scaling-filter-text", filter_text);
+    const int aa = settings.GetInt(NXVideoSetting::AntiAliasing);
+    const char * aa_label = aa == static_cast<int>(AntiAliasing::Fxaa) ? "FXAA" :
+        aa == static_cast<int>(AntiAliasing::Smaa) ? "SMAA Ultra" :
+        aa == static_cast<int>(AntiAliasing::SmaaHigh) ? "SMAA High" :
+        aa == static_cast<int>(AntiAliasing::Cmaa2Intel) ? "CMAA2" : "Off";
+    SetText("anti-aliasing-text", std::string("AA: ") + (aa == static_cast<int>(AntiAliasing::None) ? Tr("None") : std::string(aa_label)));
     // A control that chose over the settings shows it.
     const auto mark = [this](const char * id, std::initializer_list<const char *> chosen) {
         if (Rml::Element * element = m_document->GetElementById(id))
@@ -2409,6 +2441,7 @@ void MainWindow::UpdateStatusWidgets()
     mark("resolution-scale", {NXVideoSetting::ResolutionSetup});
     mark("scaling-filter", {NXVideoSetting::ScalingFilter, NXVideoSetting::FSPSharpness, NXVideoSetting::DownscalingFilter});
     mark("profile", {NXOsSetting::CurrentUser});
+    mark("anti-aliasing", {NXVideoSetting::AntiAliasing});
     mark("volume", {NXOsSetting::AudioVolume, NXOsSetting::AudioMuted});
     SetText("resolution-scale-text", scale.label);
     // What the game is drawn at: the console's resolution in this mode, scaled.

@@ -2565,3 +2565,15 @@ msgstr "Oppervlaktegewogen verkleining. Filtert het volledige bestreken brongebi
 
 msgid "Four-neighbor edge estimate. Faster, but diagonal contours may differ."
 msgstr "Randschatting met vier buren. Sneller, maar diagonale contouren kunnen afwijken."
+
+msgid "Anti-aliasing: change while a game is running"
+msgstr "Anti-aliasing: wijzigen tijdens het spelen"
+
+msgid "Intel CMAA2 compute anti-aliasing. Vulkan only."
+msgstr "Intel CMAA2-anti-aliasing via GPU-berekeningen. Alleen Vulkan."
+
+msgid "Morphological anti-aliasing with three graphics passes."
+msgstr "Morfologische anti-aliasing met drie grafische passes."
+
+msgid "Intel conservative morphological anti-aliasing. Experimental; Vulkan only."
+msgstr "Conservatieve morfologische anti-aliasing van Intel. Experimenteel; alleen Vulkan."

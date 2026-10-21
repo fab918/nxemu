@@ -186,6 +186,11 @@
         <img class="select-arrow" src="images/chevron-down.png" />
       </div>
       <div class="status-separator" />
+      <div id="anti-aliasing" class="select" title="Anti-aliasing: change while a game is running">
+        <div id="anti-aliasing-text" />
+        <img class="select-arrow" src="images/chevron-down.png" />
+      </div>
+      <div class="status-separator" />
       <div id="profile" class="select">
         <img class="select-icon" src="images/user.png" />
         <div id="profile-text" />

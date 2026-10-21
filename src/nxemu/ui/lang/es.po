@@ -2565,3 +2565,15 @@ msgstr "Reducción ponderada por área. Filtra toda el área cubierta de la imag
 
 msgid "Four-neighbor edge estimate. Faster, but diagonal contours may differ."
 msgstr "Estimación de bordes con cuatro vecinos. Más rápida, pero los contornos diagonales pueden variar."
+
+msgid "Anti-aliasing: change while a game is running"
+msgstr "Antialiasing: se puede cambiar durante el juego"
+
+msgid "Intel CMAA2 compute anti-aliasing. Vulkan only."
+msgstr "Antialiasing Intel CMAA2 por cómputo GPU. Solo Vulkan."
+
+msgid "Morphological anti-aliasing with three graphics passes."
+msgstr "Antialiasing morfológico con tres pasadas gráficas."
+
+msgid "Intel conservative morphological anti-aliasing. Experimental; Vulkan only."
+msgstr "Antialiasing morfológico conservador de Intel. Experimental; solo Vulkan."

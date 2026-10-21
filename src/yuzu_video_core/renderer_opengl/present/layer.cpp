@@ -65,9 +65,13 @@ GLuint Layer::ConfigureDraw(std::array<GLfloat, 3 * 2>& out_matrix,
             CreateFXAA();
             texture = fxaa->Draw(program_manager, info.display_texture);
             break;
+        case AntiAliasing::Cmaa2Intel:
+            // Never misrepresent the OpenGL fallback as Intel CMAA2.
+            break;
         case AntiAliasing::Smaa:
+        case AntiAliasing::SmaaHigh:
         default:
-            CreateSMAA();
+            CreateSMAA(anti_aliasing != AntiAliasing::SmaaHigh);
             texture = smaa->Draw(program_manager, info.display_texture);
             break;
         }
@@ -263,12 +267,13 @@ void Layer::CreateFXAA() {
     }
 }
 
-void Layer::CreateSMAA() {
+void Layer::CreateSMAA(bool ultra) {
     fxaa.reset();
-    if (!smaa) {
+    if (!smaa || smaa_ultra != ultra) {
+        smaa_ultra = ultra;
         smaa = std::make_unique<SMAA>(
             videoSettings.resolution_info.ScaleUp(framebuffer_texture.width),
-            videoSettings.resolution_info.ScaleUp(framebuffer_texture.height));
+            videoSettings.resolution_info.ScaleUp(framebuffer_texture.height), ultra);
     }
 }
 

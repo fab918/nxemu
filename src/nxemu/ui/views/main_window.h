@@ -126,6 +126,7 @@ private:
         FsrBenchmarkOptimized,
         DownscaleBilinear,
         DownscaleArea,
+        AntiAliasingFirst = 860,    // one per AntiAliasing value
         ProfileFirst = 880,         // one per profile, to play as it
         ResolutionScaleFirst = 900, // one per ResolutionSetup value
         GameSortFirst = 920,        // one per way of sorting the games

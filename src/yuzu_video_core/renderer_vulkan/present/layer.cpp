@@ -17,6 +17,9 @@
 #include "yuzu_video_core/renderer_vulkan/present/fsr.h"
 #include "yuzu_video_core/renderer_vulkan/present/catmull_pass.h"
 #include "yuzu_video_core/renderer_vulkan/present/fxaa.h"
+#ifdef NXEMU_ENABLE_INTEL_CMAA2
+#include "yuzu_video_core/renderer_vulkan/present/intel_cmaa2.h"
+#endif
 #include "yuzu_video_core/renderer_vulkan/present/layer.h"
 #include "yuzu_video_core/renderer_vulkan/present/present_push_constants.h"
 #include "yuzu_video_core/renderer_vulkan/present/smaa.h"
@@ -288,9 +291,8 @@ void Layer::RefreshResources(const Tegra::FramebufferConfig& framebuffer) {
     raw_width = framebuffer.width;
     raw_height = framebuffer.height;
     pixel_format = framebuffer.pixel_format;
-    anti_alias.reset();
-
     ReleaseRawImages();
+    anti_alias.reset();
     CreateStagingBuffer(framebuffer);
     CreateRawImages(framebuffer);
 }
@@ -302,17 +304,34 @@ void Layer::SetAntiAliasPass() {
 
     anti_alias_setting = filters.get_anti_aliasing();
 
+    // All slots may still reference the old pass, including recorded commands.
+    for (const u64 tick : resource_ticks) {
+        scheduler.Wait(tick);
+    }
+
     const VkExtent2D render_area{
         .width = videoSettings.resolution_info.ScaleUp(raw_width),
         .height = videoSettings.resolution_info.ScaleUp(raw_height),
     };
 
     switch (anti_alias_setting) {
+#ifdef NXEMU_ENABLE_INTEL_CMAA2
+    case AntiAliasing::Cmaa2Intel:
+        try {
+            anti_alias = std::make_unique<IntelCMAA2>(device, memory_allocator, image_count, render_area);
+        } catch (const std::exception& e) {
+            LOG_ERROR(Render_Vulkan, "CMAA2 unavailable: {}. Falling back to FXAA.", e.what());
+            anti_alias = std::make_unique<FXAA>(device, memory_allocator, image_count, render_area);
+        }
+        break;
+#endif
     case AntiAliasing::Fxaa:
         anti_alias = std::make_unique<FXAA>(device, memory_allocator, image_count, render_area);
         break;
     case AntiAliasing::Smaa:
-        anti_alias = std::make_unique<SMAA>(device, memory_allocator, image_count, render_area);
+    case AntiAliasing::SmaaHigh:
+        anti_alias = std::make_unique<SMAA>(device, memory_allocator, image_count, render_area,
+                                          anti_alias_setting == AntiAliasing::Smaa);
         break;
     default:
         anti_alias = std::make_unique<NoAA>();

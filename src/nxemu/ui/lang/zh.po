@@ -2556,3 +2556,15 @@ msgstr "按面积加权缩小。对源图像覆盖区域进行完整过滤，以
 
 msgid "Four-neighbor edge estimate. Faster, but diagonal contours may differ."
 msgstr "通过四个相邻像素估算边缘。速度更快，但斜向轮廓可能不同。"
+
+msgid "Anti-aliasing: change while a game is running"
+msgstr "抗锯齿：可在游戏运行时更改"
+
+msgid "Intel CMAA2 compute anti-aliasing. Vulkan only."
+msgstr "使用 GPU 计算的 Intel CMAA2 抗锯齿。仅限 Vulkan。"
+
+msgid "Morphological anti-aliasing with three graphics passes."
+msgstr "使用三个图形通道的形态抗锯齿。"
+
+msgid "Intel conservative morphological anti-aliasing. Experimental; Vulkan only."
+msgstr "Intel 保守形态抗锯齿。实验性功能，仅限 Vulkan。"

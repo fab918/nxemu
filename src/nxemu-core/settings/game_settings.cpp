@@ -4,6 +4,7 @@
 #include <nxemu-os/os_settings_identifiers.h>
 #include <nxemu-video/video_settings_identifiers.h>
 #include <nxemu-module-spec/fsr_sharpness.h>
+#include <nxemu-module-spec/video.h>
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -115,7 +116,8 @@ const std::vector<GameSettingDefinition> & GameSettings::Definitions()
         {NXVideoSetting::DownscalingFilter, "downscale-filter", "Downscaling filter", false, 0, 1, {"Bilinear", "Area"}},
         {NXVideoSetting::CASSharpness, "cas-sharpness-range", "CAS sharpness", false, 0, 100, {}},
         {NXVideoSetting::FSPSharpness, "sharpness-range", "Sharpness", false, 0, 200, {}},
-        {NXVideoSetting::AntiAliasing, "antialiasing", "Anti-aliasing", false, 0, 2, {"None", "FXAA", "SMAA"}},
+        {NXVideoSetting::AntiAliasing, "antialiasing", "Anti-aliasing", false, 0,
+         static_cast<int>(AntiAliasing::MaxEnum) - 1, {"None", "FXAA", "SMAA Ultra", "CMAA2", "SMAA High"}},
         {NXVideoSetting::AnisotropicFiltering, "anisotropy", "Anisotropic filtering", false, 0, 5, {"Automatic", "As requested", "2x", "4x", "8x", "16x"}},
         {NXVideoSetting::AccuracyLevel, "accuracy", "GPU accuracy", false, 0, 2, {"Normal", "High", "Extreme"}},
         {NXVideoSetting::DMAAccuracy, "dma", "Memory reads", false, 0, 2, {"As accuracy", "Unsafe", "Safe"}},

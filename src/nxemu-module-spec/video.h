@@ -115,6 +115,8 @@ enum class AntiAliasing : uint32_t
     None = 0,
     Fxaa,
     Smaa,
+    Cmaa2Intel,
+    SmaaHigh, // Keep the existing Smaa value/settings as Ultra.
     MaxEnum,
 };
 

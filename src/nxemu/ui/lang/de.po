@@ -2565,3 +2565,15 @@ msgstr "Flächengewichtete Verkleinerung. Filtert die gesamte abgedeckte Quellfl
 
 msgid "Four-neighbor edge estimate. Faster, but diagonal contours may differ."
 msgstr "Kantenschätzung mit vier Nachbarn. Schneller, aber diagonale Konturen können abweichen."
+
+msgid "Anti-aliasing: change while a game is running"
+msgstr "Kantenglättung: während des Spiels ändern"
+
+msgid "Intel CMAA2 compute anti-aliasing. Vulkan only."
+msgstr "Intel CMAA2-Kantenglättung per Compute-Shader. Nur Vulkan."
+
+msgid "Morphological anti-aliasing with three graphics passes."
+msgstr "Morphologische Kantenglättung mit drei Grafikdurchläufen."
+
+msgid "Intel conservative morphological anti-aliasing. Experimental; Vulkan only."
+msgstr "Konservative morphologische Kantenglättung von Intel. Experimentell; nur Vulkan."

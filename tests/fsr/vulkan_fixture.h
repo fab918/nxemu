@@ -101,7 +101,8 @@ struct Context {
     unsigned family{}, bits{};
     bool fp16{};
 
-    Context(VkSamplerAddressMode address_mode = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER) {
+    Context(VkSamplerAddressMode address_mode = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+            bool storage_images = false) {
         VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
         app.pApplicationName = "nxemu FSR A/B";
         app.apiVersion = VK_API_VERSION_1_2;
@@ -176,6 +177,7 @@ struct Context {
         dc.pQueueCreateInfos = &q;
         VkPhysicalDeviceFeatures core{};
         core.shaderInt16 = fp16;
+        core.shaderStorageImageExtendedFormats = storage_images && features.features.shaderStorageImageExtendedFormats;
         dc.pEnabledFeatures = &core;
         Check(vkCreateDevice(physical, &dc, nullptr, &device));
         vkGetDeviceQueue(device, family, 0, &queue);
@@ -200,9 +202,9 @@ struct Context {
         dl.bindingCount = 1;
         dl.pBindings = &binding;
         Check(vkCreateDescriptorSetLayout(device, &dl, nullptr, &descriptor_layout));
-        VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 16};
+        VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 256};
         VkDescriptorPoolCreateInfo dp{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-        dp.maxSets = 16;
+        dp.maxSets = 256;
         dp.poolSizeCount = 1;
         dp.pPoolSizes = &size;
         Check(vkCreateDescriptorPool(device, &dp, nullptr, &descriptors));
@@ -231,29 +233,30 @@ struct Context {
                 return i;
         throw std::runtime_error("No memory type");
     }
-    Buffer MakeBuffer(VkDeviceSize size) {
+    Buffer MakeBuffer(VkDeviceSize size, VkBufferUsageFlags extra_usage = 0,
+                      VkMemoryPropertyFlags memory = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) {
         Buffer b;
         VkBufferCreateInfo ci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         ci.size = size;
-        ci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        ci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | extra_usage;
         Check(vkCreateBuffer(device, &ci, nullptr, &b.buffer));
         VkMemoryRequirements mr;
         vkGetBufferMemoryRequirements(device, b.buffer, &mr);
         VkMemoryAllocateInfo ma{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
         ma.allocationSize = mr.size;
-        ma.memoryTypeIndex =
-            MemoryType(mr.memoryTypeBits,
-                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        ma.memoryTypeIndex = MemoryType(mr.memoryTypeBits, memory);
         Check(vkAllocateMemory(device, &ma, nullptr, &b.memory));
         Check(vkBindBufferMemory(device, b.buffer, b.memory, 0));
-        Check(vkMapMemory(device, b.memory, 0, size, 0, &b.mapped));
+        if (memory & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+            Check(vkMapMemory(device, b.memory, 0, size, 0, &b.mapped));
         return b;
     }
-    VkRenderPass Pass(VkFormat format) {
+    VkRenderPass Pass(VkFormat format, VkAttachmentLoadOp load = VK_ATTACHMENT_LOAD_OP_CLEAR) {
         VkAttachmentDescription a{};
         a.format = format;
         a.samples = VK_SAMPLE_COUNT_1_BIT;
-        a.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        a.loadOp = load;
         a.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         a.initialLayout = a.finalLayout = VK_IMAGE_LAYOUT_GENERAL;
         VkAttachmentReference ref{0, VK_IMAGE_LAYOUT_GENERAL};
@@ -270,7 +273,8 @@ struct Context {
         Check(vkCreateRenderPass(device, &ci, nullptr, &p));
         return p;
     }
-    Image MakeImage(int w, int h, VkFormat format, VkRenderPass pass) {
+    Image MakeImage(int w, int h, VkFormat format, VkRenderPass pass,
+                    VkImageUsageFlags extra_usage = 0) {
         Image im;
         im.w = w;
         im.h = h;
@@ -282,7 +286,8 @@ struct Context {
         ci.samples = VK_SAMPLE_COUNT_1_BIT;
         ci.tiling = VK_IMAGE_TILING_OPTIMAL;
         ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-                   VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+                   VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | extra_usage;
+        if (!pass) ci.usage &= ~VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         Check(vkCreateImage(device, &ci, nullptr, &im.image));
         VkMemoryRequirements mr;
         vkGetImageMemoryRequirements(device, im.image, &mr);
@@ -304,7 +309,7 @@ struct Context {
         fb.width = w;
         fb.height = h;
         fb.layers = 1;
-        Check(vkCreateFramebuffer(device, &fb, nullptr, &im.fb));
+        if (pass) Check(vkCreateFramebuffer(device, &fb, nullptr, &im.fb));
         VkDescriptorSetAllocateInfo ds{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
         ds.descriptorPool = descriptors;
         ds.descriptorSetCount = 1;
@@ -440,7 +445,7 @@ struct Context {
         vkFreeMemory(device, i.memory, nullptr);
     }
     void Free(Buffer &b) {
-        vkUnmapMemory(device, b.memory);
+        if (b.mapped) vkUnmapMemory(device, b.memory);
         vkDestroyBuffer(device, b.buffer, nullptr);
         vkFreeMemory(device, b.memory, nullptr);
     }

@@ -596,6 +596,54 @@ endif()
 
 create_target_directory_groups(video_core)
 
+if (NXEMU_ENABLE_INTEL_CMAA2)
+    target_sources(video_core PRIVATE
+        renderer_vulkan/present/intel_cmaa2.cpp
+        renderer_vulkan/present/intel_cmaa2.h)
+    if(NXEMU_BUILD_FSR_BENCHMARK AND NXEMU_FSR_VULKAN_LOADER)
+        add_executable(nxemu-cmaa2-vulkan-benchmark ../../tests/fsr/cmaa2_benchmark.cpp)
+        add_dependencies(nxemu-cmaa2-vulkan-benchmark host_shaders)
+        target_include_directories(nxemu-cmaa2-vulkan-benchmark PRIVATE ${PROJECT_SOURCE_DIR}/src ${HOST_SHADERS_INCLUDE})
+        target_link_libraries(nxemu-cmaa2-vulkan-benchmark PRIVATE Vulkan::Headers ${NXEMU_FSR_VULKAN_LOADER})
+        add_executable(nxemu-aa-vulkan-benchmark ../../tests/fsr/aa_benchmark.cpp)
+        add_dependencies(nxemu-aa-vulkan-benchmark host_shaders)
+        target_include_directories(nxemu-aa-vulkan-benchmark PRIVATE ${PROJECT_SOURCE_DIR}/src ${HOST_SHADERS_INCLUDE})
+        target_link_libraries(nxemu-aa-vulkan-benchmark PRIVATE Vulkan::Headers ${NXEMU_FSR_VULKAN_LOADER})
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        target_include_directories(nxemu-aa-vulkan-benchmark PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/smaa_variants")
+        foreach(_preset IN ITEMS ultra high medium)
+            set(_source "${CMAKE_CURRENT_SOURCE_DIR}/host_shaders/smaa_edge_detection.frag")
+            set(_header "${CMAKE_CURRENT_BINARY_DIR}/smaa_variants/smaa_zero_${_preset}_edge_detection_frag_spv.h")
+            string(TOUPPER "SMAA_ZERO_${_preset}_EDGE_DETECTION_FRAG_SPV" _symbol)
+            add_custom_command(OUTPUT "${_header}"
+                COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/fsr/prepare_smaa_variant.py"
+                    "${_source}" "${_header}" "${_preset}" "${_symbol}"
+                    "${GLSLANGVALIDATOR}" "${INTEL_CMAA2_SPIRV_VAL}" --zero-edges
+                DEPENDS "${_source}" "${CMAKE_CURRENT_SOURCE_DIR}/host_shaders/opengl_smaa.glsl"
+                    "${PROJECT_SOURCE_DIR}/tests/fsr/prepare_smaa_variant.py"
+                    "${PROJECT_SOURCE_DIR}/tools/cmaa2/spirv_to_header.py" VERBATIM)
+            target_sources(nxemu-aa-vulkan-benchmark PRIVATE "${_header}")
+        endforeach()
+        foreach(_preset IN ITEMS high medium)
+            foreach(_stage IN ITEMS edge_detection blending_weight_calculation neighborhood_blending)
+                foreach(_extension IN ITEMS vert frag)
+                    set(_source "${CMAKE_CURRENT_SOURCE_DIR}/host_shaders/smaa_${_stage}.${_extension}")
+                    set(_header "${CMAKE_CURRENT_BINARY_DIR}/smaa_variants/smaa_${_preset}_${_stage}_${_extension}_spv.h")
+                    string(TOUPPER "SMAA_${_preset}_${_stage}_${_extension}_SPV" _symbol)
+                    add_custom_command(OUTPUT "${_header}"
+                        COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/fsr/prepare_smaa_variant.py"
+                            "${_source}" "${_header}" "${_preset}" "${_symbol}"
+                            "${GLSLANGVALIDATOR}" "${INTEL_CMAA2_SPIRV_VAL}"
+                        DEPENDS "${_source}" "${CMAKE_CURRENT_SOURCE_DIR}/host_shaders/opengl_smaa.glsl"
+                            "${PROJECT_SOURCE_DIR}/tests/fsr/prepare_smaa_variant.py"
+                            "${PROJECT_SOURCE_DIR}/tools/cmaa2/spirv_to_header.py" VERBATIM)
+                    target_sources(nxemu-aa-vulkan-benchmark PRIVATE "${_header}")
+                endforeach()
+            endforeach()
+        endforeach()
+    endif()
+endif()
+
 if(NXEMU_BUILD_FSR_BENCHMARK AND TARGET SDL2::SDL2)
     add_executable(nxemu-fsr-benchmark ../../tests/fsr/benchmark.cpp fsr.cpp)
     target_include_directories(nxemu-fsr-benchmark PRIVATE ${PROJECT_SOURCE_DIR}/src)

@@ -5,6 +5,7 @@
 #include <nxemu-cpu/cpu_settings_identifiers.h>
 #include <nxemu-video/video_settings.h>
 #include <nxemu-video/video_settings_identifiers.h>
+#include <nxemu-video/video_enum_strings.h>
 #include <yuzu_video_core/present.h>
 #include <yuzu_video_core/area_sampling.h>
 #include <nxemu-os/os_settings_identifiers.h>
@@ -55,6 +56,16 @@ int main(int argc, char ** argv)
         auto root = Read(argv[1]);
         std::string error;
         Check(GameSettings::Validate(root, error), "shipped database is valid");
+        const auto* aa_definition = GameSettings::Definition(NXVideoSetting::AntiAliasing);
+        Check(aa_definition && aa_definition->Accepts(JsonValue(static_cast<int>(AntiAliasing::SmaaHigh))) &&
+              aa_definition->Display(JsonValue(static_cast<int>(AntiAliasing::SmaaHigh))) == "SMAA High" &&
+              aa_definition->Display(JsonValue(2)) == "SMAA Ultra" &&
+              !aa_definition->Accepts(JsonValue(static_cast<int>(AntiAliasing::MaxEnum))),
+              "SMAA presets accepted and old numeric value preserved as Ultra");
+        Check(AntiAliasingFromString("Smaa") == AntiAliasing::Smaa &&
+              AntiAliasingFromString("SmaaUltra") == AntiAliasing::Smaa &&
+              AntiAliasingFromString(AntiAliasingToString(AntiAliasing::SmaaHigh)) == AntiAliasing::SmaaHigh,
+              "old SMAA strings and High roundtrip");
         const auto* filter_definition = GameSettings::Definition(NXVideoSetting::ScalingFilter);
         Check(filter_definition && filter_definition->Accepts(JsonValue(7)) &&
               filter_definition->Display(JsonValue(7)) == "Catmull-Rom", "Catmull-Rom override accepted");
@@ -151,6 +162,11 @@ int main(int argc, char ** argv)
         store.SetGameOverrides(snapshot);
         SetupVideoSetting();
         Check(videoSettings.scaling_filter == ScalingFilter::Bicubic, "video module reads game filter");
+        store.SetControlOverride(NXVideoSetting::AntiAliasing, JsonValue(static_cast<int>(AntiAliasing::SmaaHigh)));
+        Check(videoSettings.anti_aliasing == AntiAliasing::SmaaHigh, "status bar switches to SMAA High live");
+        store.SetControlOverride(NXVideoSetting::AntiAliasing, JsonValue(static_cast<int>(AntiAliasing::Smaa)));
+        Check(videoSettings.anti_aliasing == AntiAliasing::Smaa, "status bar switches back to SMAA Ultra live");
+        store.ClearControlOverride(NXVideoSetting::AntiAliasing);
         store.SetControlOverride(NXVideoSetting::ScalingFilter, JsonValue(7));
         store.SetControlOverride(NXVideoSetting::CASSharpness, JsonValue(0));
         Check(GetScalingFilter() == ScalingFilter::CatmullRom, "CAS zero bypasses sharpening pipeline");

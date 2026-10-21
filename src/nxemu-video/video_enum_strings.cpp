@@ -263,6 +263,8 @@ const char* AntiAliasingToString(AntiAliasing value)
     case AntiAliasing::None: return "None";
     case AntiAliasing::Fxaa: return "Fxaa";
     case AntiAliasing::Smaa: return "Smaa";
+    case AntiAliasing::SmaaHigh: return "SmaaHigh";
+    case AntiAliasing::Cmaa2Intel: return "Cmaa2Intel";
     case AntiAliasing::MaxEnum: return "MaxEnum";
     }
     return "None";
@@ -273,6 +275,11 @@ AntiAliasing AntiAliasingFromString(std::string_view str)
     if (str == "None") return AntiAliasing::None;
     if (str == "Fxaa") return AntiAliasing::Fxaa;
     if (str == "Smaa") return AntiAliasing::Smaa;
+    if (str == "SmaaUltra") return AntiAliasing::Smaa;
+    if (str == "SmaaHigh") return AntiAliasing::SmaaHigh;
+#ifdef NXEMU_ENABLE_INTEL_CMAA2
+    if (str == "Cmaa2Intel") return AntiAliasing::Cmaa2Intel;
+#endif
     if (str == "MaxEnum") return AntiAliasing::MaxEnum;
     return AntiAliasing::None;
 }
