@@ -9,6 +9,7 @@ finish-args:
   # GPU, game controllers and direct USB access for GameCube adapters.
   - --device=all
   - --share=network
+  - --env=SDL_VIDEO_WAYLAND_WMCLASS=com.nxemu.NxEmu
   # Game and firmware files/directories are selected through the file portal.
 modules:
   - name: nxemu

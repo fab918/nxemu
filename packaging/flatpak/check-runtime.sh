@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+test "${FLATPAK_ID:-}" = com.nxemu.NxEmu
 test -x /app/bin/nxemu
 test -s /app/lib/nxemu/nxemu.lang
 test -s /app/lib/nxemu/ui/main_window.rml

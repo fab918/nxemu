@@ -1,12 +1,6 @@
 name: Flatpak validation
 on:
   workflow_dispatch:
-  # Temporary bootstrap: remove this push trigger after the first successful run.
-  push:
-    branches: [codex/flatpak-validation]
-    paths:
-      - packaging/flatpak/**
-      - .github/workflows/flatpak.yml
 permissions:
   contents: read
 concurrency:
@@ -36,13 +30,13 @@ jobs:
           flatpak-builder --user --arch=x86_64 --force-clean --disable-rofiles-fuse \
             --state-dir=build/flatpak-state --repo=build/flatpak-repo \
             build/flatpak-app packaging/flatpak/com.nxemu.NxEmu.yml
-      - name: Check packaged resources and runtime dependencies
-        run: |
-          flatpak-builder --run build/flatpak-app packaging/flatpak/com.nxemu.NxEmu.yml \
-            sh -s < packaging/flatpak/check-runtime.sh
       - name: Export development bundle
         run: |
           flatpak build-bundle build/flatpak-repo build/NxEmu-x86_64.flatpak com.nxemu.NxEmu
+      - name: Install bundle and check against the actual runtime
+        run: |
+          flatpak install --user --noninteractive --assumeyes build/NxEmu-x86_64.flatpak
+          dbus-run-session -- flatpak run --user --command=sh com.nxemu.NxEmu -s < packaging/flatpak/check-runtime.sh
       - uses: actions/upload-artifact@v4
         with:
           name: NxEmu-flatpak-x86_64

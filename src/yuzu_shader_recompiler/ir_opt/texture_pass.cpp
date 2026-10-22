@@ -509,7 +509,7 @@ private:
             if (source && source->GetOpcode() == IR::Opcode::GetCbufU32x2 && inst->Arg(1).U32() < 2 && source->Arg(1).IsImmediate())
             {
                 auto addr = TryGetConstBuffer(source, env, *this);
-                if (addr) addr->offset += inst->Arg(1).U32() * sizeof(u32);
+                if (addr) addr->offset += inst->Arg(1).U32() * static_cast<u32>(sizeof(u32));
                 return addr;
             }
             return std::nullopt;

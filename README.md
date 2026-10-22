@@ -49,6 +49,9 @@ To build an AppImage locally, run `bash src/script/build-appimage.sh`.
 To package an existing Release build, run `bash src/script/build-appimage.sh --skip-build`.
 The output is `build/appimage/NxEmu-<arch>.AppImage`.
 
+The [Flatpak development manifest](packaging/flatpak/com.nxemu.NxEmu.yml) has a separate,
+manual-only Release validation workflow.
+
 To run the desktop settings test locally, configure with `-DNXEMU_BUILD_UI_SETTINGS_TESTS=ON`,
 build `nxemu_ui_settings_tests`, then run `ctest --test-dir <build-directory> -C Release --output-on-failure`.
 
