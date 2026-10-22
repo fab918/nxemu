@@ -1,0 +1,45 @@
+app-id: com.nxemu.NxEmu
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: nxemu
+finish-args:
+  - --socket=wayland
+  - --socket=pulseaudio
+  # GPU, game controllers and direct USB access for GameCube adapters.
+  - --device=all
+  - --share=network
+  # Game and firmware files/directories are selected through the file portal.
+modules:
+  - name: nxemu
+    buildsystem: simple
+    build-options:
+      env:
+        CMAKE_BUILD_PARALLEL_LEVEL: '4'
+    build-commands:
+      - cmake -S . -B _flatpak-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNXEMU_ENABLE_LTO=OFF -DNXEMU_USE_CCACHE=OFF -DNXEMU_USE_SCCACHE=OFF -DNXEMU_BUILD_UI_SETTINGS_TESTS=ON
+      - cmake --build _flatpak-build --target nxemu nxemu_ui_settings_tests
+      - ctest --test-dir _flatpak-build --output-on-failure
+      - install -Dm755 bin/x64/Release/nxemu /app/lib/nxemu/nxemu
+      - install -Dm644 bin/x64/Release/nxemu.lang /app/lib/nxemu/nxemu.lang
+      - cp -a bin/x64/Release/modules bin/x64/Release/ui /app/lib/nxemu/
+      - mkdir -p /app/bin && ln -s ../lib/nxemu/nxemu /app/bin/nxemu
+      - install -Dm644 packaging/flatpak/com.nxemu.NxEmu.desktop /app/share/applications/com.nxemu.NxEmu.desktop
+      - install -Dm644 packaging/flatpak/com.nxemu.NxEmu.metainfo.xml /app/share/metainfo/com.nxemu.NxEmu.metainfo.xml
+      - install -Dm644 src/nxemu/ui/assets/images/window-icon.png /app/share/icons/hicolor/128x128/apps/com.nxemu.NxEmu.png
+      - desktop-file-validate /app/share/applications/com.nxemu.NxEmu.desktop
+      - appstreamcli validate --no-net /app/share/metainfo/com.nxemu.NxEmu.metainfo.xml
+    sources:
+      # Development manifest: build exactly the recursive checkout being tested.
+      # Replace with a pinned upstream release git source before Flathub submission.
+      - type: dir
+        path: ../..
+        skip:
+          - .git
+          - .vs
+          - .flatpak-builder
+          - _flatpak-build
+          - build
+          - bin
+          - modules
+          - package

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=NxEmu
+Comment=Nintendo Switch emulator
+Exec=nxemu
+Icon=com.nxemu.NxEmu
+Terminal=false
+Categories=Game;Emulator;
+Keywords=Nintendo;Switch;Emulator;
+StartupNotify=true

@@ -24,6 +24,7 @@ Thumbs.db
 __pycache__/
 *.pyc
 /.vs
+/.flatpak-builder
 /bin
 /build
 /git.properties

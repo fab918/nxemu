@@ -1,0 +1,50 @@
+name: Flatpak validation
+on:
+  workflow_dispatch:
+  # Temporary bootstrap: remove this push trigger after the first successful run.
+  push:
+    branches: [codex/flatpak-validation]
+    paths:
+      - packaging/flatpak/**
+      - .github/workflows/flatpak.yml
+permissions:
+  contents: read
+concurrency:
+  group: flatpak-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install Flatpak build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends flatpak-builder elfutils desktop-file-utils appstream
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive --assumeyes --no-related flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
+      - name: Validate manifest and desktop metadata
+        run: |
+          flatpak-builder --show-manifest packaging/flatpak/com.nxemu.NxEmu.yml > /tmp/flatpak-resolved-manifest.json
+          desktop-file-validate packaging/flatpak/com.nxemu.NxEmu.desktop
+          appstreamcli validate --no-net packaging/flatpak/com.nxemu.NxEmu.metainfo.xml
+      - name: Build and test Release in the Flatpak SDK
+        run: |
+          flatpak-builder --user --arch=x86_64 --force-clean --disable-rofiles-fuse \
+            --state-dir=build/flatpak-state --repo=build/flatpak-repo \
+            build/flatpak-app packaging/flatpak/com.nxemu.NxEmu.yml
+      - name: Check packaged resources and runtime dependencies
+        run: |
+          flatpak-builder --run build/flatpak-app packaging/flatpak/com.nxemu.NxEmu.yml \
+            sh -s < packaging/flatpak/check-runtime.sh
+      - name: Export development bundle
+        run: |
+          flatpak build-bundle build/flatpak-repo build/NxEmu-x86_64.flatpak com.nxemu.NxEmu
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NxEmu-flatpak-x86_64
+          path: build/NxEmu-x86_64.flatpak
+          if-no-files-found: error
