@@ -3,33 +3,55 @@ if (NOT TARGET fmt::fmt)
     add_subdirectory(fmt)
 endif()
 
-# macOS controller adapters are bundled against the application deployment target.
-if(APPLE)
-    option(ENABLE_LIBUSB "Enable direct GameCube USB adapter input" ON)
-    if(ENABLE_LIBUSB AND NOT TARGET libusb::usb)
-        set(_nxemu_usb "${CMAKE_CURRENT_SOURCE_DIR}/libusb/libusb")
-        add_library(nxemu_libusb STATIC
-            ${_nxemu_usb}/core.c
-            ${_nxemu_usb}/descriptor.c
-            ${_nxemu_usb}/hotplug.c
-            ${_nxemu_usb}/io.c
-            ${_nxemu_usb}/strerror.c
-            ${_nxemu_usb}/sync.c
+# The GameCube adapter driver is built from source: on macOS against the
+# application deployment target, on Windows with the application's runtime.
+if(ENABLE_LIBUSB AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT TARGET libusb::usb)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(NXEMU_LIBUSB REQUIRED IMPORTED_TARGET GLOBAL libusb-1.0)
+    add_library(libusb::usb ALIAS PkgConfig::NXEMU_LIBUSB)
+endif()
+if(ENABLE_LIBUSB AND NOT TARGET libusb::usb)
+    set(_nxemu_usb "${CMAKE_CURRENT_SOURCE_DIR}/libusb/libusb")
+    add_library(nxemu_libusb STATIC
+        ${_nxemu_usb}/core.c
+        ${_nxemu_usb}/descriptor.c
+        ${_nxemu_usb}/hotplug.c
+        ${_nxemu_usb}/io.c
+        ${_nxemu_usb}/strerror.c
+        ${_nxemu_usb}/sync.c)
+    target_include_directories(nxemu_libusb PUBLIC "${_nxemu_usb}")
+    if(APPLE)
+        target_sources(nxemu_libusb PRIVATE
             ${_nxemu_usb}/os/events_posix.c
             ${_nxemu_usb}/os/threads_posix.c
             ${_nxemu_usb}/os/darwin_usb.c)
-        target_include_directories(nxemu_libusb PUBLIC "${_nxemu_usb}"
-            PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/libusb/Xcode")
+        target_include_directories(nxemu_libusb PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/libusb/Xcode")
         target_compile_options(nxemu_libusb PRIVATE -fvisibility=hidden)
         target_link_libraries(nxemu_libusb PRIVATE Threads::Threads
             "-framework IOKit" "-framework CoreFoundation" "-framework Security")
-        add_library(libusb::usb ALIAS nxemu_libusb)
-        unset(_nxemu_usb)
+    elseif(WIN32)
+        target_sources(nxemu_libusb PRIVATE
+            ${_nxemu_usb}/os/events_windows.c
+            ${_nxemu_usb}/os/threads_windows.c
+            ${_nxemu_usb}/os/windows_common.c
+            ${_nxemu_usb}/os/windows_usbdk.c
+            ${_nxemu_usb}/os/windows_winusb.c)
+        target_include_directories(nxemu_libusb PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/libusb/msvc")
     endif()
+    add_library(libusb::usb ALIAS nxemu_libusb)
+    unset(_nxemu_usb)
 endif()
 
-# Keep macOS controller support self-contained in the application bundle.
-if(APPLE AND ENABLE_SDL2 AND NOT TARGET SDL2::SDL2)
+# Linux packages provide the SDL runtime; macOS/Windows ship a bundled copy.
+# SDL is built from source so the application ships its own copy.
+if(ENABLE_SDL2 AND NOT TARGET SDL2::SDL2)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        set(SDL_X11 OFF CACHE BOOL "Use the Wayland display backend" FORCE)
+        set(SDL_WAYLAND ON CACHE BOOL "Enable Wayland" FORCE)
+    endif()
+    # The frontend and the dynamically loaded OS module both use SDL. They
+    # share one runtime: two copies would each claim the controllers, and
+    # on macOS would define the same Objective-C classes twice.
     set(SDL_SHARED ON CACHE BOOL "Build shared SDL" FORCE)
     set(SDL_STATIC OFF CACHE BOOL "Build static SDL" FORCE)
     set(SDL_TEST OFF CACHE BOOL "Build SDL test library" FORCE)
@@ -43,6 +65,11 @@ if(APPLE AND ENABLE_SDL2 AND NOT TARGET SDL2::SDL2)
     add_subdirectory(sdl)
     set(CMAKE_POLICY_VERSION_MINIMUM "${_nxemu_saved_policy_minimum}")
     unset(_nxemu_saved_policy_minimum)
+    if(WIN32)
+        # Windows finds the library beside the executable that loads it.
+        nxemu_set_app_output(SDL2)
+        set_target_properties(SDL2 PROPERTIES DEBUG_POSTFIX "")
+    endif()
 endif()
 
 # Boost
@@ -80,6 +107,15 @@ if(NOT TARGET Boost::headers)
     add_subdirectory("${_NXEMU_BOOST_ROOT}/libs/core" "${CMAKE_BINARY_DIR}/external/boost/libs/core")
     add_subdirectory("${_NXEMU_BOOST_ROOT}/libs/predef" "${CMAKE_BINARY_DIR}/external/boost/libs/predef")
     add_subdirectory("${_NXEMU_BOOST_ROOT}/libs/context" "${CMAKE_BINARY_DIR}/external/boost/libs/context")
+    if(MSVC)
+        # The generic ASM language that nxemu-cpu and nxemu-video enable also
+        # claims .asm files, and Visual Studio then leaves them out of the build.
+        file(GLOB _nxemu_boost_masm "${_NXEMU_BOOST_ROOT}/libs/context/src/asm/*_masm.asm")
+        set_source_files_properties(${_nxemu_boost_masm}
+            DIRECTORY "${_NXEMU_BOOST_ROOT}/libs/context"
+            PROPERTIES LANGUAGE ASM_MASM)
+        unset(_nxemu_boost_masm)
+    endif()
 endif()
 
 # Oaknut
@@ -174,6 +210,9 @@ if (NOT TARGET Opus::opus)
         set(OPUS_MAY_HAVE_NEON OFF CACHE BOOL "Use runtime NEON detection" FORCE)
         set(OPUS_PRESUME_NEON ON CACHE BOOL "Assume NEON support" FORCE)
     endif()
+    if(MSVC)
+        set(OPUS_STATIC_RUNTIME ON CACHE BOOL "Opus: static C runtime" FORCE)
+    endif()
     add_subdirectory(opus)
     if (APPLE AND ARCHITECTURE_arm64)
         # Opus also guards NEON declarations with MAY_HAVE, even when presumed.
@@ -266,13 +305,11 @@ if(APPLE)
     unset(_nxemu_moltenvk_runtime)
 endif()
 
+# Interface: RmlUi, with FreeType as its font engine. Both are built from
+# source so every platform renders text with the same library.
 if(NOT ANDROID)
-    add_subdirectory(sciterui)
-
-    # RmlUi interface, with FreeType as its font engine. Both are built from
-    # source so every platform renders text with the same library.
-    set(_nxemu_saved_build_shared_libs "${BUILD_SHARED_LIBS}")
     set(BUILD_SHARED_LIBS OFF)
+
     foreach(_nxemu_ft_dependency ZLIB BZIP2 PNG HARFBUZZ BROTLI)
         set(FT_DISABLE_${_nxemu_ft_dependency} ON CACHE BOOL "FreeType: no external dependency" FORCE)
     endforeach()
@@ -287,14 +324,14 @@ if(NOT ANDROID)
     set(CMAKE_POLICY_VERSION_MINIMUM "${_nxemu_saved_policy_minimum}")
     unset(_nxemu_saved_policy_minimum)
     unset(SKIP_INSTALL_ALL)
-    if(NOT TARGET Freetype::Freetype)
-        add_library(Freetype::Freetype ALIAS freetype)
-    endif()
+    add_library(Freetype::Freetype ALIAS freetype)
 
     # RmlUi takes the target above instead of searching the system.
     set(CMAKE_DISABLE_FIND_PACKAGE_Freetype TRUE)
+    set(_nxemu_saved_cxx_flags "${CMAKE_CXX_FLAGS}")
+    nxemu_enable_rtti()
     add_subdirectory(rmlui)
+    set(CMAKE_CXX_FLAGS "${_nxemu_saved_cxx_flags}")
+    unset(_nxemu_saved_cxx_flags)
     unset(CMAKE_DISABLE_FIND_PACKAGE_Freetype)
-    set(BUILD_SHARED_LIBS "${_nxemu_saved_build_shared_libs}")
-    unset(_nxemu_saved_build_shared_libs)
 endif()

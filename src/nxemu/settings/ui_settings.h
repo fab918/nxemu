@@ -1,7 +1,6 @@
 #pragma once
-#include <common/path.h>
 #include <map>
-#include <nxemu/user_interface/hotkey_map.h>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -10,7 +9,6 @@ typedef std::map<std::string, std::string> StringMap;
 
 struct UISettings
 {
-    // Both interfaces
     Stringlist recentFiles;
     Stringlist gameDirectories;
     Stringlist gameDirectoriesRecursive;
@@ -20,7 +18,6 @@ struct UISettings
     bool confirmBeforeStopping;
     bool enableDiscordPresence;
 
-    // New interface
     std::string interfaceTheme;
     std::string interfaceLanguage;
     bool consoleLanguageSet;
@@ -45,18 +42,6 @@ struct UISettings
     int32_t performanceRate;
     int32_t performanceHistoryLength;
 
-    // Sciter only: remove with Sciter
-    Path languageDir;
-    std::string languageDirValue;
-    std::string languageBase;
-    std::string languageCurrent;
-    bool sciterConsole;
-    bool useRmlUI;
-    int32_t gameBrowserMyGameIconSize;
-    bool hasBrokenVulkan;
-    bool enableAllControllers;
-    bool hideMouseOnInactivity;
-    HotkeyMap hotkeys;
 };
 
 extern UISettings uiSettings;
