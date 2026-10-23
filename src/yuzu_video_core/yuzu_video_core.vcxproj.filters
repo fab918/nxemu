@@ -10,6 +10,10 @@
     <ClInclude Include="shader_profile_journal.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="renderer_vulkan\guest_pipeline_recorder.h"><Filter>Header Files\renderer_vulkan</Filter></ClInclude>
     <ClInclude Include="pipeline_cache_store.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="shader_profile_audit.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="shader_profile_identity.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="shader_profile_validation.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="renderer_vulkan\startup_pipeline_variants.h"><Filter>Header Files\renderer_vulkan</Filter></ClInclude>
     <ClInclude Include="shader_profile.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="shader_profile_codec.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="renderer_vulkan\guest_pipeline_recipe_probe.h"><Filter>Header Files\renderer_vulkan</Filter></ClInclude>

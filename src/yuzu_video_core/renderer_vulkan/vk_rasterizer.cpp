@@ -1090,8 +1090,8 @@ std::optional<FramebufferTextureInfo> RasterizerVulkan::AccelerateDisplay(
 }
 
 void RasterizerVulkan::LoadDiskResources(u64 title_id, std::stop_token stop_loading,
-                                         const VideoCore::DiskResourceLoadCallback& callback) {
-    pipeline_cache.LoadDiskResources(title_id, stop_loading, callback);
+                                         const VideoCore::DiskResourceLoadCallback& callback, std::string_view content_identity) {
+    pipeline_cache.LoadDiskResources(title_id, stop_loading, callback, content_identity);
 }
 
 void RasterizerVulkan::FlushWork() {

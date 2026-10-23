@@ -39,6 +39,10 @@
     <ClInclude Include="shader_profile_journal.h" />
     <ClInclude Include="renderer_vulkan\guest_pipeline_recorder.h" />
     <ClInclude Include="pipeline_cache_store.h" />
+    <ClInclude Include="shader_profile_audit.h" />
+    <ClInclude Include="shader_profile_identity.h" />
+    <ClInclude Include="shader_profile_validation.h" />
+    <ClInclude Include="renderer_vulkan\startup_pipeline_variants.h" />
     <ClInclude Include="shader_profile.h" />
     <ClInclude Include="shader_profile_codec.h" />
     <ClInclude Include="renderer_vulkan\guest_pipeline_recipe_probe.h" />

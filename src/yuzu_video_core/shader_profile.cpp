@@ -5,6 +5,7 @@
 #include "yuzu_video_core/shader_profile_codec.h"
 #include "yuzu_video_core/shader_profile_metrics.h"
 #include "yuzu_video_core/shader_profile_hash.h"
+#include "yuzu_video_core/shader_profile_validation.h"
 #include "common/json.h"
 #include "common/sha256.h"
 #include <algorithm>
@@ -94,7 +95,9 @@ std::string Environment(const JsonValue& env,const std::string& code) {
             Check(entry.isArray() && entry.size()==2,"Invalid environment map entry");
             const auto key=Number(entry[0]); Check(keys.insert(key).second,"Duplicate environment map key");
             Check(i>=2 || key<=UINT32_MAX,"Environment map key overflow");
-            Put(out,key,i<2?4:8); Put(out,Word(entry[1]),4);
+            const auto value=Word(entry[1]);
+            Check(ValidEnvironmentMapValue(i,value),"Invalid environment query value");
+            Put(out,key,i<2?4:8); Put(out,value,4);
         }
     }
     if(stage==5) {

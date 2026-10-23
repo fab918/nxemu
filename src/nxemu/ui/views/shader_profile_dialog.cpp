@@ -108,6 +108,9 @@ bool ShaderProfileDialog::ProfileProgress(const char * phase, uint64_t done, uin
 void ShaderProfileDialog::Start()
 {
     if (Busy()) return;
+    // Completion does not make std::thread non-joinable; OnUpdate may not have
+    // joined it yet when another operation is requested.
+    if (m_thread.joinable()) m_thread.join();
     if (!m_importing && !std::filesystem::exists(std::filesystem::u8path(m_recording)))
     {
         SetText("profile-detail", Tr("Play normally with this version, stop the game, then export. Recipes are recorded automatically with the local shader cache."));
@@ -124,68 +127,78 @@ void ShaderProfileDialog::Start()
     m_busy = true;
     Document()->GetElementById("profile-start")->SetAttribute("disabled", "");
     Document()->GetElementById("profile-update-row")->SetAttribute("disabled", "");
-    m_thread = std::thread([this] {
-        bool success = false;
-        std::string failure;
-        ShaderProfileResult result{};
-        try
-        {
-            std::filesystem::create_directories(m_cache);
-            const auto game = std::filesystem::u8path(m_game);
-            std::string profile = m_profile;
-            if (m_importing)
+    try
+    {
+        m_thread = std::thread([this] {
+            bool success = false;
+            std::string failure;
+            ShaderProfileResult result{};
+            try
             {
-                const auto snapshot = ReadSmall(std::filesystem::u8path(m_profile), 33 * 1024 * 1024);
-                const auto staged = m_cache / "community-pending.nxshader";
-                AtomicWrite(staged, snapshot);
-                profile = Utf8(staged);
+                std::filesystem::create_directories(m_cache);
+                const auto game = std::filesystem::u8path(m_game);
+                std::string profile = m_profile;
+                if (m_importing)
+                {
+                    const auto snapshot = ReadSmall(std::filesystem::u8path(m_profile), 33 * 1024 * 1024);
+                    const auto staged = m_cache / "community-pending.nxshader";
+                    AtomicWrite(staged, snapshot);
+                    profile = Utf8(staged);
+                }
+                const auto base = Utf8(game.filename());
+                ShaderProfileTask task{};
+                task.importing = m_importing;
+                task.compact = true;
+                task.title_id = m_title;
+                task.cache = m_cacheFile.c_str();
+                task.recording = m_recording.c_str();
+                task.game_root = m_root.c_str();
+                task.base = base.c_str();
+                task.update = m_update.c_str();
+                task.profile = profile.c_str();
+                task.index = m_index.c_str();
+                task.label = m_label.c_str();
+                char error[1024]{};
+                success = m_video->ProcessShaderProfile(task, *this, result, error, sizeof(error));
+                if (!success) failure = error;
+                if (success && m_importing && m_cancel)
+                {
+                    success = false;
+                    failure = "Shader profile operation cancelled";
+                }
+                if (success && m_importing)
+                {
+                    const auto name = "community-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".nxshader";
+                    std::filesystem::rename(std::filesystem::u8path(profile), m_cache / name);
+                    JsonValue selection;
+                    selection["file"] = name;
+                    selection["root"] = m_root;
+                    AtomicWrite(m_cache / "community.json", JsonStyledWriter().write(selection));
+                }
+                if (success && !m_importing) AtomicWrite(m_cache / "nxshader-update.txt", m_update);
             }
-            const auto base = Utf8(game.filename());
-            ShaderProfileTask task{};
-            task.importing = m_importing;
-            task.compact = true;
-            task.title_id = m_title;
-            task.cache = m_cacheFile.c_str();
-            task.recording = m_recording.c_str();
-            task.game_root = m_root.c_str();
-            task.base = base.c_str();
-            task.update = m_update.c_str();
-            task.profile = profile.c_str();
-            task.index = m_index.c_str();
-            task.label = m_label.c_str();
-            char error[1024]{};
-            success = m_video->ProcessShaderProfile(task, *this, result, error, sizeof(error));
-            if (!success) failure = error;
-            if (success && m_importing && m_cancel)
+            catch (const std::exception & error)
             {
                 success = false;
-                failure = "Shader profile operation cancelled";
+                failure = error.what();
             }
-            if (success && m_importing)
             {
-                const auto name = "community-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".nxshader";
-                std::filesystem::rename(std::filesystem::u8path(profile), m_cache / name);
-                JsonValue selection;
-                selection["file"] = name;
-                selection["root"] = m_root;
-                AtomicWrite(m_cache / "community.json", JsonStyledWriter().write(selection));
+                std::scoped_lock lock(m_mutex);
+                m_success = success;
+                m_error = std::move(failure);
+                m_result = result;
+                m_finished = true;
             }
-            if (success && !m_importing) AtomicWrite(m_cache / "nxshader-update.txt", m_update);
-        }
-        catch (const std::exception & error)
-        {
-            success = false;
-            failure = error.what();
-        }
-        {
-            std::scoped_lock lock(m_mutex);
-            m_success = success;
-            m_error = std::move(failure);
-            m_result = result;
-            m_finished = true;
-        }
+            m_busy = false;
+        });
+    }
+    catch (const std::exception & error)
+    {
         m_busy = false;
-    });
+        m_success = false;
+        m_finished = true;
+        m_error = error.what();
+    }
 }
 void ShaderProfileDialog::OnUpdate()
 {

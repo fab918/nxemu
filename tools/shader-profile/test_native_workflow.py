@@ -116,3 +116,15 @@ class NativeWorkflowTests(unittest.TestCase):
         result=subprocess.run([self.exporter,'--compact',str(source),str(target)],capture_output=True)
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertNotEqual(self.read(target).returncode,0)
+
+    def test_external_query_enums_are_rejected_in_v2_and_v3(self):
+        for index,field in enumerate(('texture_types','texture_pixel_formats','cbuf_replacements')):
+            profile=copy.deepcopy(self.profile)
+            next(iter(profile['environments'].values()))[field]=[[0,0xffffffff]]
+            source=self.root/('bad-enum-'+str(index)+'.json');source.write_bytes(canonical(profile))
+            self.assertNotEqual(self.read(source,'bad-v2-'+str(index)).returncode,0)
+            target=self.root/('bad-enum-'+str(index)+'.nxshader')
+            packed=subprocess.run([self.exporter,'--compact',str(source),str(target)],capture_output=True)
+            self.assertEqual(packed.returncode,0,packed.stderr)
+            self.assertNotEqual(self.read(target,'bad-v3-'+str(index)).returncode,0)
+            self.assertFalse((self.root/('bad-v3-'+str(index)+'.nxc')).exists())

@@ -12,6 +12,10 @@ endif()
 add_library(video_core STATIC
     pipeline_cache_store.cpp
     pipeline_cache_store.h
+    shader_profile_audit.h
+    shader_profile_identity.h
+    shader_profile_validation.h
+    renderer_vulkan/startup_pipeline_variants.h
     shader_profile.cpp
     shader_profile.h
     shader_profile_hash.h

@@ -239,9 +239,14 @@ public:
     FileEnvironment(FileEnvironment&&) noexcept = default;
 
     FileEnvironment& operator=(const FileEnvironment&) = delete;
-    FileEnvironment(const FileEnvironment&) = delete;
+    [[nodiscard]] FileEnvironment CloneForDiagnostic() const { return FileEnvironment(*this); }
 
     void Deserialize(std::istream& file);
+
+    // A shared host key does not prove that compilation inputs are equivalent.
+    [[nodiscard]] bool HasSameCompilationInputs(const FileEnvironment& other) const noexcept;
+    [[nodiscard]] size_t CompilationInputBytes() const noexcept;
+    [[nodiscard]] u32 CompilationDifferenceMask(const FileEnvironment& other) const noexcept;
 
     [[nodiscard]] u64 ReadInstruction(u32 address) override;
 
@@ -281,6 +286,7 @@ public:
     void Dump(u64 pipeline_hash, u64 shader_hash) override;
 
 private:
+    FileEnvironment(const FileEnvironment&) = default;
     std::vector<u64> code;
     std::unordered_map<u32, Shader::TextureType> texture_types;
     std::unordered_map<u32, Shader::TexturePixelFormat> texture_pixel_formats;

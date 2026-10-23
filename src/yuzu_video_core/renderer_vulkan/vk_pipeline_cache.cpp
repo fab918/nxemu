@@ -46,6 +46,9 @@
 #include "yuzu_video_core/shader_profile_metrics.h"
 #include "yuzu_video_core/shader_profile_export.h"
 #include "yuzu_video_core/shader_profile_hash.h"
+#include "yuzu_video_core/shader_profile_identity.h"
+#include "yuzu_video_core/shader_profile_audit.h"
+#include "yuzu_video_core/renderer_vulkan/startup_pipeline_variants.h"
 #include "yuzu_video_core/shader_notify.h"
 #include "yuzu_video_core/surface.h"
 #include "yuzu_video_core/vulkan_common/vulkan_device.h"
@@ -726,7 +729,7 @@ ComputePipeline* PipelineCache::CurrentComputePipeline() {
 }
 
 void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading,
-                                      const VideoCore::DiskResourceLoadCallback& callback) {
+                                      const VideoCore::DiskResourceLoadCallback& callback, std::string_view content_identity) {
     namespace Timing = VideoCommon::ShaderProfile::Timing;
     if (title_id == 0) {
         return;
@@ -759,6 +762,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         size_t total{};
         size_t built{};
         bool has_loaded{};
+        size_t failures{};
         std::unique_ptr<PipelineStatistics> statistics;
         std::unique_ptr<Timing::Metrics> timings;
     } state;
@@ -776,35 +780,38 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
 
     // Earlier records included sizes for every bound bank, even when the shader never
     // queried them. Normalize and deduplicate them without discarding the existing shader cache.
-    std::unordered_set<ComputePipelineCacheKey> loaded_compute_keys;
-    std::unordered_set<GraphicsPipelineCacheKey> loaded_graphics_keys;
+    struct GraphicsInput { GraphicsPipelineCacheKey key; std::vector<FileEnvironment> envs; };
+    struct ComputeInput { ComputePipelineCacheKey key; FileEnvironment env; };
+    std::vector<GraphicsInput> graphics_inputs;
+    std::vector<ComputeInput> compute_inputs;
+    size_t buffered_input_bytes{};
+    const auto account_input = [&](const FileEnvironment& env) {
+        const auto bytes = env.CompilationInputBytes();
+        if (bytes > 256 * 1024 * 1024ULL - buffered_input_bytes)
+            throw std::runtime_error("Startup shader input memory budget exceeded");
+        buffered_input_bytes += bytes;
+    };
     const auto load_compute{[&](std::istream& file, FileEnvironment env) {
-        ComputePipelineCacheKey key;
+        ComputePipelineCacheKey key{};
         file.read(reinterpret_cast<char*>(&key), sizeof(key));
-
         cbuf_size_dependencies.Observe(key.unique_hash, env.CbufSizeMask());
-        CbufSizeDependencies::Normalize(key.cbuf_sizes,
-                                       cbuf_size_dependencies.Mask(key.unique_hash));
-        if (!loaded_compute_keys.insert(key).second) {
-            return false;
-        }
-
+        account_input(env);
+        compute_inputs.push_back({key, std::move(env)});
+        return true;
+    }};
+    const auto queue_compute = [&](const ComputePipelineCacheKey& key, FileEnvironment env) {
         workers.QueueWork([this, key, env_ = std::move(env), &state, &callback]() mutable {
             Timing::Context timing_context(state.timings.get());
             ShaderPools pools;
             auto pipeline{CreateComputePipeline(pools, key, env_, state.statistics.get(), false)};
             std::scoped_lock lock{state.mutex};
-            if (pipeline) {
-                compute_cache.emplace(key, std::move(pipeline));
-            }
+            if (pipeline) compute_cache.emplace(key, std::move(pipeline));
+            else ++state.failures;
             ++state.built;
-            if (state.has_loaded) {
-                callback(VideoCore::LoadCallbackStage::Build, state.built, state.total);
-            }
+            if (state.has_loaded) callback(VideoCore::LoadCallbackStage::Build, state.built, state.total);
         });
         ++state.total;
-        return true;
-    }};
+    };
     const auto queue_graphics{[&](const GraphicsPipelineCacheKey& key,
                                   std::vector<FileEnvironment> envs) {
         workers.QueueWork([this, key, envs_ = std::move(envs), &state, &callback]() mutable {
@@ -818,9 +825,9 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                                                  state.statistics.get(), false)};
 
             std::scoped_lock lock{state.mutex};
-            if (pipeline) {
+            if (pipeline && pipeline->IsBuilt()) {
                 graphics_cache.emplace(key, std::move(pipeline));
-            }
+            } else { ++state.failures; }
             ++state.built;
             if (state.has_loaded) {
                 callback(VideoCore::LoadCallbackStage::Build, state.built, state.total);
@@ -854,11 +861,6 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             LOG_ERROR(Render_Vulkan, "Cached graphics shader environment count mismatch");
             return false;
         }
-        NormalizeCbufSizes(key);
-        if (!loaded_graphics_keys.insert(key).second) {
-            return false;
-        }
-
         if ((key.state.extended_dynamic_state != 0) !=
                 dynamic_features.has_extended_dynamic_state ||
             (key.state.extended_dynamic_state_2 != 0) !=
@@ -875,16 +877,8 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                  !dynamic_features.has_dynamic_vertex_input)) {
             return true;
         }
-        using EngineHint = Tegra::Engines::Maxwell3D::EngineHint;
-        if (key.state.app_stage != EngineHint::OnHLEMacro) {
-            plain_keys.insert(key);
-        } else if (std::ranges::none_of(envs,
-                                        [](const auto& env) { return env.HasHLEMacroState(); })) {
-            hle_unreplaced_keys.insert(key);
-            hle_unreplaced.push_back({key, std::move(envs)});
-            return true;
-        }
-        queue_graphics(key, std::move(envs));
+        for (const auto& env : envs) account_input(env);
+        graphics_inputs.push_back({key, std::move(envs)});
         return true;
     }};
     // Profiles are verified/projected only during startup. Explicit CLI input wins.
@@ -906,10 +900,21 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             dynamic_features.has_extended_dynamic_state_2_extra,dynamic_features.has_extended_dynamic_state_3_blend,
             dynamic_features.has_extended_dynamic_state_3_enables,dynamic_features.has_dynamic_vertex_input,
             dynamic_features.has_vertex_stride_workaround})flags|=u32(feature)<<bit++;
-        import_stamp=VideoCommon::ShaderProfile::ResourceSha256(read_small(std::filesystem::u8path(import_path),33*1024*1024))+":"+std::to_string(flags)+":"+std::to_string(CACHE_VERSION);
-        if(std::filesystem::exists(pipeline_cache_filename) && std::filesystem::file_size(pipeline_cache_filename)>16 &&
-           std::filesystem::exists(base_dir/"community.imported") && read_small(base_dir/"community.imported",256)==import_stamp)import_path.clear();
+        import_stamp=VideoCommon::ShaderProfile::ImportIdentity(
+            VideoCommon::ShaderProfile::ResourceSha256(read_small(std::filesystem::u8path(import_path),33*1024*1024)),
+            content_identity,title_id,flags,CACHE_VERSION);
+        if(!import_stamp.empty() && std::filesystem::exists(pipeline_cache_filename) && std::filesystem::file_size(pipeline_cache_filename)>16 &&
+           std::filesystem::exists(base_dir/"community.imported")) {
+            try {
+                const auto marker=VideoCommon::ShaderProfile::ParseMetadata(read_small(base_dir/"community.imported",16384));
+                if(marker["schema"].asUInt64()==2 && marker["stamp"].asString()==import_stamp &&
+                   marker["status"].asString()=="ready-compatible-subset" && marker["native_failures"].asUInt64()==0 &&
+                   marker["native_completed"].asUInt64()==marker["native_queued"].asUInt64())import_path.clear();
+            } catch(const std::exception&) { /* Older/partial markers require fresh validation. */ }
+        }
     } catch(const std::exception& error){LOG_WARNING(Render_Vulkan,"Community profile selection rejected: {}",error.what());import_path.clear();}
+    bool import_records_ready{};
+    size_t import_unresolved{},imported_records{};
     if (!import_path.empty()) {
         try {
             const char* path=import_path.c_str();const char* root=import_root.c_str();
@@ -965,10 +970,8 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                 });
                 ++imported;
             }
-            if(!import_stamp.empty() && imported==recipes.size() && !stop_loading.stop_requested()) {
-                std::ofstream marker(base_dir/"community.imported",std::ios::binary|std::ios::trunc);marker<<import_stamp;
-                if(!marker)LOG_WARNING(Render_Vulkan,"Cannot save community import completion marker");
-            }
+            import_records_ready = imported == recipes.size() && !stop_loading.stop_requested();
+            import_unresolved=unresolved_count;imported_records=imported;
             LOG_INFO(Render_Vulkan, "NXShader imported {} recipes from local game resources", imported);
             if (unresolved_count) LOG_WARNING(Render_Vulkan,
                 "NXShader retains {} observations without serialized environments; these cannot be prewarmed", unresolved_count);
@@ -976,18 +979,137 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             LOG_ERROR(Render_Vulkan, "NXShader import failed: {}", error.what());
         }
     }
-    // Legacy caches remain readable; all subsequent writes use the deduplicated local store.
+    // Prefer the modern cache explicitly. Legacy is a recovery source only when
+    // the modern store is absent/empty or rejected; neither file is deleted here.
     Timing::Timer existing_cache_timer(state.timings.get(), Timing::Phase::ExistingCacheLoad);
-    VideoCommon::LoadPipelines(stop_loading, base_dir / "vulkan.bin", CACHE_VERSION,
-                               load_compute, load_graphics);
+    const auto graphics_before = graphics_inputs.size(), compute_before = compute_inputs.size();
+    bool modern_loaded{};
     try {
-        VideoCommon::LoadPipelines(stop_loading, pipeline_cache_filename, CACHE_VERSION,
-                                   load_compute, load_graphics);
+        if (VideoCommon::CacheStore::MigrateLegacyVulkan(base_dir / "vulkan.bin", pipeline_cache_filename, CACHE_VERSION))
+            LOG_INFO(Render_Vulkan, "Legacy Vulkan cache migrated and verified; original vulkan.bin preserved");
+    } catch(const std::exception& error) {
+        LOG_WARNING(Render_Vulkan,"Legacy migration deferred without modifying source; trying existing modern cache: {}",error.what());
+    }
+    try {
+        if (std::filesystem::exists(pipeline_cache_filename)) {
+            VideoCommon::LoadPipelines(stop_loading, pipeline_cache_filename, CACHE_VERSION,
+                                       load_compute, load_graphics);
+            modern_loaded = graphics_inputs.size() != graphics_before || compute_inputs.size() != compute_before;
+        }
     } catch (const std::exception& error) {
+        graphics_inputs.resize(graphics_before); compute_inputs.resize(compute_before);
         LOG_ERROR(Render_Vulkan, "Local shader cache rejected: {}", error.what());
-        std::error_code marker_error;std::filesystem::remove(base_dir/"community.imported",marker_error);
+        import_records_ready = false;
+        std::error_code marker_error; std::filesystem::remove(base_dir/"community.imported", marker_error);
+    }
+    if (!modern_loaded && !stop_loading.stop_requested() && std::filesystem::exists(base_dir / "vulkan.bin")) {
+        const auto gfx_start=graphics_inputs.size(), compute_start=compute_inputs.size();
+        try {
+            // Recovery never rewrites/deletes a legacy source, even if malformed.
+            for(const auto& record:VideoCommon::CacheStore::ReadLegacyVulkan(base_dir / "vulkan.bin",CACHE_VERSION)) {
+                if(stop_loading.stop_requested())break;
+                std::vector<FileEnvironment> envs;
+                for(const auto& bytes:record.environments) {
+                    std::istringstream input(bytes,std::ios::binary);FileEnvironment env;env.Deserialize(input);envs.push_back(std::move(env));
+                }
+                std::istringstream key(record.key,std::ios::binary);
+                if(envs.front().ShaderStage()==Shader::Stage::Compute)load_compute(key,std::move(envs.front()));
+                else load_graphics(key,std::move(envs));
+            }
+        } catch(const std::exception& error) {
+            graphics_inputs.resize(gfx_start);compute_inputs.resize(compute_start);import_records_ready=false;
+            LOG_ERROR(Render_Vulkan,"Legacy cache recovery rejected without modifying source: {}",error.what());
+        }
     }
     existing_cache_timer.Stop();
+
+    // Wait until all records are known before choosing a candidate. Equality of
+    // keys alone cannot select among different constants, texture answers or HLE replacements.
+    const char* variant_audit_path = std::getenv("NXEMU_NXSHADER_AUDIT_VARIANTS");
+    struct AuditPair { GraphicsPipelineCacheKey key; std::vector<FileEnvironment> first, second; };
+    std::vector<AuditPair> audit_pairs;
+    size_t audit_bytes{}; bool audit_truncated{};
+    const auto clone=[](const auto& envs) {
+        std::vector<FileEnvironment> result;result.reserve(envs.size());
+        for(const auto& env:envs)result.push_back(env.CloneForDiagnostic());
+        return result;
+    };
+    StartupPipelineVariants<GraphicsPipelineCacheKey, std::vector<FileEnvironment>> graphics_variants;
+    StartupPipelineVariants<ComputePipelineCacheKey, FileEnvironment> compute_variants;
+    for (auto& input : compute_inputs) {
+        CbufSizeDependencies::Normalize(input.key.cbuf_sizes, cbuf_size_dependencies.Mask(input.key.unique_hash));
+        compute_variants.Observe(input.key, std::move(input.env), [](const auto& a, const auto& b) {
+            return a.HasSameCompilationInputs(b);
+        });
+    }
+    compute_inputs.clear();
+    for (auto& input : graphics_inputs) {
+        NormalizeCbufSizes(input.key);
+        graphics_variants.Observe(input.key, std::move(input.envs), [&](const auto& a, const auto& b) {
+            bool equal=a.size()==b.size();
+            for(size_t i=0;equal && i<a.size();++i)equal=a[i].HasSameCompilationInputs(b[i]);
+            if(!equal && variant_audit_path && *variant_audit_path) {
+                size_t bytes{};for(const auto& env:a)bytes+=env.CompilationInputBytes();for(const auto& env:b)bytes+=env.CompilationInputBytes();
+                if(audit_pairs.size()<256 && bytes<=32*1024*1024ULL-audit_bytes) {
+                    audit_bytes+=bytes;audit_pairs.push_back({input.key,clone(a),clone(b)});
+                } else audit_truncated=true;
+            }
+            return equal;
+        });
+    }
+    graphics_inputs.clear();
+    if(variant_audit_path && *variant_audit_path) {
+        JsonValue report(JsonValueType::Object);report["schema"]=2U;report["truncated"]=audit_truncated;
+        report["shader_instructions_included"]=false;report["pairs"]=JsonValue(JsonValueType::Array);
+        size_t same{},different{},failed{},nondeterministic{},unsupported{};
+        for(auto& pair:audit_pairs) {
+            if(stop_loading.stop_requested()){report["cancelled"]=true;break;}
+            const auto compile=[&](auto envs,auto& hashes){
+                ShaderPools pools;VideoCommon::ShaderProfile::Audit::Context audit(hashes);
+                boost::container::static_vector<Shader::Environment*,Maxwell::MaxShaderProgram> pointers;
+                for(auto& env:envs)pointers.push_back(&env);
+                auto pipeline=CreateGraphicsPipeline(pools,pair.key,MakeSpan(pointers),nullptr,false);
+                return pipeline && pipeline->IsBuilt() && !hashes.spirv.empty() && hashes.interfaces_captured;
+            };
+            VideoCommon::ShaderProfile::Audit::Capture a,b,control;
+            const bool valid=compile(clone(pair.first),a) && compile(clone(pair.first),control) && compile(clone(pair.second),b);
+            JsonValue result(JsonValueType::Object);result["key_hash"]=std::to_string(pair.key.Hash());
+            result["native_creations_succeeded"]=valid;
+            result["difference_masks"]=JsonValue(JsonValueType::Array);
+            for(size_t i=0;i<pair.first.size() && i<pair.second.size();++i)
+                result["difference_masks"].Append(pair.first[i].CompilationDifferenceMask(pair.second[i]));
+            const auto array=[](const auto& values){JsonValue out(JsonValueType::Array);for(const auto& v:values)out.Append(v);return out;};
+            result["first_spirv"]=array(a.spirv);result["control_spirv"]=array(control.spirv);result["second_spirv"]=array(b.spirv);
+            result["spirv_equal"]=a.spirv==b.spirv;
+            result["interfaces_equal"]=a.interfaces==b.interfaces;
+            result["rasterization_equal"]=a.rasterizes_lines==b.rasterizes_lines;
+            result["interface_supported"]=!a.has_vtg && !b.has_vtg && !control.has_vtg;
+            if(!valid){++failed;result["result"]="failed";}
+            else if(a!=control){++nondeterministic;result["result"]="nondeterministic";}
+            else if(a.has_vtg || b.has_vtg){++unsupported;result["result"]="unsupported_vtg_interface";}
+            else if(a==b){++same;result["result"]="identical_spirv_and_interfaces";}
+            else{++different;result["result"]="different_spirv_or_interfaces";}
+            report["pairs"].Append(std::move(result));
+        }
+        report["identical"]=static_cast<u32>(same);report["different"]=static_cast<u32>(different);
+        report["unsupported"]=static_cast<u32>(unsupported);report["failed"]=static_cast<u32>(failed);report["nondeterministic"]=static_cast<u32>(nondeterministic);
+        std::ofstream file(std::filesystem::u8path(variant_audit_path),std::ios::binary|std::ios::trunc);
+        file<<VideoCommon::ShaderProfile::Canonical(report);
+        LOG_INFO(Render_Vulkan,"Startup environment audit: identical={} different={} failed={} nondeterministic={} truncated={}",same,different,failed,nondeterministic,audit_truncated);
+    }
+    const auto ambiguous_compute = compute_variants.ConsumeSafe(queue_compute);
+    const auto ambiguous_graphics = graphics_variants.ConsumeSafe([&](const auto& key, auto envs) {
+        using EngineHint = Tegra::Engines::Maxwell3D::EngineHint;
+        if (key.state.app_stage != EngineHint::OnHLEMacro) plain_keys.insert(key);
+        else if (std::ranges::none_of(envs, [](const auto& env) { return env.HasHLEMacroState(); })) {
+            hle_unreplaced_keys.insert(key);
+            hle_unreplaced.push_back({key, std::move(envs)});
+            return;
+        }
+        queue_graphics(key, std::move(envs));
+    });
+    if(ambiguous_compute || ambiguous_graphics)
+        LOG_WARNING(Render_Vulkan, "Skipped ambiguous startup keys: graphics={} compute={}; keeping every disk variant for investigation and normal runtime compilation", ambiguous_graphics, ambiguous_compute);
 
     const auto non_hle_twin{[](GraphicsPipelineCacheKey key) {
         key.state.app_stage.Assign(Tegra::Engines::Maxwell3D::EngineHint::None);
@@ -1024,6 +1146,28 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     }
     lock.unlock();
 
+    // This marker means the compatible subset was imported AND all its queued
+    // native creations completed. It is never written merely after queueing work.
+    if (import_records_ready && !import_stamp.empty() && !stop_loading.stop_requested() &&
+        state.built == state.total && state.failures == 0) {
+        auto temporary = base_dir / "community.imported.partial";
+        JsonValue status(JsonValueType::Object);
+        status["schema"]=2U;status["stamp"]=import_stamp;status["status"]="ready-compatible-subset";
+        const auto number=[](size_t n){return JsonValue(static_cast<u32>(n));};
+        status["records_imported"]=number(imported_records);status["unresolved"]=number(import_unresolved);
+        status["ambiguous_graphics"]=number(ambiguous_graphics);status["ambiguous_compute"]=number(ambiguous_compute);
+        status["native_queued"]=number(state.total);status["native_completed"]=number(state.built);status["native_failures"]=0U;
+        std::ofstream marker(temporary, std::ios::binary | std::ios::trunc);
+        marker << VideoCommon::ShaderProfile::Canonical(status);
+        marker.flush();
+        const bool saved = bool(marker); marker.close();
+        if(saved) {
+            std::error_code error;
+            std::filesystem::remove(base_dir / "community.imported", error);
+            std::filesystem::rename(temporary, base_dir / "community.imported", error);
+            if(error)LOG_WARNING(Render_Vulkan,"Cannot publish community warmup completion: {}",error.message());
+        }
+    }
     if (use_vulkan_pipeline_cache && !vulkan_pipeline_cache_filename.empty()) {
         SerializeVulkanPipelineCache(vulkan_pipeline_cache_filename, vulkan_pipeline_cache,
                                      CACHE_VERSION);
@@ -1494,7 +1638,8 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
                 const std::vector<u32> code{
                     Timing::Measure(Timing::current, Timing::Phase::SpirvEmission,
                         [&] { return EmitSPIRV(profile, *runtimes[stage], *stages[stage], compute_binding); })};
-                device.SaveShader(code);
+                VideoCommon::ShaderProfile::Audit::Record(code);
+            device.SaveShader(code);
                 info->modules[stage] = Timing::Measure(Timing::current, Timing::Phase::ShaderModuleCreation,
                     [&] { return BuildShader(device, code); });
                 info->infos[stage] = stages[stage]->info;
@@ -1514,6 +1659,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
             }
             const std::vector<u32> code{Timing::Measure(Timing::current, Timing::Phase::SpirvEmission,
                 [&] { return EmitSPIRV(profile, runtime_info, vtg_passthrough, binding); })};
+            VideoCommon::ShaderProfile::Audit::Record(code);
             device.SaveShader(code);
             modules[0] = Timing::Measure(Timing::current, Timing::Phase::ShaderModuleCreation,
                 [&] { return BuildShader(device, code); });
@@ -1572,6 +1718,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
             Shader::Backend::Bindings compute_binding;
             const std::vector<u32> code{Timing::Measure(Timing::current, Timing::Phase::SpirvEmission,
                 [&] { return EmitSPIRV(profile, vertex_runtime, vertex, compute_binding); })};
+            VideoCommon::ShaderProfile::Audit::Record(code);
             device.SaveShader(code);
             info->modules[VtgPipelineInfo::VERTEX] = Timing::Measure(Timing::current, Timing::Phase::ShaderModuleCreation,
                 [&] { return BuildShader(device, code); });
@@ -1636,7 +1783,8 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
         }
         const std::vector<u32> code{Timing::Measure(Timing::current, Timing::Phase::SpirvEmission,
             [&] { return EmitSPIRV(profile, runtime_info, program, binding); })};
-        device.SaveShader(code);
+        VideoCommon::ShaderProfile::Audit::Record(code);
+            device.SaveShader(code);
         modules[stage_index] = Timing::Measure(Timing::current, Timing::Phase::ShaderModuleCreation,
             [&] { return BuildShader(device, code); });
         if (device.HasDebuggingToolAttached()) {
@@ -1655,6 +1803,14 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
                  : (modules[3] ? std::optional{programs[4].output_topology} : std::nullopt))};
     const bool rasterizes_lines{RasterizesLines(
         output_topology, FixedPipelineState::UnpackPolygonMode(key.state.polygon_mode))};
+    if (auto* audit = VideoCommon::ShaderProfile::Audit::current) {
+        audit->interfaces_captured = true;
+        audit->has_vtg = static_cast<bool>(vtg_info);
+        audit->rasterizes_lines = rasterizes_lines;
+        for (size_t stage = 0; stage < infos.size(); ++stage) {
+            if (infos[stage]) audit->interfaces.emplace_back(stage, *infos[stage]);
+        }
+    }
     NativePipelineBuildQueue* const thread_worker{build_in_parallel ? &runtime_builds : nullptr};
     return std::make_unique<GraphicsPipeline>(
         scheduler, buffer_cache, texture_cache, vulkan_pipeline_cache, &shader_notify, device,
@@ -1797,7 +1953,8 @@ std::unique_ptr<ComputePipeline> PipelineCache::CreateComputePipeline(
     }
     const std::vector<u32> code{Timing::Measure(Timing::current, Timing::Phase::SpirvEmission,
         [&] { return EmitSPIRV(profile, program); })};
-    device.SaveShader(code);
+    VideoCommon::ShaderProfile::Audit::Record(code);
+            device.SaveShader(code);
     vk::ShaderModule spv_module{Timing::Measure(Timing::current, Timing::Phase::ShaderModuleCreation,
         [&] { return BuildShader(device, code); })};
     if (device.HasDebuggingToolAttached()) {

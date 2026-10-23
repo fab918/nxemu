@@ -3,6 +3,7 @@
 #include "video_manager.h"
 #include "yuzu_video_core/shader_profile_export.h"
 #include "yuzu_video_core/shader_profile.h"
+#include "yuzu_video_core/shader_profile_identity.h"
 #include "yuzu_video_core/renderer_vulkan/fixed_pipeline_state.h"
 #include "video_settings.h"
 #include "yuzu_video_core/capture.h"
@@ -201,7 +202,9 @@ struct VideoManager::Impl
                     const u64 program_id = m_modules.OperatingSystem().GetProgramId();
                     try {
                         m_gpuCore->Renderer().ReadRasterizer()->LoadDiskResources(
-                            program_id, stop_token, notify_disk_cache_progress);
+                            program_id, stop_token, notify_disk_cache_progress,
+                            VideoCommon::ShaderProfile::LoadedContentIdentity(m_modules.Systemloader(), program_id,
+                                std::filesystem::u8path(g_settings->GetString(NXCoreSetting::GameFile))));
                     } catch (const std::exception& exception) {
                         // std::async stores exceptions in its future. If one escapes here,
                         // Start is never called and guest GPU requests wait indefinitely.

@@ -156,8 +156,10 @@ Model ReadCache(const ExportOptions & options)
     Model model;
     model.profile["environments"] = JsonValue(JsonValueType::Object);
     model.profile["shaders"] = JsonValue(JsonValueType::Object);
-    const auto data = Load(options.cache);
-    if (data.substr(0, 8) == "NXSCACHE")
+    std::ifstream source(options.cache,std::ios::binary);
+    std::string magic(8,'\0');source.read(magic.data(),magic.size());
+    Require(bool(source),"Truncated local cache header");
+    if (magic == "NXSCACHE")
     {
         for (const auto & record : CacheStore::Read(options.cache, 20))
         {
@@ -176,6 +178,7 @@ Model ReadCache(const ExportOptions & options)
     }
     else
     {
+        const auto data = Load(options.cache);
         Cursor input{data};
         Require(input.Take(8) == "yuzucach" && input.Get(4) == 20, "Unsupported legacy shader cache");
         while (input.pos < data.size())

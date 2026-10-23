@@ -20,6 +20,9 @@ int main(int argc,char** argv) try {
     auto records=CacheStore::Read(path,20);require(records.size()==2);
     require(records[0].environments==first.environments && records[1].environments==second.environments);
     require(records[0].key==first.key && records[1].key==second.key);
+    bool limited=false;try{CacheStore::Read(path,20,CacheStore::ReadLimits{1024,100});}catch(const std::exception&){limited=true;}require(limited);
+    limited=false;try{CacheStore::Read(path,20,CacheStore::ReadLimits{1,1024});}catch(const std::exception&){limited=true;}require(limited);
+    require(CacheStore::Read(path,20).size()==2); // Budget failure never alters the source.
     // Same code, different metadata and key: one code frame, two env and two pipeline frames.
     std::ifstream file(path,std::ios::binary);std::string data((std::istreambuf_iterator<char>(file)),{});
     file.close();
@@ -36,6 +39,27 @@ int main(int argc,char** argv) try {
     auto bad=path;bad+=".bad";data.back()^=1;
     {std::ofstream out(bad,std::ios::binary);out.write(data.data(),static_cast<std::streamsize>(data.size()));}
     bool rejected=false;try{CacheStore::Read(bad,20);}catch(const std::exception&){rejected=true;}require(rejected);
-    std::cout<<"code/environment/pipeline deduplication, combinations, truncated tail and integrity passed\n";
+    auto legacy=path;legacy+=".legacy.bin";
+    auto migrated=path;migrated+=".migrated.nxc";
+    const auto put=[](std::string& out,u64 value,size_t count){for(size_t i=0;i<count;++i)out.push_back(static_cast<char>(value>>(i*8)));};
+    std::string legacy_bytes="yuzucach";put(legacy_bytes,20,4);
+    std::string env;put(env,96,8);for(int i=0;i<4;++i)put(env,0,8);
+    for(u32 n:{0U,0U,0U,0U,88U,1U,5U})put(env,n,4);
+    env+=std::string(96,'S');for(u32 n:{1U,1U,1U,0U})put(env,n,4);
+    put(legacy_bytes,1,4);legacy_bytes+=env;legacy_bytes+=std::string(64,'K');
+    auto alternate=env;alternate.back()=1; // Same key, distinct compilation environment.
+    put(legacy_bytes,1,4);legacy_bytes+=alternate;legacy_bytes+=std::string(64,'K');
+    {std::ofstream out(legacy,std::ios::binary);out<<legacy_bytes;}
+    CacheStore::Append(migrated,20,first);
+    require(CacheStore::MigrateLegacyVulkan(legacy,migrated,20));
+    require(CacheStore::Read(migrated,20).size()==3);
+    require(!CacheStore::MigrateLegacyVulkan(legacy,migrated,20));
+    {std::ifstream in(legacy,std::ios::binary);const std::string saved((std::istreambuf_iterator<char>(in)),{});require(saved==legacy_bytes);}
+    // Switching back to an existing writer rebuilds only its ID index.
+    const auto before=std::filesystem::file_size(path);CacheStore::Append(path,20,first);
+    require(std::filesystem::file_size(path)==before);
+    std::filesystem::remove(legacy);std::filesystem::remove(migrated);
+    auto stamp=migrated;stamp+=".legacy-source";std::filesystem::remove(stamp);
+    std::cout<<"code/environment/pipeline deduplication, combinations, truncated tail, integrity and verified non-destructive legacy migration passed\n";
     std::filesystem::remove(path);std::filesystem::remove(bad);return 0;
 } catch(const std::exception& error) {std::cerr<<error.what()<<'\n';return 1;}

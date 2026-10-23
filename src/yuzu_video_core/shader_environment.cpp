@@ -837,28 +837,34 @@ void FileEnvironment::Deserialize(std::istream& file) {
         Shader::TextureType type;
         file.read(reinterpret_cast<char*>(&key), sizeof(key))
             .read(reinterpret_cast<char*>(&type), sizeof(type));
-        texture_types.emplace(key, type);
+        if(static_cast<u32>(type)>=Shader::NUM_TEXTURE_TYPES || !texture_types.emplace(key, type).second)
+            throw std::ios_base::failure("Invalid cached texture type");
     }
     for (size_t i = 0; i < num_texture_pixel_formats; ++i) {
         u32 key;
         Shader::TexturePixelFormat format;
         file.read(reinterpret_cast<char*>(&key), sizeof(key))
             .read(reinterpret_cast<char*>(&format), sizeof(format));
-        texture_pixel_formats.emplace(key, format);
+        if(static_cast<u32>(format)>static_cast<u32>(Shader::TexturePixelFormat::D32_FLOAT_S8_UINT) ||
+           !texture_pixel_formats.emplace(key, format).second)
+            throw std::ios_base::failure("Invalid cached texture format");
     }
     for (size_t i = 0; i < num_cbuf_values; ++i) {
         u64 key;
         u32 value;
         file.read(reinterpret_cast<char*>(&key), sizeof(key))
             .read(reinterpret_cast<char*>(&value), sizeof(value));
-        cbuf_values.emplace(key, value);
+        if(!cbuf_values.emplace(key, value).second)
+            throw std::ios_base::failure("Duplicate cached constant buffer query");
     }
     for (size_t i = 0; i < num_cbuf_replacement_values; ++i) {
         u64 key;
         Shader::ReplaceConstant value;
         file.read(reinterpret_cast<char*>(&key), sizeof(key))
             .read(reinterpret_cast<char*>(&value), sizeof(value));
-        cbuf_replacements.emplace(key, value);
+        if(static_cast<u32>(value)>static_cast<u32>(Shader::ReplaceConstant::DrawID) ||
+           !cbuf_replacements.emplace(key, value).second)
+            throw std::ios_base::failure("Invalid cached HLE replacement");
     }
     if (stage == Shader::Stage::Compute) {
         file.read(reinterpret_cast<char*>(&workgroup_size), sizeof(workgroup_size))
@@ -879,6 +885,33 @@ void FileEnvironment::Deserialize(std::istream& file) {
 
 void FileEnvironment::Dump(u64 pipeline_hash, u64 shader_hash) {
     DumpImpl(pipeline_hash, shader_hash, code, read_highest, read_lowest, initial_offset, stage);
+}
+
+bool FileEnvironment::HasSameCompilationInputs(const FileEnvironment& o) const noexcept {
+    return CompilationDifferenceMask(o) == 0;
+}
+
+u32 FileEnvironment::CompilationDifferenceMask(const FileEnvironment& o) const noexcept {
+    u32 mask{};
+    if(code!=o.code)mask|=1;
+    if(texture_types!=o.texture_types)mask|=2;
+    if(texture_pixel_formats!=o.texture_pixel_formats)mask|=4;
+    if(cbuf_values!=o.cbuf_values)mask|=8;
+    if(cbuf_replacements!=o.cbuf_replacements)mask|=16;
+    if(workgroup_size!=o.workgroup_size)mask|=32;
+    if(local_memory_size!=o.local_memory_size || shared_memory_size!=o.shared_memory_size ||
+       texture_bound!=o.texture_bound || read_lowest!=o.read_lowest || read_highest!=o.read_highest ||
+       initial_offset!=o.initial_offset || viewport_transform_state!=o.viewport_transform_state ||
+       stage!=o.stage || start_address!=o.start_address || is_proprietary_driver!=o.is_proprietary_driver)mask|=64;
+    if(gp_passthrough_mask!=o.gp_passthrough_mask || std::memcmp(&sph,&o.sph,sizeof(sph)))mask|=128;
+    return mask;
+}
+
+size_t FileEnvironment::CompilationInputBytes() const noexcept {
+    // Include a conservative allowance for hash nodes/buckets, not just code bytes.
+    return sizeof(*this) + code.size() * sizeof(u64) +
+        (texture_types.size() + texture_pixel_formats.size() + cbuf_values.size() +
+         cbuf_replacements.size()) * 64;
 }
 
 u64 FileEnvironment::ReadInstruction(u32 address) {

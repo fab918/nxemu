@@ -83,6 +83,14 @@ add_test(NAME cache-store COMMAND cache-store "${CMAKE_CURRENT_BINARY_DIR}/regre
 add_executable(recipe-journal recipe_journal.cpp)
 target_link_libraries(recipe-journal PRIVATE profile-storage)
 add_test(NAME recipe-journal COMMAND recipe-journal "${CMAKE_CURRENT_BINARY_DIR}/regression.nxr")
+add_executable(startup-variants startup_variants.cpp)
+target_link_libraries(startup-variants PRIVATE profile-storage)
+if(MSVC)
+    target_compile_options(startup-variants PRIVATE /utf-8 /EHsc)
+endif()
+add_test(NAME startup-variants COMMAND startup-variants)
+add_executable(cache-store-benchmark cache_store_benchmark.cpp)
+target_link_libraries(cache-store-benchmark PRIVATE profile-storage)
 add_executable(nxshader-reader profile_reader.cpp
     "${NXEMU_ROOT}/src/yuzu_video_core/renderer_vulkan/fixed_pipeline_state.cpp"
     "${NXEMU_ROOT}/src/yuzu_video_core/surface.cpp"

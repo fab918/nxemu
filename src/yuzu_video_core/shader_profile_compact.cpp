@@ -5,6 +5,7 @@
 #include "yuzu_video_core/shader_profile_hash.h"
 #include "yuzu_video_core/shader_profile_metrics.h"
 #include "yuzu_video_core/shader_profile_resources.h"
+#include "yuzu_video_core/shader_profile_validation.h"
 #include <fstream>
 #include <map>
 #include <set>
@@ -507,7 +508,9 @@ std::vector<Recipe> ReadCompact(std::string_view payload, const std::filesystem:
             {
                 const auto key = in.Var();
                 Check((m >= 2 || key <= UINT32_MAX) && keys.insert(key).second, "Compact environment map key");
-                env.maps[m].emplace_back(key, in.Word());
+                const auto value=in.Word();
+                Check(ValidEnvironmentMapValue(m,value),"Invalid compact environment query value");
+                env.maps[m].emplace_back(key, value);
             }
         }
         if (env.fields[6] == 5)
