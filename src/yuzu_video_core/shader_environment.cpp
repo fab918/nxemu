@@ -191,7 +191,7 @@ u64 GenericEnvironment::ReadInstruction(u32 address) {
     read_highest = std::max(read_highest, address);
 
     if (address >= cached_lowest &&
-        (address < cached_highest || (frozen && address == cached_highest))) {
+        address <= cached_highest) {
         return Code()[(address - cached_lowest) / INST_SIZE];
     }
     if (frozen) {
@@ -214,7 +214,8 @@ std::optional<u64> GenericEnvironment::Analyze() {
 
 void GenericEnvironment::SetCachedSize(size_t size_bytes) {
     cached_lowest = start_address;
-    cached_highest = start_address + static_cast<u32>(size_bytes);
+    ASSERT(size_bytes >= INST_SIZE && size_bytes % INST_SIZE == 0);
+    cached_highest = start_address + static_cast<u32>(size_bytes - INST_SIZE);
     code.resize(CachedSizeWords());
     gpu_memory->ReadBlock(program_base + cached_lowest, code.data(), code.size() * sizeof(u64));
 }
@@ -222,13 +223,14 @@ void GenericEnvironment::SetCachedSize(size_t size_bytes) {
 void GenericEnvironment::SetCachedCode(std::shared_ptr<const std::vector<u64>> code_,
                                        size_t size_bytes) {
     cached_lowest = start_address;
-    cached_highest = start_address + static_cast<u32>(size_bytes);
+    ASSERT(size_bytes >= INST_SIZE && size_bytes % INST_SIZE == 0);
+    cached_highest = start_address + static_cast<u32>(size_bytes - INST_SIZE);
     shared_code = std::move(code_);
 }
 
 std::shared_ptr<const std::vector<u64>> GenericEnvironment::ShareCachedCode(size_t size_bytes) {
-    // Preserve the same padding as SetCachedSize; subsequent pipeline variants
-    // share the immutable bytes until ShaderCache invalidates this ShaderInfo.
+    // size_bytes includes the final instruction. Share exactly this range
+    // until ShaderCache invalidates this ShaderInfo.
     SetCachedSize(size_bytes);
     shared_code = std::make_shared<const std::vector<u64>>(std::move(code));
     return shared_code;
