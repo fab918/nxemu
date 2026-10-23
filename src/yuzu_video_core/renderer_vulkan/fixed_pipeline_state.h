@@ -256,6 +256,14 @@ struct FixedPipelineState {
 
     void Refresh(Tegra::Engines::Maxwell3D& maxwell3d, DynamicFeatures& features);
 
+    // No depth attachment is created while depth is disabled. Its stale format must
+    // not distinguish otherwise identical local pipelines, including legacy records.
+    void NormalizeInactiveFields() noexcept {
+        if (depth_enabled == 0) {
+            depth_format.Assign(0);
+        }
+    }
+
     size_t Hash() const noexcept;
 
     bool operator==(const FixedPipelineState& rhs) const noexcept;

@@ -1,5 +1,22 @@
 # feature-nxshad — première version native NXShader
 
+## Correction des clés de profondeur inactive
+
+Le chemin normal, la projection NXShader et la lecture des anciens caches
+normalisent désormais `depth_format` à zéro lorsque `depth_enabled` est faux.
+Le renderer crée déjà un render pass sans profondeur dans ce cas. Les formats
+de profondeur actifs et les variantes HLE restent distincts. Les anciens
+profils v2 et caches restent lisibles ; l'exporteur applique la même règle pour
+apparier leurs clés aux nouvelles projections.
+
+Vérification sur le profil Mac de première course : les cinq recompilations
+initiales dues à ce champ ont disparu. Le préchauffage passe de 1 255 à 1 236
+créations natives, toutes réussies. Ce correctif ne complète pas les programmes
+ou combinaisons absents du profil. Une nouvelle course complète reste nécessaire
+pour mesurer le nombre total de traductions après correction. Les logs d'entrée
+dans `CreateGraphicsPipeline` comptent des traductions tentées, pas toujours une
+création native : le chemin HLE peut réutiliser un pipeline après traduction.
+
 ## Ce qui fonctionne dans cette version
 
 Le correctif de bornes est intégré. Vulkan écrit désormais `vulkan.nxc`, un cache

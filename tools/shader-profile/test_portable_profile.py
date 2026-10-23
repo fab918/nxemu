@@ -14,6 +14,18 @@ from portable_profile import assemble
 
 
 class PortableProfileTests(unittest.TestCase):
+    def test_legacy_join_ignores_only_inactive_depth_format(self):
+        from rebuild_recipes import normalized
+        inactive = bytearray(1400)
+        struct.pack_into('<I', inactive, 420, (20 << 6) | (1 << 17))
+        expected = bytearray(inactive)
+        struct.pack_into('<I', expected, 420, 1 << 17)
+        self.assertEqual(normalized(inactive, {}), bytes(expected))
+        # Keep active formats and HLE identity: only the unused format is redundant.
+        active = bytearray(inactive)
+        struct.pack_into('<I', active, 420, (20 << 6) | (1 << 17) | (1 << 5))
+        self.assertEqual(normalized(active, {}), bytes(active))
+
     def fixture(self):
         code=b'12345678';h=sha(code)
         env=dict(shader=h,local_memory_size=0,texture_bound=0,guest_start_address=0,guest_read_lowest=0,

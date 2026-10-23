@@ -98,6 +98,8 @@ int main() try {
             regs->vertex_streams[0].stride.Assign(step*4);
             regs->window_origin.flip_y.Assign(step%2);
             regs->depth_write_enabled=step%2;
+            regs->zeta_enable=step%3==0;
+            regs->zeta.format=static_cast<Tegra::DepthFormat>(20+step%2);
             regs->gl_cull_test_enabled=step%2;
             regs->logic_op.enable=step%2;
             regs->logic_op.op=static_cast<Maxwell::LogicOp::Op>(0x1500+step%16);
@@ -110,6 +112,9 @@ int main() try {
             auto b=a;
             local.RefreshFromRegisters(*regs, topology, hint, features, a);
             reference.RefreshReference(*regs, topology, hint, features, b);
+            // Deliberate change from the frozen implementation: inactive depth
+            // formats do not affect the native render pass or translated shaders.
+            if (reference.depth_enabled == 0) reference.depth_format.Assign(0);
             Check(std::memcmp(&local, &reference, sizeof(local))==0, "refactor differs from frozen legacy state");
             Check(a.vertex_input==b.vertex_input && a.viewport_swizzles==b.viewport_swizzles &&
                   a.blending==b.blending && a.blend_enable==b.blend_enable, "dirty-bit transitions differ");
@@ -131,6 +136,30 @@ int main() try {
         }
     }
     auto regs=std::make_unique<Maxwell>(); Initialise(*regs);
+    for (unsigned bits=0; bits<128; ++bits) {
+        regs->zeta_enable=0;
+        regs->zeta.format=static_cast<Tegra::DepthFormat>(20);
+        auto disabled=GuestPipelineState::Capture(*regs, Maxwell::PrimitiveTopology::Triangles,
+            Tegra::Engines::Maxwell3D::EngineHint::None);
+        auto old_words=disabled.Words();
+        old_words[2] |= 20U << 6; // Existing v2 profiles retain this inactive field.
+        const auto legacy=GuestPipelineState::FromWords(old_words);
+        Check(legacy.has_value(), "existing recipe with inactive depth format rejected");
+        Check(legacy->Project(Features(bits))==disabled.Project(Features(bits)),
+              "existing recipe retained irrelevant depth format");
+        FixedPipelineState old_cache=legacy->complete;
+        old_cache.NormalizeInactiveFields();
+        Check(old_cache.depth_format==0, "legacy local cache format was not normalized");
+        regs->zeta_enable=1;
+        auto enabled=GuestPipelineState::Capture(*regs, Maxwell::PrimitiveTopology::Triangles,
+            Tegra::Engines::Maxwell3D::EngineHint::None);
+        regs->zeta.format=static_cast<Tegra::DepthFormat>(21);
+        auto different=GuestPipelineState::Capture(*regs, Maxwell::PrimitiveTopology::Triangles,
+            Tegra::Engines::Maxwell3D::EngineHint::None);
+        Check(enabled.Project(Features(bits))!=different.Project(Features(bits)),
+              "active depth format variants were merged");
+    }
+    regs->zeta_enable=0;
     regs->blend.enable[0]=1;
     auto first=GuestPipelineState::Capture(*regs, Maxwell::PrimitiveTopology::Triangles, Tegra::Engines::Maxwell3D::EngineHint::None);
     regs->vertex_attrib_format[0].offset.Assign(64);

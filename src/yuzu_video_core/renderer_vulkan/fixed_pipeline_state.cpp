@@ -128,6 +128,7 @@ void FixedPipelineState::RefreshFromRegisters(const Maxwell& regs,
     early_z.Assign(regs.mandated_early_z != 0 ? 1 : 0);
     depth_enabled.Assign(regs.zeta_enable != 0 ? 1 : 0);
     depth_format.Assign(static_cast<u32>(regs.zeta.format));
+    NormalizeInactiveFields();
     y_negate.Assign(regs.window_origin.mode != Maxwell::WindowOrigin::Mode::UpperLeft ? 1 : 0);
     provoking_vertex_last.Assign(regs.provoking_vertex == Maxwell::ProvokingVertex::Last ? 1 : 0);
     conservative_raster_enable.Assign(regs.conservative_raster_enable != 0 ? 1 : 0);
@@ -258,6 +259,7 @@ GuestPipelineState GuestPipelineState::Capture(const Maxwell& regs,
 
 FixedPipelineState GuestPipelineState::Project(const DynamicFeatures& features) const {
     FixedPipelineState result = complete;
+    result.NormalizeInactiveFields();
     result.extended_dynamic_state.Assign(features.has_extended_dynamic_state);
     result.extended_dynamic_state_2.Assign(features.has_extended_dynamic_state_2);
     result.extended_dynamic_state_2_extra.Assign(features.has_extended_dynamic_state_2_extra);

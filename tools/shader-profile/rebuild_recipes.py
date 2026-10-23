@@ -52,6 +52,10 @@ def masks(profile):
 
 def normalized(key, dependencies):
     key = bytearray(key)
+    # Match the renderer when joining old cache keys with newly projected recipes.
+    state2, = struct.unpack_from('<I', key, 420)
+    if not state2 & (1 << 5):
+        struct.pack_into('<I', key, 420, state2 & ~(31 << 6))
     hashes = struct.unpack_from('<6Q',key)
     for stage in range(5):
         mask = dependencies.get(hashes[stage+1],0) | (dependencies.get(hashes[0],0) if stage==0 else 0)

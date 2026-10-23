@@ -1262,6 +1262,9 @@ GraphicsPipelineCacheKey PipelineCache::Normalized(GraphicsPipelineCacheKey key)
 }
 
 void PipelineCache::NormalizeCbufSizes(GraphicsPipelineCacheKey& key) const {
+    // Also canonicalize keys read from caches captured before inactive-state
+    // normalization; the import and live paths must use the same identity.
+    key.state.NormalizeInactiveFields();
     for (size_t stage = 0; stage < key.cbuf_sizes.size(); ++stage) {
         const u32 mask = cbuf_size_dependencies.Mask(key.unique_hashes[stage + 1]) |
             (stage == 0 ? cbuf_size_dependencies.Mask(key.unique_hashes[0]) : 0);
