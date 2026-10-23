@@ -85,6 +85,7 @@ struct hash<Vulkan::ComputePipelineCacheKey> {
 namespace Vulkan {
 
 class ComputePipeline;
+class GuestPipelineRecipeProbe;
 class DescriptorPool;
 class Device;
 class PipelineStatistics;
@@ -229,6 +230,7 @@ private:
     Common::ThreadWorker workers;
     Common::ThreadWorker serialization_thread;
     DynamicFeatures dynamic_features;
+    std::unique_ptr<GuestPipelineRecipeProbe> guest_recipe_probe;
     VideoCommon::GraphicsEnvironment::SnapshotCache snapshot_cache;
     std::unordered_map<GraphicsPipelineCacheKey, std::shared_ptr<PendingGraphicsPipeline>> pending_graphics;
     // First pending build of each set of shaders whose constant buffer dependencies are unknown,

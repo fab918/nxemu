@@ -80,8 +80,23 @@ bool FixedPipelineState::UsesDualSourceBlend(const Maxwell& regs) noexcept {
 }
 
 void FixedPipelineState::Refresh(Tegra::Engines::Maxwell3D& maxwell3d, DynamicFeatures& features) {
-    const Maxwell& regs = maxwell3d.regs;
-    const auto topology_ = maxwell3d.draw_manager->GetDrawState().topology;
+    RefreshFlags dirty{
+        maxwell3d.dirty.flags[Dirty::VertexInput],
+        maxwell3d.dirty.flags[Dirty::ViewportSwizzles],
+        maxwell3d.dirty.flags[Dirty::Blending],
+        maxwell3d.dirty.flags[Dirty::BlendEnable],
+    };
+    RefreshFromRegisters(maxwell3d.regs, maxwell3d.draw_manager->GetDrawState().topology,
+                         maxwell3d.engine_state, features, dirty);
+    maxwell3d.dirty.flags[Dirty::VertexInput] = dirty.vertex_input;
+    maxwell3d.dirty.flags[Dirty::ViewportSwizzles] = dirty.viewport_swizzles;
+    maxwell3d.dirty.flags[Dirty::Blending] = dirty.blending;
+    maxwell3d.dirty.flags[Dirty::BlendEnable] = dirty.blend_enable;
+}
+
+void FixedPipelineState::RefreshFromRegisters(const Maxwell& regs,
+    Maxwell::PrimitiveTopology topology_, Tegra::Engines::Maxwell3D::EngineHint hint,
+    const DynamicFeatures& features, RefreshFlags& dirty) {
 
     raw1 = 0;
     extended_dynamic_state.Assign(features.has_extended_dynamic_state ? 1 : 0);
@@ -119,7 +134,7 @@ void FixedPipelineState::Refresh(Tegra::Engines::Maxwell3D& maxwell3d, DynamicFe
     smooth_lines.Assign(regs.line_anti_alias_enable != 0 ? 1 : 0);
     alpha_to_coverage_enabled.Assign(regs.anti_alias_alpha_control.alpha_to_coverage != 0 ? 1 : 0);
     alpha_to_one_enabled.Assign(regs.anti_alias_alpha_control.alpha_to_one != 0 ? 1 : 0);
-    app_stage.Assign(maxwell3d.engine_state);
+    app_stage.Assign(hint);
 
     bool color_formats_changed = false;
     for (size_t i = 0; i < regs.rt.size(); ++i) {
@@ -129,13 +144,13 @@ void FixedPipelineState::Refresh(Tegra::Engines::Maxwell3D& maxwell3d, DynamicFe
     }
     if (extended_dynamic_state_3_blend && color_formats_changed) {
         // The dynamic blend enable depends on the render target formats.
-        maxwell3d.dirty.flags[Dirty::Blending] = true;
-        maxwell3d.dirty.flags[Dirty::BlendEnable] = true;
+        dirty.blending = true;
+        dirty.blend_enable = true;
     }
     alpha_test_ref = Common::BitCast<u32>(regs.alpha_test_ref);
     point_size = Common::BitCast<u32>(regs.point_size);
 
-    if (maxwell3d.dirty.flags[Dirty::VertexInput]) {
+    if (dirty.vertex_input) {
         if (features.has_dynamic_vertex_input) {
             // Dirty flag will be reset by the command buffer update
             static constexpr std::array LUT{
@@ -156,7 +171,7 @@ void FixedPipelineState::Refresh(Tegra::Engines::Maxwell3D& maxwell3d, DynamicFe
                 attribute_types |= static_cast<u64>(type & mask) << (i * 2);
             }
         } else {
-            maxwell3d.dirty.flags[Dirty::VertexInput] = false;
+            dirty.vertex_input = false;
             u32 read_streams = 0;
             for (size_t index = 0; index < Maxwell::NumVertexAttributes; ++index) {
                 const auto& input = regs.vertex_attrib_format[index];
@@ -182,8 +197,8 @@ void FixedPipelineState::Refresh(Tegra::Engines::Maxwell3D& maxwell3d, DynamicFe
             }
         }
     }
-    if (maxwell3d.dirty.flags[Dirty::ViewportSwizzles]) {
-        maxwell3d.dirty.flags[Dirty::ViewportSwizzles] = false;
+    if (dirty.viewport_swizzles) {
+        dirty.viewport_swizzles = false;
         const auto& transform = regs.viewport_transform;
         std::ranges::transform(transform, viewport_swizzles.begin(), [](const auto& viewport) {
             return static_cast<u16>(viewport.swizzle.raw);
@@ -207,8 +222,8 @@ void FixedPipelineState::Refresh(Tegra::Engines::Maxwell3D& maxwell3d, DynamicFe
         dynamic_state.Refresh2(regs, topology_, extended_dynamic_state_2);
     }
     if (!extended_dynamic_state_3_blend) {
-        if (maxwell3d.dirty.flags[Dirty::Blending]) {
-            maxwell3d.dirty.flags[Dirty::Blending] = false;
+        if (dirty.blending) {
+            dirty.blending = false;
             for (size_t index = 0; index < attachments.size(); ++index) {
                 attachments[index].Refresh(regs, index);
             }
@@ -220,12 +235,141 @@ void FixedPipelineState::Refresh(Tegra::Engines::Maxwell3D& maxwell3d, DynamicFe
     // The shader output interface is static even when the blend equation is dynamic.
     // Only this mode belongs in the key; ordinary blend factors remain dynamic.
     if (!extended_dynamic_state_3_blend || color_formats_changed ||
-        maxwell3d.dirty.flags[Dirty::Blending] || maxwell3d.dirty.flags[Dirty::BlendEnable]) {
+        dirty.blending || dirty.blend_enable) {
         dual_source_blend.Assign(UsesDualSourceBlend(regs));
     }
     if (xfb_enabled) {
         RefreshXfbState(xfb_state, regs);
     }
+}
+
+GuestPipelineState GuestPipelineState::Capture(const Maxwell& regs,
+    Maxwell::PrimitiveTopology topology, Tegra::Engines::Maxwell3D::EngineHint hint) {
+    GuestPipelineState result;
+    FixedPipelineState::RefreshFlags dirty{true, true, true, true};
+    result.complete.RefreshFromRegisters(regs, topology, hint, DynamicFeatures{}, dirty);
+    for (size_t index = 0; index < regs.vertex_streams.size(); ++index) {
+        if (regs.vertex_streams[index].enable != 0) {
+            result.enabled_vertex_streams |= 1U << index;
+        }
+    }
+    return result;
+}
+
+FixedPipelineState GuestPipelineState::Project(const DynamicFeatures& features) const {
+    FixedPipelineState result = complete;
+    result.extended_dynamic_state.Assign(features.has_extended_dynamic_state);
+    result.extended_dynamic_state_2.Assign(features.has_extended_dynamic_state_2);
+    result.extended_dynamic_state_2_extra.Assign(features.has_extended_dynamic_state_2_extra);
+    result.extended_dynamic_state_3_blend.Assign(features.has_extended_dynamic_state_3_blend);
+    result.extended_dynamic_state_3_enables.Assign(features.has_extended_dynamic_state_3_enables);
+    result.dynamic_vertex_input.Assign(features.has_dynamic_vertex_input);
+    const bool stride_workaround = features.has_vertex_stride_workaround &&
+                                   !features.has_dynamic_vertex_input;
+    result.vertex_stride_workaround.Assign(stride_workaround);
+    // These masks select the fields written by the existing DynamicState Refresh methods.
+    u32 mask1 = features.has_extended_dynamic_state ? 0U : 0x7U;
+    u32 mask2 = features.has_extended_dynamic_state ? 0U : UINT32_MAX;
+    if (!features.has_extended_dynamic_state_2_extra) {
+        mask1 |= features.has_extended_dynamic_state_2 ? 0x3c0U : 0x3f8U;
+    }
+    if (!features.has_extended_dynamic_state_3_enables) {
+        mask1 |= 0xc00U;
+    }
+    result.dynamic_state.raw1 &= mask1;
+    result.dynamic_state.raw2 &= mask2;
+    if (features.has_extended_dynamic_state_3_blend) {
+        result.attachments = {};
+    }
+    if (features.has_dynamic_vertex_input) {
+        static constexpr std::array types{0U, 1U, 1U, 2U, 3U, 1U, 1U, 1U};
+        result.attribute_types = 0;
+        for (size_t i = 0; i < complete.attributes.size(); ++i) {
+            const auto& attr = complete.attributes[i];
+            if (attr.enabled) {
+                result.attribute_types |= u64{types[static_cast<size_t>(attr.Type())]} << (i * 2);
+            }
+        }
+        result.attributes = {};
+        result.binding_divisors = {};
+    }
+    if (features.has_extended_dynamic_state) {
+        for (size_t i = 0; i < result.vertex_strides.size(); ++i) {
+            if (!stride_workaround || (enabled_vertex_streams & (1U << i)) == 0) {
+                result.vertex_strides[i] = 0;
+            }
+        }
+    }
+    return result;
+}
+
+std::vector<u32> GuestPipelineState::Words() const {
+    std::vector<u32> words;
+    words.reserve(300);
+    const auto& s = complete;
+    words.insert(words.end(), {1U, s.raw1, s.raw2, enabled_vertex_streams});
+    for (auto x : s.color_formats) words.push_back(x);
+    words.push_back(s.alpha_test_ref);
+    words.push_back(s.point_size);
+    for (auto x : s.viewport_swizzles) words.push_back(x);
+    words.push_back(static_cast<u32>(s.enabled_divisors));
+    words.push_back(static_cast<u32>(s.enabled_divisors >> 32));
+    words.push_back(s.dynamic_state.raw1);
+    words.push_back(s.dynamic_state.raw2);
+    for (auto x : s.attachments) words.push_back(x.raw);
+    for (auto x : s.attributes) words.push_back(x.raw);
+    for (auto x : s.binding_divisors) words.push_back(x);
+    for (auto x : s.vertex_strides) words.push_back(x);
+    for (auto x : s.xfb_state.layouts) {
+        words.insert(words.end(), {x.stream, x.varying_count, x.stride});
+    }
+    for (const auto& stream : s.xfb_state.varyings) {
+        for (const auto& x : stream) {
+            words.push_back(x.attribute0.Value() | (x.attribute1.Value() << 8) |
+                            (x.attribute2.Value() << 16) | (x.attribute3.Value() << 24));
+        }
+    }
+    return words;
+}
+
+std::optional<GuestPipelineState> GuestPipelineState::FromWords(std::span<const u32> words) {
+    GuestPipelineState result;
+    if (words.size() != result.Words().size() || words[0] != 1) return std::nullopt;
+    size_t cursor = 1;
+    const auto next = [&]() { return words[cursor++]; };
+    auto& s = result.complete;
+    s.raw1 = next();
+    s.raw2 = next();
+    result.enabled_vertex_streams = next();
+    if ((s.raw1 & 63U) != 0 || s.vertex_stride_workaround != 0) return std::nullopt;
+    for (auto& x : s.color_formats) x = static_cast<u8>(next());
+    s.alpha_test_ref = next();
+    s.point_size = next();
+    for (auto& x : s.viewport_swizzles) x = static_cast<u16>(next());
+    const u64 low = next();
+    s.enabled_divisors = low | (u64{next()} << 32);
+    s.dynamic_state.raw1 = next();
+    s.dynamic_state.raw2 = next();
+    for (auto& x : s.attachments) x.raw = next();
+    for (auto& x : s.attributes) x.raw = next();
+    for (auto& x : s.binding_divisors) x = next();
+    for (auto& x : s.vertex_strides) x = static_cast<u16>(next());
+    for (auto& x : s.xfb_state.layouts) {
+        x.stream = next(); x.varying_count = next(); x.stride = next();
+    }
+    for (auto& stream : s.xfb_state.varyings) {
+        for (auto& x : stream) {
+            const u32 packed = next();
+            x.attribute0.Assign(packed & 255U);
+            x.attribute1.Assign((packed >> 8) & 255U);
+            x.attribute2.Assign((packed >> 16) & 255U);
+            x.attribute3.Assign(packed >> 24);
+        }
+    }
+    // Reject values truncated by narrower fields rather than silently changing a recipe.
+    const auto canonical = result.Words();
+    if (!std::equal(words.begin(), words.end(), canonical.begin())) return std::nullopt;
+    return result;
 }
 
 void FixedPipelineState::BlendingAttachment::Refresh(const Maxwell& regs, size_t index) {

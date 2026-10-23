@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <fstream>
+#include <cstdlib>
+#include <sstream>
 #include <memory>
 #include <thread>
 #include <unordered_set>
@@ -22,6 +24,7 @@
 #include "yuzu_shader_recompiler/ir_opt/passes.h"
 #include "yuzu_shader_recompiler/program_header.h"
 #include "yuzu_video_core/engines/kepler_compute.h"
+#include "yuzu_video_core/engines/draw_manager.h"
 #include "yuzu_video_core/engines/maxwell_3d.h"
 #include "yuzu_video_core/memory_manager.h"
 #include "yuzu_video_core/renderer_vulkan/fixed_pipeline_state.h"
@@ -31,11 +34,14 @@
 #include "yuzu_video_core/renderer_vulkan/vk_compute_pipeline.h"
 #include "yuzu_video_core/renderer_vulkan/vk_descriptor_pool.h"
 #include "yuzu_video_core/renderer_vulkan/vk_pipeline_cache.h"
+#include "yuzu_video_core/renderer_vulkan/guest_pipeline_recipe_probe.h"
 #include "yuzu_video_core/renderer_vulkan/vk_scheduler.h"
 #include "yuzu_video_core/renderer_vulkan/vk_shader_util.h"
 #include "yuzu_video_core/renderer_vulkan/vk_update_descriptor.h"
 #include "yuzu_video_core/shader_cache.h"
 #include "yuzu_video_core/shader_environment.h"
+#include "yuzu_video_core/pipeline_cache_store.h"
+#include "yuzu_video_core/shader_profile.h"
 #include "yuzu_video_core/shader_notify.h"
 #include "yuzu_video_core/surface.h"
 #include "yuzu_video_core/vulkan_common/vulkan_device.h"
@@ -627,6 +633,7 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
         .has_dynamic_vertex_input = device.IsExtVertexInputDynamicStateSupported(),
         .has_vertex_stride_workaround = device.NeedsVertexAttributeStrideWorkaround(),
     };
+    guest_recipe_probe = GuestPipelineRecipeProbe::FromEnvironment();
 }
 
 void PipelineCache::WaitForBuilds() {
@@ -640,6 +647,7 @@ void PipelineCache::WaitForBuilds() {
 
 PipelineCache::~PipelineCache() {
     WaitForBuilds();
+    if (guest_recipe_probe) guest_recipe_probe->Flush();
     if (use_vulkan_pipeline_cache && !vulkan_pipeline_cache_filename.empty()) {
         SerializeVulkanPipelineCache(vulkan_pipeline_cache_filename, vulkan_pipeline_cache,
                                      CACHE_VERSION);
@@ -665,6 +673,11 @@ GraphicsPipeline* PipelineCache::CurrentGraphicsPipeline() {
         const auto pool = VideoCommon::GraphicsTexturePoolInfo(maxwell3d->regs);
         graphics_key.texture_pool = {pool.num_textures,
                                      pool.linked_samplers ? 0U : pool.num_samplers};
+    }
+
+    if (guest_recipe_probe) {
+        guest_recipe_probe->Observe(maxwell3d->regs, maxwell3d->draw_manager->GetDrawState().topology,
+                                    maxwell3d->engine_state, graphics_key, dynamic_features);
     }
 
     if (current_pipeline) {
@@ -715,7 +728,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         LOG_ERROR(Common_Filesystem, "Failed to create pipeline cache directories");
         return;
     }
-    pipeline_cache_filename = base_dir / "vulkan.bin";
+    pipeline_cache_filename = base_dir / "vulkan.nxc";
 
     if (use_vulkan_pipeline_cache) {
         vulkan_pipeline_cache_filename = base_dir / "vulkan_pipelines.bin";
@@ -853,8 +866,70 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         queue_graphics(key, std::move(envs));
         return true;
     }};
-    VideoCommon::LoadPipelines(stop_loading, pipeline_cache_filename, CACHE_VERSION, load_compute,
-                               load_graphics);
+    // Import is explicit and outside the draw path. A profile never provides host pipeline keys.
+    if (const char* path = std::getenv("NXEMU_IMPORT_NXSHADER"); path && *path) {
+        try {
+            const char* root = std::getenv("NXEMU_SHADER_GAME_ROOT");
+            if (!root || !*root) throw std::runtime_error("NXEMU_SHADER_GAME_ROOT is required");
+            size_t unresolved_count{};
+            const auto recipes = VideoCommon::ShaderProfile::Read(
+                std::filesystem::u8path(path), std::filesystem::u8path(root), title_id, &unresolved_count);
+            // Validate every guest projection before queueing work or appending local records.
+            for (const auto& recipe : recipes) {
+                if (!recipe.compute && !GuestPipelineState::FromWords(recipe.guest_words))
+                    throw std::runtime_error("Unsupported nxshader guest pipeline state");
+            }
+            size_t imported{};
+            for (const auto& recipe : recipes) {
+                if (stop_loading.stop_requested()) break;
+                std::vector<FileEnvironment> envs;
+                for (const auto& bytes : recipe.environments) {
+                    std::istringstream stream(bytes, std::ios::binary);
+                    FileEnvironment env; env.Deserialize(stream); envs.push_back(std::move(env));
+                }
+                VideoCommon::CacheStore::Record record;
+                record.environments = recipe.environments;
+                if (recipe.compute) {
+                    ComputePipelineCacheKey key{};
+                    key.unique_hash = recipe.shader_hashes[0];
+                    key.shared_memory_size = recipe.shared_memory_size;
+                    key.workgroup_size = recipe.workgroup_size;
+                    key.cbuf_sizes = recipe.compute_cbuf_sizes;
+                    key.texture_table_size = recipe.texture_table_size;
+                    record.key.assign(reinterpret_cast<const char*>(&key), sizeof(key));
+                    std::istringstream stream(record.key, std::ios::binary);
+                    load_compute(stream, std::move(envs.front()));
+                } else {
+                    const auto guest = GuestPipelineState::FromWords(recipe.guest_words);
+                    if (!guest) throw std::runtime_error("Unsupported nxshader guest pipeline state");
+                    GraphicsPipelineCacheKey key{};
+                    key.unique_hashes = recipe.shader_hashes;
+                    key.cbuf_sizes = recipe.cbuf_sizes;
+                    key.texture_pool = recipe.texture_pool;
+                    key.state = guest->Project(dynamic_features);
+                    record.key.assign(reinterpret_cast<const char*>(&key), sizeof(key));
+                    std::istringstream stream(record.key, std::ios::binary);
+                    load_graphics(stream, std::move(envs));
+                }
+                VideoCommon::CacheStore::Append(pipeline_cache_filename, CACHE_VERSION, record);
+                ++imported;
+            }
+            LOG_INFO(Render_Vulkan, "NXShader imported {} recipes from local game resources", imported);
+            if (unresolved_count) LOG_WARNING(Render_Vulkan,
+                "NXShader retains {} observations without serialized environments; these cannot be prewarmed", unresolved_count);
+        } catch (const std::exception& error) {
+            LOG_ERROR(Render_Vulkan, "NXShader import failed: {}", error.what());
+        }
+    }
+    // Legacy caches remain readable; all subsequent writes use the deduplicated local store.
+    VideoCommon::LoadPipelines(stop_loading, base_dir / "vulkan.bin", CACHE_VERSION,
+                               load_compute, load_graphics);
+    try {
+        VideoCommon::LoadPipelines(stop_loading, pipeline_cache_filename, CACHE_VERSION,
+                                   load_compute, load_graphics);
+    } catch (const std::exception& error) {
+        LOG_ERROR(Render_Vulkan, "Local shader cache rejected: {}", error.what());
+    }
 
     const auto non_hle_twin{[](GraphicsPipelineCacheKey key) {
         key.state.app_stage.Assign(Tegra::Engines::Maxwell3D::EngineHint::None);

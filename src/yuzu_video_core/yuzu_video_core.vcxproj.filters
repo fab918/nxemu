@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <ClInclude Include="pipeline_cache_store.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="shader_profile.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="renderer_vulkan\guest_pipeline_recipe_probe.h"><Filter>Header Files\renderer_vulkan</Filter></ClInclude>
+    <ClCompile Include="pipeline_cache_store.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="shader_profile.cpp"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
     <Filter Include="Source Files">
       <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
       <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
