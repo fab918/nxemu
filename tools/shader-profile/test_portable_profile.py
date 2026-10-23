@@ -8,12 +8,40 @@ import struct
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 from nxshader import canonical,sha,parse_cache
 from local_cache import legacy_bytes
 from portable_profile import assemble
 
 
 class PortableProfileTests(unittest.TestCase):
+    def test_export_timings_are_opt_in_and_preserve_results(self):
+        from portable_profile import ExportTimings
+        disabled=ExportTimings()
+        self.assertEqual(disabled.call('stage',lambda:7),7)
+        disabled.add('bytes',5)
+        self.assertEqual(disabled.report()['phases'],{})
+        self.assertEqual(disabled.report()['counts'],{})
+        enabled=ExportTimings(True)
+        with self.assertRaises(ValueError):
+            enabled.call('failed',lambda:(_ for _ in ()).throw(ValueError()))
+        self.assertEqual(enabled.report()['phases']['failed']['calls'],1)
+
+    def test_native_timings_preserve_cache_bytes(self):
+        with patch.dict(os.environ,{'NXEMU_NXSHADER_TIMING':'0'}):
+            plain,plain_cache=self.native()
+        with patch.dict(os.environ,{'NXEMU_NXSHADER_TIMING':'1'}):
+            measured,measured_cache=self.native()
+        self.assertEqual(plain.returncode,0,plain.stderr)
+        self.assertEqual(measured.returncode,0,measured.stderr)
+        self.assertEqual(plain_cache,measured_cache)
+        self.assertNotIn('timings',json.loads(plain.stdout))
+        timings=json.loads(measured.stdout)['timings']
+        self.assertEqual(timings['counts']['programs'],1)
+        self.assertEqual(timings['counts']['resource_read_bytes'],8)
+        self.assertEqual(timings['phases']['cache_append']['completed'],1)
+        self.assertGreaterEqual(timings['phases']['reader_total']['ms'],0)
+
     def test_legacy_join_ignores_only_inactive_depth_format(self):
         from rebuild_recipes import normalized
         inactive = bytearray(1400)
@@ -107,6 +135,53 @@ class PortableProfileTests(unittest.TestCase):
         result,data=self.native(mutate,game=raw);self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(parse_cache(legacy_bytes(data))[0][0][0][1],code)
 
+    def test_native_lz4_distance_one_and_invalid_distance(self):
+        code=b'A'*8;digest=sha(code);raw=b'\x13A\x01\x00'
+        def mutate(p):
+            entry=next(iter(p['shaders'].values()))
+            entry['references']=[dict(encoding='nso-lz4',file='game.dat',container_offset=0,
+                container_size=len(raw),offset=0,size=8,decoded_size=8,
+                container_sha256=sha(raw),segment_sha256=digest)]
+            p['shaders']={digest:entry}
+            next(iter(p['environments'].values()))['shader']=digest
+        result,data=self.native(mutate,game=raw)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(parse_cache(legacy_bytes(data))[0][0][0][1],code)
+        result,data=self.native(mutate,game=b'\x13A\x00\x00')
+        self.assertNotEqual(result.returncode,0);self.assertIsNone(data)
+
+    def test_native_verified_yaz0_prefix_and_unused_tail_integrity(self):
+        code=b'12345678';digest=sha(code)
+        raw=b'Yaz0'+struct.pack('>I',16)+bytes(8)+b'\xff'+code+b'\xffABCDEFGH'
+        def mutate(p):
+            entry=next(iter(p['shaders'].values()))
+            entry['references']=[dict(encoding='bktr-yaz0',offset=0,size=8,
+                physical_spans=[dict(file='game.dat',offset=0,size=len(raw))],
+                resource_size=len(raw),resource_sha256=sha(raw))]
+            p['shaders']={digest:entry}
+            next(iter(p['environments'].values()))['shader']=digest
+        with patch.dict(os.environ,{'NXEMU_NXSHADER_TIMING':'1'}):
+            result,data=self.native(mutate,game=raw)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(parse_cache(legacy_bytes(data))[0][0][0][1],code)
+        self.assertEqual(json.loads(result.stdout)['timings']['counts']['resource_decoded_bytes'],8)
+        result,data=self.native(mutate,game=raw[:-1]+b'X')
+        self.assertNotEqual(result.returncode,0);self.assertIsNone(data)
+
+    def test_native_yaz0_prefix_ending_inside_match(self):
+        code=b'ABCDABCD';digest=sha(code)
+        raw=b'Yaz0'+struct.pack('>I',12)+bytes(8)+b'\xf0ABCD\x60\x03'
+        def mutate(p):
+            entry=next(iter(p['shaders'].values()))
+            entry['references']=[dict(encoding='bktr-yaz0',offset=0,size=8,
+                physical_spans=[dict(file='game.dat',offset=0,size=len(raw))],
+                resource_size=len(raw),resource_sha256=sha(raw))]
+            p['shaders']={digest:entry}
+            next(iter(p['environments'].values()))['shader']=digest
+        result,data=self.native(mutate,game=raw)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(parse_cache(legacy_bytes(data))[0][0][0][1],code)
+
     def test_accelerated_yaz0_matches_generated_reference(self):
         binary=os.environ.get('NXSHADER_READER')
         if not binary:self.skipTest('native tools unavailable')
@@ -132,6 +207,17 @@ class PortableProfileTests(unittest.TestCase):
                 raw.extend(b''.join(data for _,data in group))
             with self.subTest(seed=seed):
                 self.assertEqual(decode_yaz0(bytes(raw),library),bytes(expected))
+                def mutate(p):
+                    digest=sha(expected);entry=next(iter(p['shaders'].values()))
+                    entry['size']=len(expected)
+                    entry['references']=[dict(encoding='yaz0',file='game.dat',container_offset=0,
+                        container_size=len(raw),offset=0,size=len(expected))]
+                    p['shaders']={digest:entry}
+                    env=next(iter(p['environments'].values()))
+                    env['shader']=digest;env['guest_read_highest']=len(expected)-8
+                result,data=self.native(mutate,game=bytes(raw))
+                self.assertEqual(result.returncode,0,result.stderr)
+                self.assertEqual(parse_cache(legacy_bytes(data))[0][0][0][1],bytes(expected))
 
 
 if __name__=='__main__':unittest.main()

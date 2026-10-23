@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
+#include "yuzu_video_core/shader_profile_metrics.h"
 #include <cstring>
 #include <span>
 
@@ -33,6 +34,7 @@
 #endif
 
 namespace Vulkan {
+namespace Timing = VideoCommon::ShaderProfile::Timing;
 namespace {
 using boost::container::static_vector;
 using Shader::ImageBufferDescriptor;
@@ -561,7 +563,7 @@ GraphicsPipeline::GraphicsPipeline(
                     *stage.descriptor_set_layout, *stage.pipeline_layout, false);
                 stage.descriptor_allocator =
                     descriptor_pool.Allocator(*stage.descriptor_set_layout, stage.info);
-                stage.pipeline = device.GetLogical().CreateComputePipeline(
+                stage.pipeline = Timing::Measure(Timing::current, Timing::Phase::NativeCompute, [&] { return device.GetLogical().CreateComputePipeline(
                     {
                         .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
                         .pNext = nullptr,
@@ -579,7 +581,7 @@ GraphicsPipeline::GraphicsPipeline(
                         .basePipelineHandle = 0,
                         .basePipelineIndex = 0,
                     },
-                    *pipeline_cache);
+                    *pipeline_cache); });
             }};
             if (xfb) {
                 build_compute_stage(xfb->stage);
@@ -2107,7 +2109,7 @@ void GraphicsPipeline::MakePipeline(VkRenderPass render_pass) {
     if (device.IsKhrPipelineExecutablePropertiesEnabled()) {
         flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
     }
-    pipeline = device.GetLogical().CreateGraphicsPipeline(
+    pipeline = Timing::Measure(Timing::current, Timing::Phase::NativeGraphics, [&] { return device.GetLogical().CreateGraphicsPipeline(
         {
             .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
             .pNext = nullptr,
@@ -2129,7 +2131,7 @@ void GraphicsPipeline::MakePipeline(VkRenderPass render_pass) {
             .basePipelineHandle = nullptr,
             .basePipelineIndex = 0,
         },
-        *pipeline_cache);
+        *pipeline_cache); });
 }
 
 void GraphicsPipeline::Validate() {

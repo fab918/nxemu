@@ -1,5 +1,9 @@
 # feature-nxshad — première version native NXShader
 
+Les mesures par étape et les réductions de temps de reconstruction sont décrites
+dans [P0_TIMING.md](P0_TIMING.md). Elles s'activent explicitement avec
+`NXEMU_NXSHADER_TIMING=1` à l'import et `--timings` à l'export.
+
 ## Correction des clés de profondeur inactive
 
 Le chemin normal, la projection NXShader et la lecture des anciens caches
@@ -210,3 +214,13 @@ Les métadonnées d'environnement sont celles observées sur le GPU source. Le
 test croisé doit aussi vérifier les lectures supplémentaires éventuellement
 requises par le traducteur cible, les clés et les produits de compilation ; un
 compteur de pipelines construits ne suffit pas à prouver leur équivalence.
+
+### Implémentation native et banc de validation
+
+La cible de production est un export entièrement C++ sans dépendance Python.
+Le POC reste orchestré par `portable_profile.py` ; ses moteurs C++ de recherche
+et de décompression sont dans `shader_profile_search.h` et
+`shader_profile_resources.h`. Le helper `yaz0-scan` sert uniquement au banc.
+Avec un helper récent fourni via `--yaz0-library`, le banc utilise la recherche
+native ; les anciens helpers conservent la référence historique. Voir
+[P0_TIMING.md](P0_TIMING.md) pour les mesures et les limites de cette migration.

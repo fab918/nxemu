@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
+#include "yuzu_video_core/shader_profile_metrics.h"
 #include <cstring>
 #include <vector>
 
@@ -18,6 +19,7 @@
 #include "yuzu_video_core/vulkan_common/vulkan_wrapper.h"
 
 namespace Vulkan {
+namespace Timing = VideoCommon::ShaderProfile::Timing;
 using Shader::ImageBufferDescriptor;
 using Shader::Backend::SPIRV::RESCALING_LAYOUT_WORDS_OFFSET;
 using Tegra::Texture::TexturePair;
@@ -67,7 +69,7 @@ ComputePipeline::ComputePipeline(const Device& device_, vk::PipelineCache& pipel
             if (device.IsKhrPipelineExecutablePropertiesEnabled()) {
                 flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
             }
-            pipeline = device.GetLogical().CreateComputePipeline(
+            pipeline = Timing::Measure(Timing::current, Timing::Phase::NativeCompute, [&] { return device.GetLogical().CreateComputePipeline(
                 {
                     .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
                     .pNext = nullptr,
@@ -86,7 +88,7 @@ ComputePipeline::ComputePipeline(const Device& device_, vk::PipelineCache& pipel
                     .basePipelineHandle = 0,
                     .basePipelineIndex = 0,
                 },
-                *pipeline_cache);
+                *pipeline_cache); });
 
             if (pipeline_statistics) {
                 pipeline_statistics->Collect(*pipeline);

@@ -42,6 +42,7 @@
 #include "yuzu_video_core/shader_environment.h"
 #include "yuzu_video_core/pipeline_cache_store.h"
 #include "yuzu_video_core/shader_profile.h"
+#include "yuzu_video_core/shader_profile_metrics.h"
 #include "yuzu_video_core/shader_notify.h"
 #include "yuzu_video_core/surface.h"
 #include "yuzu_video_core/vulkan_common/vulkan_device.h"
@@ -719,6 +720,7 @@ ComputePipeline* PipelineCache::CurrentComputePipeline() {
 
 void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading,
                                       const VideoCore::DiskResourceLoadCallback& callback) {
+    namespace Timing = VideoCommon::ShaderProfile::Timing;
     if (title_id == 0) {
         return;
     }
@@ -746,7 +748,12 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         size_t built{};
         bool has_loaded{};
         std::unique_ptr<PipelineStatistics> statistics;
+        std::unique_ptr<Timing::Metrics> timings;
     } state;
+    const char* timing_option = std::getenv("NXEMU_NXSHADER_TIMING");
+    if (timing_option && *timing_option && std::string_view(timing_option) != "0")
+        state.timings = std::make_unique<Timing::Metrics>();
+    Timing::Timer startup_timer(state.timings.get(), Timing::Phase::StartupWall);
     // Cache parsing/allocation can throw after work capturing this stack state is queued.
     // Drain active work before state and the progress callback can leave scope.
     SCOPE_EXIT { workers.WaitForRequests(); };
@@ -771,6 +778,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         }
 
         workers.QueueWork([this, key, env_ = std::move(env), &state, &callback]() mutable {
+            Timing::Context timing_context(state.timings.get());
             ShaderPools pools;
             auto pipeline{CreateComputePipeline(pools, key, env_, state.statistics.get(), false)};
             std::scoped_lock lock{state.mutex};
@@ -788,6 +796,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     const auto queue_graphics{[&](const GraphicsPipelineCacheKey& key,
                                   std::vector<FileEnvironment> envs) {
         workers.QueueWork([this, key, envs_ = std::move(envs), &state, &callback]() mutable {
+            Timing::Context timing_context(state.timings.get());
             ShaderPools pools;
             boost::container::static_vector<Shader::Environment*, Maxwell::MaxShaderProgram> env_ptrs;
             for (auto& env : envs_) {
@@ -873,9 +882,11 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             if (!root || !*root) throw std::runtime_error("NXEMU_SHADER_GAME_ROOT is required");
             size_t unresolved_count{};
             const auto recipes = VideoCommon::ShaderProfile::Read(
-                std::filesystem::u8path(path), std::filesystem::u8path(root), title_id, &unresolved_count);
+                std::filesystem::u8path(path), std::filesystem::u8path(root), title_id, &unresolved_count,
+                state.timings.get());
             // Validate every guest projection before queueing work or appending local records.
             for (const auto& recipe : recipes) {
+                Timing::Timer projection_timer(state.timings.get(), Timing::Phase::GuestProjection);
                 if (!recipe.compute && !GuestPipelineState::FromWords(recipe.guest_words))
                     throw std::runtime_error("Unsupported nxshader guest pipeline state");
             }
@@ -883,12 +894,15 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             for (const auto& recipe : recipes) {
                 if (stop_loading.stop_requested()) break;
                 std::vector<FileEnvironment> envs;
+                Timing::Timer environment_timer(state.timings.get(), Timing::Phase::EnvironmentDeserialization);
                 for (const auto& bytes : recipe.environments) {
                     std::istringstream stream(bytes, std::ios::binary);
                     FileEnvironment env; env.Deserialize(stream); envs.push_back(std::move(env));
                 }
+                environment_timer.Stop();
                 VideoCommon::CacheStore::Record record;
                 record.environments = recipe.environments;
+                Timing::Timer projection_timer(state.timings.get(), Timing::Phase::GuestProjection);
                 if (recipe.compute) {
                     ComputePipelineCacheKey key{};
                     key.unique_hash = recipe.shader_hashes[0];
@@ -911,7 +925,10 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                     std::istringstream stream(record.key, std::ios::binary);
                     load_graphics(stream, std::move(envs));
                 }
-                VideoCommon::CacheStore::Append(pipeline_cache_filename, CACHE_VERSION, record);
+                projection_timer.Stop();
+                Timing::Measure(state.timings.get(), Timing::Phase::CacheAppend, [&] {
+                    VideoCommon::CacheStore::Append(pipeline_cache_filename, CACHE_VERSION, record);
+                });
                 ++imported;
             }
             LOG_INFO(Render_Vulkan, "NXShader imported {} recipes from local game resources", imported);
@@ -922,6 +939,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         }
     }
     // Legacy caches remain readable; all subsequent writes use the deduplicated local store.
+    Timing::Timer existing_cache_timer(state.timings.get(), Timing::Phase::ExistingCacheLoad);
     VideoCommon::LoadPipelines(stop_loading, base_dir / "vulkan.bin", CACHE_VERSION,
                                load_compute, load_graphics);
     try {
@@ -930,6 +948,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     } catch (const std::exception& error) {
         LOG_ERROR(Render_Vulkan, "Local shader cache rejected: {}", error.what());
     }
+    existing_cache_timer.Stop();
 
     const auto non_hle_twin{[](GraphicsPipelineCacheKey key) {
         key.state.app_stage.Assign(Tegra::Engines::Maxwell3D::EngineHint::None);
@@ -951,7 +970,9 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     state.has_loaded = true;
     lock.unlock();
 
-    workers.WaitForRequests(stop_loading);
+    Timing::Measure(state.timings.get(), Timing::Phase::WarmupWait, [&] {
+        workers.WaitForRequests(stop_loading);
+    });
 
     lock.lock();
     for (const auto& key : hle_shared_keys) {
@@ -971,6 +992,20 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
 
     if (state.statistics) {
         state.statistics->Report();
+    }
+    if (state.timings) {
+        state.timings->Add(Timing::Counter::HleAliases, hle_shared_keys.size());
+        state.timings->Add(Timing::Counter::PipelineRequests, state.total);
+        state.timings->Add(Timing::Counter::PipelineRequestsCompleted, state.built);
+        state.timings->Add(Timing::Counter::StopRequested, stop_loading.stop_requested());
+        startup_timer.Stop();
+        const auto report = state.timings->Json();
+        LOG_INFO(Render_Vulkan, "NXShader timings: {}", report);
+        if (const char* output = std::getenv("NXEMU_NXSHADER_TIMING_FILE"); output && *output) {
+            std::ofstream file(std::filesystem::u8path(output), std::ios::binary | std::ios::trunc);
+            file << report;
+            if (!file) LOG_WARNING(Render_Vulkan, "Cannot write NXShader timing report");
+        }
     }
 }
 
@@ -1295,6 +1330,8 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
     ShaderPools& pools, const GraphicsPipelineCacheKey& key,
     std::span<Shader::Environment* const> envs, PipelineStatistics* statistics,
     bool build_in_parallel, const std::function<bool()>* skip_build) try {
+    namespace Timing = VideoCommon::ShaderProfile::Timing;
+    Timing::Timer compiler_timer(Timing::current, Timing::Phase::CompilerWall);
     auto hash = key.Hash();
     LOG_INFO(Render_Vulkan, "0x{:016x}", hash);
     size_t env_index{0};
@@ -1306,6 +1343,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
     Shader::IR::Program* layer_source_program{};
     Shader::Environment* vertex_env{};
 
+    Timing::Timer translation_timer(Timing::current, Timing::Phase::GuestTranslation);
     for (size_t index = 0; index < Maxwell::MaxShaderProgram; ++index) {
         const bool is_emulated_stage = layer_source_program != nullptr &&
                                        index == static_cast<u32>(Maxwell::ShaderType::Geometry);
@@ -1344,6 +1382,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
             layer_source_program = &programs[index];
         }
     }
+    translation_timer.Stop();
     if (skip_build && (*skip_build)()) {
         return nullptr;
     }
@@ -1414,9 +1453,11 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
             for (size_t stage = 0; stage < stages.size(); ++stage) {
                 Shader::Backend::Bindings compute_binding;
                 const std::vector<u32> code{
-                    EmitSPIRV(profile, *runtimes[stage], *stages[stage], compute_binding)};
+                    Timing::Measure(Timing::current, Timing::Phase::SpirvEmission,
+                        [&] { return EmitSPIRV(profile, *runtimes[stage], *stages[stage], compute_binding); })};
                 device.SaveShader(code);
-                info->modules[stage] = BuildShader(device, code);
+                info->modules[stage] = Timing::Measure(Timing::current, Timing::Phase::ShaderModuleCreation,
+                    [&] { return BuildShader(device, code); });
                 info->infos[stage] = stages[stage]->info;
             }
             info->topology = *vtg_topology;
@@ -1432,9 +1473,11 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
             if (geometry_topology == Shader::OutputTopology::PointList) {
                 runtime_info.fixed_state_point_size = Common::BitCast<float>(key.state.point_size);
             }
-            const std::vector<u32> code{EmitSPIRV(profile, runtime_info, vtg_passthrough, binding)};
+            const std::vector<u32> code{Timing::Measure(Timing::current, Timing::Phase::SpirvEmission,
+                [&] { return EmitSPIRV(profile, runtime_info, vtg_passthrough, binding); })};
             device.SaveShader(code);
-            modules[0] = BuildShader(device, code);
+            modules[0] = Timing::Measure(Timing::current, Timing::Phase::ShaderModuleCreation,
+                [&] { return BuildShader(device, code); });
             infos[0] = &vtg_passthrough.info;
             previous_stage = &vtg_passthrough;
             vtg_info = std::move(info);
@@ -1488,9 +1531,11 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
                                                                info->transform_feedback,
                                                                info->vertex_bindings)) {
             Shader::Backend::Bindings compute_binding;
-            const std::vector<u32> code{EmitSPIRV(profile, vertex_runtime, vertex, compute_binding)};
+            const std::vector<u32> code{Timing::Measure(Timing::current, Timing::Phase::SpirvEmission,
+                [&] { return EmitSPIRV(profile, vertex_runtime, vertex, compute_binding); })};
             device.SaveShader(code);
-            info->modules[VtgPipelineInfo::VERTEX] = BuildShader(device, code);
+            info->modules[VtgPipelineInfo::VERTEX] = Timing::Measure(Timing::current, Timing::Phase::ShaderModuleCreation,
+                [&] { return BuildShader(device, code); });
             info->infos[VtgPipelineInfo::VERTEX] = vertex.info;
             info->topology = *vtg_topology;
             info->scratch = &vtg_scratch;
@@ -1550,9 +1595,11 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
                 desc.in_table_set = !desc.is_direct && desc.count >= LARGE_IMAGE_ARRAY_SIZE;
             }
         }
-        const std::vector<u32> code{EmitSPIRV(profile, runtime_info, program, binding)};
+        const std::vector<u32> code{Timing::Measure(Timing::current, Timing::Phase::SpirvEmission,
+            [&] { return EmitSPIRV(profile, runtime_info, program, binding); })};
         device.SaveShader(code);
-        modules[stage_index] = BuildShader(device, code);
+        modules[stage_index] = Timing::Measure(Timing::current, Timing::Phase::ShaderModuleCreation,
+            [&] { return BuildShader(device, code); });
         if (device.HasDebuggingToolAttached()) {
             const std::string name{fmt::format("Shader {:016x}", key.unique_hashes[index])};
             modules[stage_index].SetObjectNameEXT(name.c_str());
@@ -1678,6 +1725,8 @@ std::unique_ptr<ComputePipeline> PipelineCache::CreateComputePipeline(
 std::unique_ptr<ComputePipeline> PipelineCache::CreateComputePipeline(
     ShaderPools& pools, const ComputePipelineCacheKey& key, Shader::Environment& env,
     PipelineStatistics* statistics, bool build_in_parallel) try {
+    namespace Timing = VideoCommon::ShaderProfile::Timing;
+    Timing::Timer compiler_timer(Timing::current, Timing::Phase::CompilerWall);
     auto hash = key.Hash();
     if (device.HasBrokenCompute()) {
         LOG_ERROR(Render_Vulkan, "Skipping 0x{:016x}", hash);
@@ -1686,6 +1735,7 @@ std::unique_ptr<ComputePipeline> PipelineCache::CreateComputePipeline(
 
     LOG_INFO(Render_Vulkan, "0x{:016x}", hash);
 
+    Timing::Timer translation_timer(Timing::current, Timing::Phase::GuestTranslation);
     Shader::Maxwell::Flow::CFG cfg{env, pools.flow_block, env.StartAddress()};
 
     // Dump it before error.
@@ -1694,6 +1744,7 @@ std::unique_ptr<ComputePipeline> PipelineCache::CreateComputePipeline(
     }
 
     auto program{TranslateProgram(pools.inst, pools.block, env, cfg, host_info)};
+    translation_timer.Stop();
     // Only where the host enforces its limit
     const u32 max_shared_memory{profile.max_compute_shared_memory_size};
     if (max_shared_memory != 0 && program.shared_memory_size > max_shared_memory &&
@@ -1705,9 +1756,11 @@ std::unique_ptr<ComputePipeline> PipelineCache::CreateComputePipeline(
                      key.unique_hash, requested_shared_memory, program.shared_memory_size);
         }
     }
-    const std::vector<u32> code{EmitSPIRV(profile, program)};
+    const std::vector<u32> code{Timing::Measure(Timing::current, Timing::Phase::SpirvEmission,
+        [&] { return EmitSPIRV(profile, program); })};
     device.SaveShader(code);
-    vk::ShaderModule spv_module{BuildShader(device, code)};
+    vk::ShaderModule spv_module{Timing::Measure(Timing::current, Timing::Phase::ShaderModuleCreation,
+        [&] { return BuildShader(device, code); })};
     if (device.HasDebuggingToolAttached()) {
         const auto name{fmt::format("Shader {:016x}", key.unique_hash)};
         spv_module.SetObjectNameEXT(name.c_str());
