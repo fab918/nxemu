@@ -83,7 +83,8 @@ lancements suivants : ils utilisent le nouveau cache local.
 
 ## Formats expérimentaux
 
-`.nxshader` v2 est un document UTF-8 JSON strict : `format=nxshader`, `version=2`,
+`.nxshader` v2 contient des métadonnées UTF-8 JSON strictes, compressées par défaut
+avec Zstandard au niveau 3 : `format=nxshader`, `version=2`,
 identifiant du titre, version de l'état invité, tables de shaders et
 d'environnements, recettes graphiques/compute et observations non résolues.
 Les entiers supérieurs à 32 bits sont des chaînes décimales pour conserver les
@@ -112,10 +113,46 @@ python3 tools/shader-profile/portable_profile.py convert ancien.nxshader nouveau
   --projector build/nxshader-tools/recipe-projection
 ```
 
-Le v2 utilise pour cette première version du JSON non compressé ; son transfert
-peut être zippé, mais il faut le dézipper avant import. Le corpus de test prend
-environ 2,24 Mo. Ce choix permet un lecteur natif sans nouvelle dépendance de
-compression ; ce format expérimental n'est pas une ABI publique figée.
+Le lecteur accepte aussi le v2 JSON non compressé (`--plain` à l'export).
+L'enveloppe compressée commence par `NXSHADR2`, puis `version:u32le=1`,
+`codec:u32le=1`, taille décompressée et taille stockée `u64le`, puis une seule
+frame Zstandard avec checksum. Les tailles sont contrôlées avant allocation,
+les dictionnaires externes et frames concaténées sont refusés. Le contenu
+décompressé reste borné à 32 Mio. Zstandard est déjà une dépendance du dépôt.
+Ce format expérimental n'est pas une ABI publique figée.
+
+Mesure sur les mêmes 1 108 observations, 529 programmes et dix entrées compute :
+
+| Encodage | Octets | Compression en mémoire | Décompression en mémoire |
+|---|---:|---:|---:|
+| JSON brut | 2 245 260 | — | — |
+| Zstandard 3, défaut | **133 266** | **1,65 ms** | **0,70 ms** |
+| Zstandard 6 | 121 940 | 4,58 ms | 0,66 ms |
+| Zstandard 19 | 104 392 | 160,18 ms | 0,60 ms |
+
+Ces chiffres sont les médianes de dix essais après échauffement, sur cette
+machine Windows. Ils excluent la recherche des ressources, le lancement de
+Python et la compilation GPU. Le parsing JSON reste autour de 55–60 ms : la
+compression réduit de 94,1 % les octets à lire et transférer, mais ne démontre
+pas à elle seule une accélération du parsing ou du chargement complet du jeu.
+Le niveau 19 n'est pas retenu par défaut pour préserver la vitesse de création.
+
+L'exporteur utilise l'encodeur natif dans la bibliothèque Yaz0 quand disponible,
+puis l'exécutable `nxshader-codec` en secours. Cette voie évite un processus et
+un fichier JSON intermédiaire. La découverte filtre les candidats sur 128 octets,
+arrête la recherche une fois tous les programmes localisés, et utilise le RomFS
+logique de l'update pour éviter de décompresser les anciennes ressources remplacées.
+Les empreintes finales restent contrôlées ; aucune instruction n'est supprimée
+pour gagner de la place. L'optimisation de recherche n'est pas un gain mesuré de
+compilation des shaders.
+
+L'export autonome complet, depuis le cache capturé et les ressources du jeu
+sans reprendre les anciens locateurs du POC, a également réussi : **130 998
+octets**, 529 programmes, 1 105 recettes graphiques exploitables, dix compute et
+les trois observations non résolues conservées. La recherche a pris environ
+151 secondes sur cette machine ; l'encodage final et l'écriture ont pris environ
+7,6 ms. Ce temps de recherche hors ligne est distinct des mesures de codec
+ci-dessus et n'est pas un benchmark macOS.
 
 Le cache local `NXSCACHE`, révision de stockage 1, conserve l'ABI shader 20 :
 en-tête de 16 octets, puis frames `type:u8, taille:u32le, SHA256:32, payload`.
@@ -140,7 +177,11 @@ trois autres observations graphiques sans enregistrement source correspondant
 sont conservées dans `unresolved_recipes`. Toutes les 1 108 observations sont
 donc conservées et les 555 entrées du cache de référence sont couvertes. Le
 cache local issu de ce test contient 905 combinaisons clé/environnement et prend
-2 974 806 octets ; il ne s'agit pas de 905 créations natives.
+2 974 806 octets, contre 5 443 100 octets pour les mêmes enregistrements développés
+en v20, soit **45,3 % de réduction** ; il ne s'agit pas de 905 créations natives.
+Le profil compressé reconstruit un cache local identique octet pour octet à
+celui produit depuis le JSON brut. L'import compressé a aussi été lancé dans
+NXEmu, avec les 486 créations natives attendues.
 
 Les tests couvrent le stockage/dédoublonnage, les bornes, les états invités,
 l'intégrité, les chemins, l'identifiant de titre et les entiers 64 bits. **Le
@@ -148,3 +189,7 @@ build macOS et le transfert d'un vrai fichier produit sur Mac ne sont pas encore
 validés ici.** Ce sont les prochains essais. Aucun gain de stutters ou de temps
 de compilation du pilote n'est établi ; son cache disque n'a pas été isolé.
 La couverture reste limitée aux parcours capturés, sans comparaison pixel à pixel.
+Les métadonnées d'environnement sont celles observées sur le GPU source. Le
+test croisé doit aussi vérifier les lectures supplémentaires éventuellement
+requises par le traducteur cible, les clés et les produits de compilation ; un
+compteur de pipelines construits ne suffit pas à prouver leur équivalence.

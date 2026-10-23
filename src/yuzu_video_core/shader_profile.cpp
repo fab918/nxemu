@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "yuzu_video_core/shader_profile.h"
+#include "yuzu_video_core/shader_profile_codec.h"
 #include "common/json.h"
 #include "common/sha256.h"
 #include <algorithm>
@@ -65,7 +66,10 @@ std::string DecodeYaz0(const std::string& raw) {
         for (unsigned bit=0;bit<8 && out.size()<size;++bit) {
             if (flags & (128U>>bit)) out.push_back(static_cast<char>(byte(cursor++)));
             else {
-                const auto a=byte(cursor++),b=byte(cursor++);
+                const auto a=byte(cursor);
+                ++cursor;
+                const auto b=byte(cursor);
+                ++cursor;
                 const size_t distance=((a&15U)<<8)+b+1;
                 size_t length=a>>4;
                 if (!length) length=byte(cursor++)+18U; else length+=2;
@@ -144,7 +148,7 @@ template<size_t N> void Words(const JsonValue& value,std::array<u32,N>& out) {
 
 std::vector<Recipe> Read(const std::filesystem::path& path,const std::filesystem::path& root,u64 title_id,
                          size_t* unresolved_count) {
-    const auto text=Bytes(path,0,std::filesystem::file_size(path),32*1024*1024);
+    const auto text=Unpack(Bytes(path,0,std::filesystem::file_size(path),33*1024*1024));
     unsigned depth{}; bool quoted{},escaped{};
     for(const auto c:text) {
         if(quoted) { if(escaped) escaped=false; else if(c=='\\') escaped=true; else if(c=='"') quoted=false; }

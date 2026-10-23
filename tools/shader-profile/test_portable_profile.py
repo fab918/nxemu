@@ -2,6 +2,7 @@ import copy
 import hashlib
 import json
 import os
+import random
 from pathlib import Path
 import struct
 import subprocess
@@ -37,13 +38,19 @@ class PortableProfileTests(unittest.TestCase):
         data=header+frame(1,b'12345678');self.assertEqual(legacy_bytes(data),b'yuzucach'+struct.pack('<I',20))
         with self.assertRaises(ValueError):legacy_bytes(data[:-1]+b'x')
 
-    def native(self,mutate=None,game=b'12345678',title='0100152000022000'):
+    def native(self,mutate=None,game=b'12345678',title='0100152000022000',compressed=False,corrupt=False):
         binary=os.environ.get('NXSHADER_READER')
         if not binary:self.skipTest('set NXSHADER_READER to exercise the native reader')
         with tempfile.TemporaryDirectory(prefix='nxshader-test-',dir=Path.cwd()) as directory:
             root=Path(directory);p=self.fixture()
             if mutate:mutate(p)
             (root/'game.dat').write_bytes(game);(root/'test.nxshader').write_bytes(canonical(p))
+            if compressed:
+                codec=Path(binary).with_name('nxshader-codec'+Path(binary).suffix)
+                subprocess.run([str(codec),'pack',str(root/'test.nxshader'),str(root/'packed.nxshader')],check=True)
+                payload=(root/'packed.nxshader').read_bytes()
+                if corrupt:payload=payload[:-1]+bytes([payload[-1]^1])
+                (root/'test.nxshader').write_bytes(payload)
             result=subprocess.run([binary,str(root/'test.nxshader'),str(root),title,str(root/'out.nxc'),'63'],capture_output=True)
             cache=(root/'out.nxc').read_bytes() if (root/'out.nxc').exists() else None
             return result,cache
@@ -67,6 +74,52 @@ class PortableProfileTests(unittest.TestCase):
     def test_native_rejects_path_traversal(self):
         def mutate(p):next(iter(p['shaders'].values()))['references'][0]['file']='../game.dat'
         result,data=self.native(mutate);self.assertNotEqual(result.returncode,0);self.assertIsNone(data)
+
+    def test_native_accepts_compressed_profile(self):
+        result,data=self.native(compressed=True);self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(len(parse_cache(legacy_bytes(data))),1)
+
+    def test_native_rejects_compressed_checksum_mismatch(self):
+        result,data=self.native(compressed=True,corrupt=True)
+        self.assertNotEqual(result.returncode,0);self.assertIsNone(data)
+
+    def test_native_yaz0_overlapping_backreference(self):
+        code=b'12341234';digest=sha(code)
+        raw=b'Yaz0'+struct.pack('>I',8)+bytes(8)+b'\xf01234\x20\x03'
+        def mutate(p):
+            entry=next(iter(p['shaders'].values()))
+            entry['references']=[dict(encoding='yaz0',file='game.dat',container_offset=0,
+                container_size=len(raw),offset=0,size=8)]
+            p['shaders']={digest:entry}
+            next(iter(p['environments'].values()))['shader']=digest
+        result,data=self.native(mutate,game=raw);self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(parse_cache(legacy_bytes(data))[0][0][0][1],code)
+
+    def test_accelerated_yaz0_matches_generated_reference(self):
+        binary=os.environ.get('NXSHADER_READER')
+        if not binary:self.skipTest('native tools unavailable')
+        from game_resources import decode_yaz0
+        directory=Path(binary).parent
+        library=next((directory/name for name in ('yaz0-scan.dll','libyaz0-scan.dylib','libyaz0-scan.so') if (directory/name).is_file()),None)
+        if library is None:self.skipTest('native Yaz0 library unavailable')
+        for seed in range(16):
+            rng=random.Random(seed);expected=bytearray();tokens=[]
+            while len(expected)<16384:
+                remaining=16384-len(expected)
+                if not expected or remaining<3 or rng.random()<0.35:
+                    value=rng.randrange(256);expected.append(value);tokens.append((True,bytes([value])))
+                else:
+                    length=rng.randrange(3,min(273,remaining)+1);distance=rng.randrange(1,min(len(expected),4096)+1)
+                    encoded=(((length-2)<<12) if length<18 else 0)|(distance-1)
+                    token=encoded.to_bytes(2,'big')+(bytes([length-18]) if length>=18 else b'')
+                    tokens.append((False,token))
+                    for _ in range(length):expected.append(expected[-distance])
+            raw=bytearray(b'Yaz0'+struct.pack('>I',len(expected))+bytes(8))
+            for index in range(0,len(tokens),8):
+                group=tokens[index:index+8];raw.append(sum((128>>i) for i,(literal,_) in enumerate(group) if literal))
+                raw.extend(b''.join(data for _,data in group))
+            with self.subTest(seed=seed):
+                self.assertEqual(decode_yaz0(bytes(raw),library),bytes(expected))
 
 
 if __name__=='__main__':unittest.main()

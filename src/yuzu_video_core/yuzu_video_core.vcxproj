@@ -35,6 +35,7 @@
     <ClInclude Include="buffer_cache\buffer_base.h" />
     <ClInclude Include="pipeline_cache_store.h" />
     <ClInclude Include="shader_profile.h" />
+    <ClInclude Include="shader_profile_codec.h" />
     <ClInclude Include="renderer_vulkan\guest_pipeline_recipe_probe.h" />
     <ClInclude Include="buffer_cache\buffer_cache.h" />
     <ClInclude Include="buffer_cache\buffer_cache_base.h" />
@@ -364,6 +365,9 @@
     <ClCompile Include="shader_environment.cpp" />
     <ClCompile Include="pipeline_cache_store.cpp" />
     <ClCompile Include="shader_profile.cpp" />
+    <ClCompile Include="shader_profile_codec.cpp">
+      <AdditionalIncludeDirectories>$(SolutionDir)external\zstd\lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
     <ClCompile Include="shader_notify.cpp" />
     <ClCompile Include="surface.cpp" />
     <ClCompile Include="textures\astc.cpp" />
@@ -403,6 +407,9 @@
     </ProjectReference>
     <ProjectReference Include="..\3rd_party\stb\stb.vcxproj">
       <Project>{3a62c094-dbdf-414a-a65e-ebdb939a81e5}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\external\zstd.vcxproj">
+      <Project>{808d773c-086c-4e17-a195-b4af30eee86e}</Project>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

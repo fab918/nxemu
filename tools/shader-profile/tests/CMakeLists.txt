@@ -1,8 +1,17 @@
 cmake_minimum_required(VERSION 3.22)
-project(nxshader_guest_state_tests LANGUAGES CXX)
+project(nxshader_guest_state_tests LANGUAGES C CXX)
 add_library(yaz0-scan SHARED ../yaz0.cpp)
 enable_testing()
 get_filename_component(NXEMU_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+add_subdirectory("${NXEMU_ROOT}/external/zstd/build/cmake" "${CMAKE_CURRENT_BINARY_DIR}/zstd" EXCLUDE_FROM_ALL)
+target_sources(yaz0-scan PRIVATE ../profile_codec_api.cpp
+    "${NXEMU_ROOT}/src/yuzu_video_core/shader_profile_codec.cpp")
+target_include_directories(yaz0-scan PRIVATE "${NXEMU_ROOT}/src")
+target_compile_features(yaz0-scan PRIVATE cxx_std_20)
+target_link_libraries(yaz0-scan PRIVATE libzstd_static)
 add_executable(guest-pipeline-state guest_pipeline_state.cpp
     "${NXEMU_ROOT}/src/yuzu_video_core/renderer_vulkan/fixed_pipeline_state.cpp"
     "${NXEMU_ROOT}/src/yuzu_video_core/surface.cpp"
@@ -20,6 +29,7 @@ add_test(NAME guest-pipeline-state COMMAND guest-pipeline-state)
 add_library(profile-storage STATIC
     "${NXEMU_ROOT}/src/yuzu_video_core/pipeline_cache_store.cpp"
     "${NXEMU_ROOT}/src/yuzu_video_core/shader_profile.cpp"
+    "${NXEMU_ROOT}/src/yuzu_video_core/shader_profile_codec.cpp"
     "${NXEMU_ROOT}/src/common/sha256.cpp"
     "${NXEMU_ROOT}/src/common/json.cpp"
     "${NXEMU_ROOT}/src/common/std_string.cpp"
@@ -27,6 +37,12 @@ add_library(profile-storage STATIC
 target_include_directories(profile-storage PUBLIC "${NXEMU_ROOT}/src")
 target_compile_features(profile-storage PUBLIC cxx_std_20)
 target_compile_definitions(profile-storage PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(profile-storage PRIVATE libzstd_static)
+add_executable(nxshader-codec profile_codec.cpp)
+target_link_libraries(nxshader-codec PRIVATE profile-storage)
+add_executable(profile-codec-regression profile_codec_regression.cpp)
+target_link_libraries(profile-codec-regression PRIVATE profile-storage)
+add_test(NAME profile-codec COMMAND profile-codec-regression)
 add_executable(cache-store cache_store.cpp)
 target_link_libraries(cache-store PRIVATE profile-storage)
 add_test(NAME cache-store COMMAND cache-store "${CMAKE_CURRENT_BINARY_DIR}/regression.nxc")

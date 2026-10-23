@@ -7,6 +7,7 @@ Resource discovery is offline. Only plaintext DNCA/PFS containers are supported 
 import argparse
 import collections
 import copy
+import ctypes
 import json
 import mmap
 from pathlib import Path
@@ -14,8 +15,25 @@ import re
 import struct
 import subprocess
 import tempfile
+import time
 from nxshader import export_profile,load_profile,canonical,sha,write_new,scan_game,safe_file
 from shader_span import without_extra_cache_word,rebind_resource_span
+
+
+def encode_in_process(data,library,level=3):
+    if not Path(library).is_file():return None
+    dll=ctypes.CDLL(str(Path(library).resolve()))
+    try:bound,pack=dll.nxshader_pack_bound,dll.nxshader_pack
+    except AttributeError:return None  # Older Yaz0-only acceleration libraries remain usable.
+    bound.argtypes=[ctypes.c_size_t];bound.restype=ctypes.c_size_t
+    pack.argtypes=[ctypes.c_void_p,ctypes.c_size_t,ctypes.c_int,ctypes.c_void_p,ctypes.c_size_t,ctypes.POINTER(ctypes.c_size_t)]
+    pack.restype=ctypes.c_int
+    capacity=bound(len(data))
+    if not capacity:raise ValueError('profile size limit')
+    output=ctypes.create_string_buffer(capacity);written=ctypes.c_size_t()
+    if pack(data,len(data),level,output,capacity,ctypes.byref(written)) or written.value>capacity:
+        raise ValueError('native profile encoding failed')
+    return output.raw[:written.value]
 
 
 def projections(recipes,projector,bits):
@@ -120,10 +138,18 @@ def discover(profile,codes,root,base,update,library=None):
         except ValueError:pass
     if not candidates:return
     pattern=re.compile(b'|'.join(re.escape(x) for x in sorted(candidates)))
+    long_prefixes=collections.defaultdict(list);short_prefixes=collections.defaultdict(list)
+    for entries in candidates.values():
+        for item in entries:
+            code=item[1]
+            (long_prefixes if len(code)>=128 else short_prefixes)[code[:128]].append(item)
+    short_sizes=sorted({len(prefix) for prefix in short_prefixes})
     def locate(data,reference):
         for hit in pattern.finditer(data):
             pos=hit.start()
-            for h,code,trim in candidates[data[pos:pos+16]]:
+            possible=long_prefixes.get(data[pos:pos+128],[])
+            for size in short_sizes:possible=possible+short_prefixes.get(data[pos:pos+size],[])
+            for h,code,trim in possible:
                 if h not in profile['shaders'] or profile['shaders'][h]['references']:continue
                 if data[pos:pos+len(code)]!=code:continue
                 ref=dict(reference(pos),size=len(code))
@@ -132,15 +158,20 @@ def discover(profile,codes,root,base,update,library=None):
     for name in [base]+([update] if update else []):
         with safe_file(root,name).open('rb') as file,mmap.mmap(file.fileno(),0,access=mmap.ACCESS_READ) as data:
             locate(data,lambda pos:dict(file=name,encoding='raw',offset=pos))
+            if all(s['references'] for s in profile['shaders'].values()):return
             for entry in resources(data):
                 offset,size=entry['offset'],entry['size']
-                if entry['kind']=='romfs' and data[offset:offset+4]==b'Yaz0':
+                # With an update, only the logical patched RomFS is authoritative. Do not
+                # decode obsolete physical base resources that the patch replaces.
+                if not update and entry['kind']=='romfs' and data[offset:offset+4]==b'Yaz0':
                     if size>512*1024*1024:raise ValueError('RomFS resource limit')
                     decoded=decode_yaz0(data[offset:offset+size],library)
                     locator=dict(file=name,encoding='yaz0',container_offset=offset,container_size=size)
                     locate(decoded,lambda pos:dict(locator,offset=pos))
+                    if all(s['references'] for s in profile['shaders'].values()):return
                 if entry['kind']!='exefs' or data[offset:offset+4]!=b'NSO0':continue
                 flags,=struct.unpack_from('<I',data,offset+12)
+                if flags&128:raise ValueError('ZBIC NSO segments are not supported by this exporter')
                 for segment in range(3):
                     source,_,decoded_size=struct.unpack_from('<III',data,offset+16+segment*16)
                     compressed=bool(flags&(1<<segment))
@@ -152,6 +183,7 @@ def discover(profile,codes,root,base,update,library=None):
                     locator=dict(file=name,encoding='nso-lz4',container_offset=offset+source,
                         container_size=stored,decoded_size=decoded_size,container_sha256=sha(raw),segment_sha256=sha(decoded))
                     if compressed:locate(decoded,lambda pos:dict(locator,offset=pos))
+                    if all(s['references'] for s in profile['shaders'].values()):return
     if update:
         with LogicalGames(root) as games:
             for _,_,storage in games.pairs(base,update):
@@ -162,10 +194,12 @@ def discover(profile,codes,root,base,update,library=None):
                     locator=dict(encoding='bktr-yaz0' if compressed else 'bktr-raw',resource_size=len(raw),
                         resource_sha256=sha(raw),physical_spans=storage.spans(entry['offset'],entry['size']))
                     locate(decoded,lambda pos:dict(locator,offset=pos))
+                    if all(s['references'] for s in profile['shaders'].values()):return
                     if index%100==0:print(json.dumps(dict(romfs_files=index,unlocated=sum(not s['references'] for s in profile['shaders'].values()))),flush=True)
 
 
 def main():
+    started=time.perf_counter()
     parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='command',required=True)
     convert=sub.add_parser('convert');convert.add_argument('profile');convert.add_argument('output')
     convert.add_argument('--projector',required=True)
@@ -174,6 +208,10 @@ def main():
     export.add_argument('--update');export.add_argument('--output',required=True);export.add_argument('--title-id',required=True)
     export.add_argument('--content-label',required=True);export.add_argument('--projector',required=True)
     export.add_argument('--yaz0-library');export.add_argument('--allow-partial',action='store_true')
+    for command in (convert,export):
+        command.add_argument('--codec',help='nxshader-codec executable; by default next to the projector')
+        command.add_argument('--plain',action='store_true',help='write inspectable uncompressed JSON')
+        command.add_argument('--compression-level',type=int,choices=[1,3,6,9,12,19],default=3)
     args=parser.parse_args()
     if args.command=='convert':
         profile=load_profile(args.profile);extra=profile['guest_recipe_probe'];bits=extra['target_feature_bits_for_this_test']
@@ -185,8 +223,25 @@ def main():
         if bits is None:raise ValueError('recording lacks source feature bits; use this branch to record')
         discover(profile,codes,args.game_root,args.base,args.update,args.yaz0_library)
     result,report=assemble(profile,graphics,args.projector,bits,getattr(args,'allow_partial',False))
-    data=canonical(result);write_new(args.output,data)
-    report.update(bytes=len(data),sha256=sha(data),format_version=2)
+    data=canonical(result)
+    encoding_started=time.perf_counter()
+    if args.plain:write_new(args.output,data)
+    else:
+        projector=Path(args.projector).resolve()
+        codec=Path(args.codec).resolve() if args.codec else projector.with_name('nxshader-codec'+projector.suffix)
+        libraries=[projector.with_name(name) for name in ('yaz0-scan.dll','libyaz0-scan.dylib','libyaz0-scan.so')]
+        native=next((path for path in libraries if path.is_file()),None)
+        encoded=encode_in_process(data,native,args.compression_level) if native and not args.codec else None
+        if encoded is not None:write_new(args.output,encoded)
+        else:
+            if not codec.is_file():raise ValueError('build nxshader-codec beside the projector, provide --codec, or use --plain')
+            with tempfile.TemporaryDirectory(prefix='nxshader-encode-',dir=Path.cwd()) as temporary:
+                source=Path(temporary)/'profile.json';source.write_bytes(data)
+                subprocess.run([str(codec),'pack',str(source),str(Path(args.output).resolve()),str(args.compression_level)],check=True)
+    encoded=Path(args.output).read_bytes()
+    report.update(bytes=len(encoded),json_bytes=len(data),sha256=sha(encoded),format_version=2,
+        encoding='json' if args.plain else 'zstd',compression_level=None if args.plain else args.compression_level,
+        encoding_and_write_ms=1000*(time.perf_counter()-encoding_started),export_seconds=time.perf_counter()-started)
     write_new(str(args.output)+'.report.json',json.dumps(report,indent=2).encode())
     print(json.dumps(report,indent=2))
 

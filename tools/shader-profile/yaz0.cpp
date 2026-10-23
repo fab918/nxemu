@@ -1,6 +1,8 @@
 // Optional acceleration for offline resource discovery. No renderer integration.
 #include <cstddef>
 #include <cstdint>
+#include <algorithm>
+#include <cstring>
 #ifdef _WIN32
 #define EXPORT extern "C" __declspec(dllexport)
 #else
@@ -21,7 +23,10 @@ static int Decode(const uint8_t* src, size_t size, uint8_t* dst, size_t capacity
                 dst[output++] = src[input++];
             } else {
                 if (input + 2 > size) return -5;
-                unsigned first = src[input++], second = src[input++];
+                const unsigned first = src[input];
+                ++input;
+                const unsigned second = src[input];
+                ++input;
                 size_t distance = ((first & 15) << 8) + second + 1;
                 size_t length = first >> 4;
                 if (length == 0) {
@@ -29,9 +34,12 @@ static int Decode(const uint8_t* src, size_t size, uint8_t* dst, size_t capacity
                     length = src[input++] + 18;
                 } else length += 2;
                 if (distance > output || length > expected - output) return -7;
-                for (size_t i = 0; i < length; ++i) {
-                    dst[output] = dst[output - distance];
-                    ++output;
+                // Backreferences may repeat their own output. Each memcpy stays non-overlapping.
+                while (length) {
+                    const size_t count = std::min(length, distance);
+                    std::memcpy(dst + output, dst + output - distance, count);
+                    output += count;
+                    length -= count;
                 }
             }
         }
