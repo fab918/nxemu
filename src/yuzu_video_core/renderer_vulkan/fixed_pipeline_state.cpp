@@ -244,8 +244,71 @@ void FixedPipelineState::RefreshFromRegisters(const Maxwell& regs,
     }
 }
 
-GuestPipelineState GuestPipelineState::Capture(const Maxwell& regs,
-    Maxwell::PrimitiveTopology topology, Tegra::Engines::Maxwell3D::EngineHint hint) {
+void GuestPipelineState::Track(Tegra::Engines::Maxwell3D::DirtyState & dirty)
+{
+    using Regs = Tegra::Engines::Maxwell3D::Regs;
+    auto & mask = dirty.shader_profile_registers;
+#define TRACK(field) std::fill_n(mask.begin() + offsetof(Regs, field) / 4, sizeof(Regs{}.field) / 4, u8{1})
+    TRACK(transform_feedback.controls);
+    TRACK(stream_out_layout);
+    TRACK(transform_feedback_enabled);
+    TRACK(depth_mode);
+    TRACK(polygon_mode_front);
+    TRACK(tessellation.params);
+    TRACK(patch_vertices);
+    TRACK(anti_alias_samples_mode);
+    TRACK(alpha_test_enabled);
+    TRACK(alpha_test_func);
+    TRACK(alpha_test_ref);
+    TRACK(mandated_early_z);
+    TRACK(zeta_enable);
+    TRACK(zeta.format);
+    TRACK(window_origin);
+    TRACK(provoking_vertex);
+    TRACK(conservative_raster_enable);
+    TRACK(line_anti_alias_enable);
+    TRACK(anti_alias_alpha_control);
+    TRACK(point_size);
+    TRACK(vertex_attrib_format);
+    TRACK(vertex_stream_instances);
+    TRACK(blend);
+    TRACK(blend_per_target);
+    TRACK(blend_per_target_enabled);
+    TRACK(color_mask);
+    TRACK(color_mask_common);
+    TRACK(stencil_front_op);
+    TRACK(stencil_back_op);
+    TRACK(stencil_two_side_enable);
+    TRACK(stencil_enable);
+    TRACK(depth_write_enabled);
+    TRACK(depth_bounds_enable);
+    TRACK(depth_test_enable);
+    TRACK(depth_test_func);
+    TRACK(gl_front_face);
+    TRACK(gl_cull_face);
+    TRACK(gl_cull_test_enabled);
+    TRACK(logic_op);
+    TRACK(rasterize_enable);
+    TRACK(primitive_restart.enabled);
+    TRACK(polygon_offset_point_enable);
+    TRACK(polygon_offset_line_enable);
+    TRACK(polygon_offset_fill_enable);
+    TRACK(viewport_clip_control);
+    for (size_t i = 0; i < Regs::NumVertexArrays; ++i)
+    {
+        mask[(offsetof(Regs, vertex_streams) + i * sizeof(Regs::VertexStream)) / 4] = 1;
+        mask[(offsetof(Regs, vertex_streams) + i * sizeof(Regs::VertexStream) + offsetof(Regs::VertexStream, frequency)) / 4] = 1;
+    }
+    for (size_t i = 0; i < 8; ++i)
+        mask[(offsetof(Regs, rt) + i * sizeof(Regs{}.rt[0]) + offsetof(std::remove_reference_t<decltype(Regs{}.rt[0])>, format)) / 4] = 1;
+    for (size_t i = 0; i < 16; ++i)
+        mask[(offsetof(Regs, viewport_transform) + i * sizeof(Regs{}.viewport_transform[0]) + offsetof(std::remove_reference_t<decltype(Regs{}.viewport_transform[0])>, swizzle)) / 4] = 1;
+#undef TRACK
+}
+
+GuestPipelineState GuestPipelineState::Capture(const Maxwell & regs,
+                                               Maxwell::PrimitiveTopology topology, Tegra::Engines::Maxwell3D::EngineHint hint)
+{
     GuestPipelineState result;
     FixedPipelineState::RefreshFlags dirty{true, true, true, true};
     result.complete.RefreshFromRegisters(regs, topology, hint, DynamicFeatures{}, dirty);

@@ -183,6 +183,22 @@ struct VideoInterfaceArea
 typedef void (*HostActionCallback)(uint32_t slot, void * userData);
 typedef void (*RasterizerDirtyCollect)(uint64_t device_address, uint64_t size, void * user_data);
 
+struct ShaderProfileTask
+{
+    bool importing{}, compact{true};
+    uint64_t title_id{};
+    const char *cache{}, *recording{}, *game_root{}, *base{}, *update{}, *profile{}, *index{}, *label{};
+};
+struct ShaderProfileResult
+{
+    uint64_t programs{}, environments{}, graphics{}, compute{}, unresolved{}, missing{}, reused{}, bytes{};
+    double seconds{};
+};
+nxinterface IShaderProfileProgress
+{
+    virtual bool ProfileProgress(const char * phase, uint64_t completed, uint64_t total) = 0;
+};
+
 nxinterface IVideo
 {
     virtual bool Initialize() = 0;
@@ -229,8 +245,11 @@ nxinterface IVideo
     virtual void WaitInterfaceIdle() = 0;
     // Owns resources on every path; release exactly once after completion or cancellation,
     // before ClearCdmaInstance returns. The callback must not throw.
-    virtual void PushCommandBufferWithResources(int32_t bindId, const uint32_t* commandList,
-        uint32_t commandListSize, void* resources, void (*release)(void*)) = 0;
+    virtual void PushCommandBufferWithResources(int32_t bindId, const uint32_t * commandList,
+                                                uint32_t commandListSize, void * resources, void (*release)(void *)) = 0;
+    // Synchronous offline task. The caller keeps this module alive until return.
+    virtual bool ProcessShaderProfile(const ShaderProfileTask & task, IShaderProfileProgress & progress,
+                                      ShaderProfileResult & result, char * error, uint32_t error_size) = 0;
 };
 
 EXPORT IVideo * CALL CreateVideo(IRenderWindow & renderWindow, ISystemModules & modules);

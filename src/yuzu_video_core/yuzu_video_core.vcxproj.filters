@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <ClInclude Include="shader_profile_export.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="shader_profile_export.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="shader_profile_discovery.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="shader_profile_discovery.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="shader_profile_compact.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="shader_profile_compact.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="shader_profile_journal.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="renderer_vulkan\guest_pipeline_recorder.h"><Filter>Header Files\renderer_vulkan</Filter></ClInclude>
     <ClInclude Include="pipeline_cache_store.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="shader_profile.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="shader_profile_codec.h"><Filter>Header Files</Filter></ClInclude>

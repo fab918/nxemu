@@ -1,5 +1,9 @@
 # feature-nxshad — première version native NXShader
 
+Le workflow automatique et l’export C++ compact actuels sont décrits dans
+[NATIVE_WORKFLOW.md](NATIVE_WORKFLOW.md). Les commandes Python ci-dessous restent
+des outils de référence et de diagnostic.
+
 Les mesures par étape et les réductions de temps de reconstruction sont décrites
 dans [P0_TIMING.md](P0_TIMING.md). Elles s'activent explicitement avec
 `NXEMU_NXSHADER_TIMING=1` à l'import et `--timings` à l'export.

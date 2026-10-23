@@ -65,6 +65,14 @@ static void Initialise(Maxwell& regs) {
 }
 
 int main() try {
+    auto tracking = std::make_unique<Tegra::Engines::Maxwell3D::DirtyState>();
+    GuestPipelineState::Track(*tracking);
+    const auto tracked = [&](size_t byte) { return tracking->shader_profile_registers[byte / 4] != 0; };
+    Check(tracked(offsetof(Maxwell, vertex_streams)) && tracked(offsetof(Maxwell, blend)), "Portable state changes are untracked");
+    Check(tracked(offsetof(Maxwell, vertex_streams) + offsetof(Maxwell::VertexStream, frequency)), "Vertex divisor change untracked");
+    Check(!tracked(offsetof(Maxwell, vertex_streams) + offsetof(Maxwell::VertexStream, address_low)), "Vertex address triggers recipe capture");
+    Check(!tracked(offsetof(Maxwell, rt)), "Render target address triggers recipe capture");
+    Check(tracked(offsetof(Maxwell, viewport_transform) + offsetof(std::remove_reference_t<decltype(Maxwell{}.viewport_transform[0])>, swizzle)), "Viewport swizzle untracked");
     size_t checks{};
     for (unsigned bits=0; bits<128; ++bits) {
         auto regs=std::make_unique<Maxwell>();

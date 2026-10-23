@@ -308,6 +308,7 @@ struct GuestPipelineState {
     FixedPipelineState complete{};
     u32 enabled_vertex_streams{};
 
+    static void Track(Tegra::Engines::Maxwell3D::DirtyState& dirty);
     static GuestPipelineState Capture(const Maxwell& regs, Maxwell::PrimitiveTopology topology,
                                       Tegra::Engines::Maxwell3D::EngineHint hint);
     [[nodiscard]] FixedPipelineState Project(const DynamicFeatures& features) const;

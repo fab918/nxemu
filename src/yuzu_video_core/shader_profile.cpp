@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "yuzu_video_core/shader_profile.h"
+#include "yuzu_video_core/shader_profile_compact.h"
 #include "yuzu_video_core/shader_profile_resources.h"
 #include "yuzu_video_core/shader_profile_codec.h"
 #include "yuzu_video_core/shader_profile_metrics.h"
@@ -117,7 +118,7 @@ template<size_t N> void Words(const JsonValue& value,std::array<u32,N>& out) {
 } // namespace
 
 std::vector<Recipe> Read(const std::filesystem::path& path,const std::filesystem::path& root,u64 title_id,
-                         size_t* unresolved_count, Timing::Metrics* timings) {
+                         size_t* unresolved_count, Timing::Metrics* timings,const ResourceProgress& progress) {
     Timing::Timer total(timings,Phase::ReaderTotal);
     const auto packed=Measure(timings,Phase::ProfileIO,[&] {
         return Bytes(path,0,std::filesystem::file_size(path),33*1024*1024);
@@ -125,8 +126,9 @@ std::vector<Recipe> Read(const std::filesystem::path& path,const std::filesystem
     const auto text=Measure(timings,Phase::ProfileDecompression,[&] { return Unpack(packed); });
     if(timings) {
         timings->Add(Counter::ProfileBytes,packed.size());
-        timings->Add(Counter::JsonBytes,text.size());
+        if(!text.starts_with("NXSHBIN3"))timings->Add(Counter::JsonBytes,text.size());
     }
+    if(text.starts_with("NXSHBIN3")) return ReadCompact(text,root,title_id,unresolved_count,timings,progress);
     Timing::Timer json_timer(timings,Phase::JsonParse);
     unsigned depth{}; bool quoted{},escaped{};
     for(const auto c:text) {
@@ -192,7 +194,9 @@ std::vector<Recipe> Read(const std::filesystem::path& path,const std::filesystem
     }
     Timing::Timer resource_timer(timings,Phase::ResourceTotal);
     size_t total_code_bytes{};
+    size_t completed_resources{};
     for(const auto& [identity,requests]:groups) {
+        Check(!progress || progress(completed_resources++,groups.size()),"Shader profile operation cancelled");
         const auto& ref=requests.front().ref; const auto encoding=Text(ref["encoding"]); std::string raw,decoded;
         if(encoding=="raw") raw=Bytes(LocalFile(root,ref["file"]),Number(ref["offset"]),Number(ref["size"]),MaxResource,timings);
         else if(encoding=="bktr-raw" || encoding=="bktr-yaz0") {

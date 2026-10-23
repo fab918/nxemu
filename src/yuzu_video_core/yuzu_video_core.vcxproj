@@ -33,6 +33,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="buffer_cache\buffer_base.h" />
+    <ClInclude Include="shader_profile_export.h" />
+    <ClInclude Include="shader_profile_discovery.h" />
+    <ClInclude Include="shader_profile_compact.h" />
+    <ClInclude Include="shader_profile_journal.h" />
+    <ClInclude Include="renderer_vulkan\guest_pipeline_recorder.h" />
     <ClInclude Include="pipeline_cache_store.h" />
     <ClInclude Include="shader_profile.h" />
     <ClInclude Include="shader_profile_codec.h" />
@@ -365,6 +370,9 @@
     <ClCompile Include="shader_environment.cpp" />
     <ClCompile Include="pipeline_cache_store.cpp" />
     <ClCompile Include="shader_profile.cpp" />
+    <ClCompile Include="shader_profile_export.cpp" />
+    <ClCompile Include="shader_profile_discovery.cpp" />
+    <ClCompile Include="shader_profile_compact.cpp" />
     <ClCompile Include="shader_profile_codec.cpp">
       <AdditionalIncludeDirectories>$(SolutionDir)external\zstd\lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>

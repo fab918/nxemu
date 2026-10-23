@@ -1,6 +1,9 @@
 #include "yuzu_video_core/host1x/ffmpeg/device_cache.h"
 #include "render_window.h"
 #include "video_manager.h"
+#include "yuzu_video_core/shader_profile_export.h"
+#include "yuzu_video_core/shader_profile.h"
+#include "yuzu_video_core/renderer_vulkan/fixed_pipeline_state.h"
 #include "video_settings.h"
 #include "yuzu_video_core/capture.h"
 #include "yuzu_video_core/control/channel_state.h"
@@ -18,6 +21,8 @@
 #include "yuzu_common/scope_exit.h"
 #include "nxemu-video/video_settings.h"
 #include <chrono>
+#include <cstdio>
+#include <stdexcept>
 #include <cstring>
 #include <algorithm>
 #include <future>
@@ -26,7 +31,58 @@
 
 extern IModuleSettings * g_settings;
 
-struct VideoManager::Impl 
+bool VideoManager::ProcessShaderProfile(const ShaderProfileTask & task, IShaderProfileProgress & progress,
+                                        ShaderProfileResult & result, char * error, uint32_t error_size)
+{
+    try
+    {
+        const auto text = [](const char * value) { return value ? std::string(value) : std::string(); };
+        const auto path = [&](const char * value) { return std::filesystem::u8path(text(value)); };
+        if (!task.title_id || !task.profile || !task.game_root) throw std::runtime_error("Missing shader profile task inputs");
+        if (task.importing)
+        {
+            size_t unresolved{};
+            const auto recipes = VideoCommon::ShaderProfile::Read(path(task.profile), path(task.game_root), task.title_id, &unresolved, nullptr,
+                                                                  [&](size_t done, size_t total) { return progress.ProfileProgress("verify", done, total); });
+            for (const auto & recipe : recipes)
+            {
+                if (recipe.compute)
+                    ++result.compute;
+                else
+                {
+                    if (!Vulkan::GuestPipelineState::FromWords(recipe.guest_words)) throw std::runtime_error("Unsupported guest state");
+                    ++result.graphics;
+                }
+            }
+            result.unresolved = unresolved;
+            result.bytes = std::filesystem::file_size(path(task.profile));
+            return true;
+        }
+        VideoCommon::ShaderProfile::ExportOptions options;
+        options.cache = path(task.cache);
+        options.recording = path(task.recording);
+        options.game_root = path(task.game_root);
+        options.output = path(task.profile);
+        options.index = path(task.index);
+        options.title_id = task.title_id;
+        options.base = text(task.base);
+        options.update = text(task.update);
+        options.label = text(task.label);
+        options.compact = task.compact;
+        options.allow_partial = true;
+        options.progress = [&](const char * phase, u64 done, u64 total) { return progress.ProfileProgress(phase, done, total); };
+        const auto r = VideoCommon::ShaderProfile::Export(options);
+        result = {r.programs, r.environments, r.graphics, r.compute, r.unresolved, r.missing, r.reused, r.bytes, r.seconds};
+        return true;
+    }
+    catch (const std::exception & exception)
+    {
+        if (error && error_size) std::snprintf(error, error_size, "%s", exception.what());
+        return false;
+    }
+}
+
+struct VideoManager::Impl
 {
     Impl(IRenderWindow & window, ISystemModules & modules) :
         m_window(window),

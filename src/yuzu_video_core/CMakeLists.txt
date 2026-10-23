@@ -18,9 +18,17 @@ add_library(video_core STATIC
     shader_profile_metrics.h
     shader_profile_resources.h
     shader_profile_search.h
+    shader_profile_journal.h
+    shader_profile_export.cpp
+    shader_profile_export.h
+    shader_profile_discovery.cpp
+    shader_profile_discovery.h
+    shader_profile_compact.cpp
+    shader_profile_compact.h
     shader_profile_codec.cpp
     shader_profile_codec.h
     renderer_vulkan/guest_pipeline_recipe_probe.h
+    renderer_vulkan/guest_pipeline_recorder.h
     buffer_cache/buffer_base.h
     buffer_cache/buffer_cache_base.h
     buffer_cache/buffer_cache.cpp

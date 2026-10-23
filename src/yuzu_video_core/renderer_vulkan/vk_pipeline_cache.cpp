@@ -35,6 +35,7 @@
 #include "yuzu_video_core/renderer_vulkan/vk_descriptor_pool.h"
 #include "yuzu_video_core/renderer_vulkan/vk_pipeline_cache.h"
 #include "yuzu_video_core/renderer_vulkan/guest_pipeline_recipe_probe.h"
+#include "yuzu_video_core/renderer_vulkan/guest_pipeline_recorder.h"
 #include "yuzu_video_core/renderer_vulkan/vk_scheduler.h"
 #include "yuzu_video_core/renderer_vulkan/vk_shader_util.h"
 #include "yuzu_video_core/renderer_vulkan/vk_update_descriptor.h"
@@ -43,6 +44,8 @@
 #include "yuzu_video_core/pipeline_cache_store.h"
 #include "yuzu_video_core/shader_profile.h"
 #include "yuzu_video_core/shader_profile_metrics.h"
+#include "yuzu_video_core/shader_profile_export.h"
+#include "yuzu_video_core/shader_profile_hash.h"
 #include "yuzu_video_core/shader_notify.h"
 #include "yuzu_video_core/surface.h"
 #include "yuzu_video_core/vulkan_common/vulkan_device.h"
@@ -681,6 +684,10 @@ GraphicsPipeline* PipelineCache::CurrentGraphicsPipeline() {
                                     maxwell3d->engine_state, graphics_key, dynamic_features);
     }
 
+    if (guest_recipe_recorder) {
+        guest_recipe_recorder->Observe(*maxwell3d, graphics_key, dynamic_features);
+    }
+
     if (current_pipeline) {
         GraphicsPipeline* const next{current_pipeline->Next(graphics_key)};
         if (next) {
@@ -731,6 +738,11 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         return;
     }
     pipeline_cache_filename = base_dir / "vulkan.nxc";
+    try {
+        guest_recipe_recorder = std::make_unique<GuestPipelineRecorder>(base_dir / "guest-recipes.nxr", serialization_thread);
+    } catch (const std::exception& e) {
+        LOG_ERROR(Render_Vulkan, "Cannot initialize automatic guest recipes: {}", e.what());
+    }
 
     if (use_vulkan_pipeline_cache) {
         vulkan_pipeline_cache_filename = base_dir / "vulkan_pipelines.bin";
@@ -875,15 +887,37 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         queue_graphics(key, std::move(envs));
         return true;
     }};
-    // Import is explicit and outside the draw path. A profile never provides host pipeline keys.
-    if (const char* path = std::getenv("NXEMU_IMPORT_NXSHADER"); path && *path) {
+    // Profiles are verified/projected only during startup. Explicit CLI input wins.
+    std::string import_path,import_root,import_stamp;
+    if(const char* option=std::getenv("NXEMU_IMPORT_NXSHADER");option && *option)import_path=option;
+    if(const char* option=std::getenv("NXEMU_SHADER_GAME_ROOT");option && *option)import_root=option;
+    if(import_path.empty() && std::filesystem::exists(base_dir/"community.json"))try {
+        const auto read_small=[](const std::filesystem::path& file,size_t limit){
+            if(std::filesystem::file_size(file)>limit)throw std::runtime_error("Profile metadata size limit");
+            std::ifstream input(file,std::ios::binary);if(!input)throw std::runtime_error("Cannot read profile metadata");
+            return std::string((std::istreambuf_iterator<char>(input)),{});
+        };
+        const auto selection=VideoCommon::ShaderProfile::ParseMetadata(read_small(base_dir/"community.json",16384));
+        const auto file=selection["file"].asString();
+        if(file.empty() || file.find_first_of("/\\:\0",0,4)!=std::string::npos)throw std::runtime_error("Invalid community profile name");
+        import_path=Common::FS::PathToUTF8String(base_dir/std::filesystem::u8path(file));import_root=selection["root"].asString();
+        u32 flags{};unsigned bit{};
+        for(bool feature:{dynamic_features.has_extended_dynamic_state,dynamic_features.has_extended_dynamic_state_2,
+            dynamic_features.has_extended_dynamic_state_2_extra,dynamic_features.has_extended_dynamic_state_3_blend,
+            dynamic_features.has_extended_dynamic_state_3_enables,dynamic_features.has_dynamic_vertex_input,
+            dynamic_features.has_vertex_stride_workaround})flags|=u32(feature)<<bit++;
+        import_stamp=VideoCommon::ShaderProfile::ResourceSha256(read_small(std::filesystem::u8path(import_path),33*1024*1024))+":"+std::to_string(flags)+":"+std::to_string(CACHE_VERSION);
+        if(std::filesystem::exists(pipeline_cache_filename) && std::filesystem::file_size(pipeline_cache_filename)>16 &&
+           std::filesystem::exists(base_dir/"community.imported") && read_small(base_dir/"community.imported",256)==import_stamp)import_path.clear();
+    } catch(const std::exception& error){LOG_WARNING(Render_Vulkan,"Community profile selection rejected: {}",error.what());import_path.clear();}
+    if (!import_path.empty()) {
         try {
-            const char* root = std::getenv("NXEMU_SHADER_GAME_ROOT");
-            if (!root || !*root) throw std::runtime_error("NXEMU_SHADER_GAME_ROOT is required");
+            const char* path=import_path.c_str();const char* root=import_root.c_str();
+            if (!*root) throw std::runtime_error("Local game resource directory is required");
             size_t unresolved_count{};
             const auto recipes = VideoCommon::ShaderProfile::Read(
                 std::filesystem::u8path(path), std::filesystem::u8path(root), title_id, &unresolved_count,
-                state.timings.get());
+                state.timings.get(),[&](size_t,size_t){return !stop_loading.stop_requested();});
             // Validate every guest projection before queueing work or appending local records.
             for (const auto& recipe : recipes) {
                 Timing::Timer projection_timer(state.timings.get(), Timing::Phase::GuestProjection);
@@ -931,6 +965,10 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                 });
                 ++imported;
             }
+            if(!import_stamp.empty() && imported==recipes.size() && !stop_loading.stop_requested()) {
+                std::ofstream marker(base_dir/"community.imported",std::ios::binary|std::ios::trunc);marker<<import_stamp;
+                if(!marker)LOG_WARNING(Render_Vulkan,"Cannot save community import completion marker");
+            }
             LOG_INFO(Render_Vulkan, "NXShader imported {} recipes from local game resources", imported);
             if (unresolved_count) LOG_WARNING(Render_Vulkan,
                 "NXShader retains {} observations without serialized environments; these cannot be prewarmed", unresolved_count);
@@ -947,6 +985,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                                    load_compute, load_graphics);
     } catch (const std::exception& error) {
         LOG_ERROR(Render_Vulkan, "Local shader cache rejected: {}", error.what());
+        std::error_code marker_error;std::filesystem::remove(base_dir/"community.imported",marker_error);
     }
     existing_cache_timer.Stop();
 

@@ -40,15 +40,35 @@ add_library(profile-storage STATIC
     "${NXEMU_ROOT}/src/yuzu_video_core/pipeline_cache_store.cpp"
     "${NXEMU_ROOT}/src/yuzu_video_core/shader_profile.cpp"
     "${NXEMU_ROOT}/src/yuzu_video_core/shader_profile_codec.cpp"
+    "${NXEMU_ROOT}/src/yuzu_video_core/shader_profile_export.cpp"
+    "${NXEMU_ROOT}/src/yuzu_video_core/shader_profile_discovery.cpp"
+    "${NXEMU_ROOT}/src/yuzu_video_core/shader_profile_compact.cpp"
     "${NXEMU_ROOT}/src/common/sha256.cpp"
     "${NXEMU_ROOT}/src/common/dynamic_library.cpp"
     "${NXEMU_ROOT}/src/common/json.cpp"
     "${NXEMU_ROOT}/src/common/std_string.cpp"
     "${NXEMU_ROOT}/src/common/platform.cpp")
-target_include_directories(profile-storage PUBLIC "${NXEMU_ROOT}/src")
+target_include_directories(profile-storage PUBLIC "${NXEMU_ROOT}/src"
+    "${NXEMU_ROOT}/src/nxemu-video" "${NXEMU_ROOT}/external/boost"
+    "${NXEMU_ROOT}/external/fmt/include")
+target_compile_definitions(profile-storage PRIVATE FMT_HEADER_ONLY)
+if(MSVC)
+    target_compile_options(profile-storage PRIVATE /utf-8 /EHsc)
+endif()
 target_compile_features(profile-storage PUBLIC cxx_std_20)
 target_compile_definitions(profile-storage PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
 target_link_libraries(profile-storage PRIVATE libzstd_static ${CMAKE_DL_LIBS})
+add_executable(nxshader-export profile_export.cpp
+    "${NXEMU_ROOT}/src/yuzu_video_core/renderer_vulkan/fixed_pipeline_state.cpp"
+    "${NXEMU_ROOT}/src/yuzu_video_core/surface.cpp"
+    "${NXEMU_ROOT}/src/yuzu_common/cityhash.cpp")
+target_link_libraries(nxshader-export PRIVATE profile-storage)
+target_include_directories(nxshader-export PRIVATE "${NXEMU_ROOT}/src/nxemu-video"
+    "${NXEMU_ROOT}/external/boost" "${NXEMU_ROOT}/external/fmt/include")
+target_compile_definitions(nxshader-export PRIVATE FMT_HEADER_ONLY)
+if(MSVC)
+    target_compile_options(nxshader-export PRIVATE /utf-8 /EHsc)
+endif()
 add_executable(profile-hash profile_hash.cpp)
 target_link_libraries(profile-hash PRIVATE profile-storage)
 add_test(NAME profile-hash COMMAND profile-hash)
@@ -60,6 +80,9 @@ add_test(NAME profile-codec COMMAND profile-codec-regression)
 add_executable(cache-store cache_store.cpp)
 target_link_libraries(cache-store PRIVATE profile-storage)
 add_test(NAME cache-store COMMAND cache-store "${CMAKE_CURRENT_BINARY_DIR}/regression.nxc")
+add_executable(recipe-journal recipe_journal.cpp)
+target_link_libraries(recipe-journal PRIVATE profile-storage)
+add_test(NAME recipe-journal COMMAND recipe-journal "${CMAKE_CURRENT_BINARY_DIR}/regression.nxr")
 add_executable(nxshader-reader profile_reader.cpp
     "${NXEMU_ROOT}/src/yuzu_video_core/renderer_vulkan/fixed_pipeline_state.cpp"
     "${NXEMU_ROOT}/src/yuzu_video_core/surface.cpp"

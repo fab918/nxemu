@@ -1,5 +1,13 @@
 # Mission : première course Mario Kart, Mac vers Windows
 
+**Mise à jour du workflow, 23 octobre 2026 :** utiliser désormais
+[NATIVE_WORKFLOW.md](NATIVE_WORKFLOW.md). L'enregistrement est automatique pendant
+le jeu et l'export compact se fait par clic droit → Shader profile → Export shader
+profile. Ne pas utiliser les commandes Python d'export ci-dessous pour valider ce
+nouveau parcours. Reconstruire ensemble l'application et les modules vidéo
+(interface 0x0127). Les sections suivantes documentent l'ancien protocole de
+référence et restent utiles pour la comparaison des scénarios et des logs.
+
 Tu travailles sur le Mac. Construis et teste la branche `feature-nxshad` du dépôt
 `https://github.com/fab918/nxemu.git`. L'utilisateur pilotera la première course :
 prépare le lancement, puis laisse-lui les commandes. Ne simule pas la conduite.
