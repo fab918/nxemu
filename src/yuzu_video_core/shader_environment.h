@@ -72,7 +72,7 @@ public:
 
     void Dump(u64 pipeline_hash, u64 shader_hash) override;
 
-    void Serialize(std::ofstream& file) const;
+    void Serialize(std::ostream& file) const;
 
     bool HasHLEMacroState() const override {
         return has_hle_engine_state;
@@ -241,7 +241,7 @@ public:
     FileEnvironment& operator=(const FileEnvironment&) = delete;
     FileEnvironment(const FileEnvironment&) = delete;
 
-    void Deserialize(std::ifstream& file);
+    void Deserialize(std::istream& file);
 
     [[nodiscard]] u64 ReadInstruction(u32 address) override;
 
@@ -312,7 +312,7 @@ void SerializePipeline(const Key& key, const Envs& envs, const std::filesystem::
 /// needed, such as a duplicate of an earlier one, and the file is rewritten without them.
 void LoadPipelines(
     std::stop_token stop_loading, const std::filesystem::path& filename, u32 expected_cache_version,
-    Common::UniqueFunction<bool, std::ifstream&, FileEnvironment> load_compute,
-    Common::UniqueFunction<bool, std::ifstream&, std::vector<FileEnvironment>> load_graphics);
+    Common::UniqueFunction<bool, std::istream&, FileEnvironment> load_compute,
+    Common::UniqueFunction<bool, std::istream&, std::vector<FileEnvironment>> load_graphics);
 
 } // namespace VideoCommon

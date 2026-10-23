@@ -8,6 +8,8 @@
 #include <fstream>
 #include <memory>
 #include <optional>
+#include <sstream>
+#include "yuzu_video_core/pipeline_cache_store.h"
 #include <utility>
 
 #include "yuzu_common/yuzu_assert.h"
@@ -263,7 +265,7 @@ void GenericEnvironment::Dump(u64 pipeline_hash, u64 shader_hash) {
     DumpImpl(pipeline_hash, shader_hash, Code(), read_highest, read_lowest, initial_offset, stage);
 }
 
-void GenericEnvironment::Serialize(std::ofstream& file) const {
+void GenericEnvironment::Serialize(std::ostream& file) const {
     const u64 code_size{static_cast<u64>(CachedSizeBytes())};
     const u64 num_texture_types{static_cast<u64>(texture_types.size())};
     const u64 num_texture_pixel_formats{static_cast<u64>(texture_pixel_formats.size())};
@@ -781,7 +783,7 @@ u32 ComputeEnvironment::ReadViewportTransformState() {
     return viewport_transform_state;
 }
 
-void FileEnvironment::Deserialize(std::ifstream& file) {
+void FileEnvironment::Deserialize(std::istream& file) {
     u64 code_size{};
     u64 num_texture_types{};
     u64 num_texture_pixel_formats{};
@@ -952,6 +954,20 @@ std::optional<Shader::ReplaceConstant> FileEnvironment::GetReplaceConstBuffer(u3
 
 void SerializePipeline(std::span<const char> key, std::span<const GenericEnvironment* const> envs,
                        const std::filesystem::path& filename, u32 cache_version) try {
+    if (filename.extension() == ".nxc") {
+        if (!std::ranges::all_of(envs, &GenericEnvironment::CanBeSerialized)) return;
+        CacheStore::Record record;
+        record.key.assign(key.data(), key.size());
+        for (const auto* env : envs) {
+            std::ostringstream bytes(std::ios::binary);
+            env->Serialize(bytes); record.environments.push_back(bytes.str());
+        }
+        try { CacheStore::Append(filename, cache_version, record); }
+        catch (const std::exception& error) {
+            LOG_ERROR(Common_Filesystem, "Cannot append local shader cache: {}", error.what());
+        }
+        return;
+    }
     std::ofstream file(filename, std::ios::binary | std::ios::ate | std::ios::app);
     file.exceptions(std::ifstream::failbit);
     if (!file.is_open()) {
@@ -1010,8 +1026,25 @@ void CompactPipelineCache(std::ifstream& file, const std::filesystem::path& file
 
 void LoadPipelines(
     std::stop_token stop_loading, const std::filesystem::path& filename, u32 expected_cache_version,
-    Common::UniqueFunction<bool, std::ifstream&, FileEnvironment> load_compute,
-    Common::UniqueFunction<bool, std::ifstream&, std::vector<FileEnvironment>> load_graphics) try {
+    Common::UniqueFunction<bool, std::istream&, FileEnvironment> load_compute,
+    Common::UniqueFunction<bool, std::istream&, std::vector<FileEnvironment>> load_graphics) try {
+    if (filename.extension() == ".nxc") {
+        for (const auto& record : CacheStore::Read(filename, expected_cache_version)) {
+            if (stop_loading.stop_requested()) return;
+            std::vector<FileEnvironment> envs;
+            for (const auto& bytes : record.environments) {
+                std::istringstream stream(bytes, std::ios::binary);
+                FileEnvironment env; env.Deserialize(stream); envs.push_back(std::move(env));
+            }
+            std::istringstream key(record.key, std::ios::binary);
+            key.exceptions(std::ios::failbit | std::ios::badbit);
+            if (envs.front().ShaderStage() == Shader::Stage::Compute) {
+                if (envs.size() != 1) throw std::ios_base::failure("Invalid compute stage count");
+                load_compute(key, std::move(envs.front()));
+            } else load_graphics(key, std::move(envs));
+        }
+        return;
+    }
     std::ifstream file(filename, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
         return;

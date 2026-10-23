@@ -181,6 +181,7 @@
     <ClInclude Include="service\nvnflinger\pixel_format.h" />
     <ClInclude Include="shader_cache.h" />
     <ClInclude Include="shader_environment.h" />
+    <ClInclude Include="pipeline_cache_store.h" />
     <ClInclude Include="shader_notify.h" />
     <ClInclude Include="smaa_area_tex.h" />
     <ClInclude Include="smaa_search_tex.h" />
@@ -359,6 +360,7 @@
     <ClCompile Include="renderer_vulkan\vk_update_descriptor.cpp" />
     <ClCompile Include="shader_cache.cpp" />
     <ClCompile Include="shader_environment.cpp" />
+    <ClCompile Include="pipeline_cache_store.cpp" />
     <ClCompile Include="shader_notify.cpp" />
     <ClCompile Include="surface.cpp" />
     <ClCompile Include="textures\astc.cpp" />

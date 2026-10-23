@@ -746,7 +746,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     // queried them. Normalize and deduplicate them without discarding the existing shader cache.
     std::unordered_set<ComputePipelineCacheKey> loaded_compute_keys;
     std::unordered_set<GraphicsPipelineCacheKey> loaded_graphics_keys;
-    const auto load_compute{[&](std::ifstream& file, FileEnvironment env) {
+    const auto load_compute{[&](std::istream& file, FileEnvironment env) {
         ComputePipelineCacheKey key;
         file.read(reinterpret_cast<char*>(&key), sizeof(key));
 
@@ -802,7 +802,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     };
     std::vector<DeferredPipeline> hle_unreplaced;
     std::unordered_set<GraphicsPipelineCacheKey> plain_keys;
-    const auto load_graphics{[&](std::ifstream& file, std::vector<FileEnvironment> envs) {
+    const auto load_graphics{[&](std::istream& file, std::vector<FileEnvironment> envs) {
         GraphicsPipelineCacheKey key;
         file.read(reinterpret_cast<char*>(&key), sizeof(key));
 
