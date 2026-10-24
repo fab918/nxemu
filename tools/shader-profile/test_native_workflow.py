@@ -397,3 +397,11 @@ class NativeWorkflowTests(unittest.TestCase):
             str(self.root/'unknown-source.nxc'),'67','--context='+'b'*64,'--cross-version'],capture_output=True)
         self.assertNotEqual(result.returncode,0)
         self.assertFalse((self.root/'unknown-source.nxc').exists())
+
+    def test_reader_progress_completes_after_resource_verification(self):
+        profile=self.mixed_profile()
+        (self.root/'update.dat').write_bytes(b'ABCDEFGH')
+        _,packed=self.pack(profile,'progress')
+        report=json.loads(self.read(packed,'progress-result').stdout)
+        self.assertGreater(report['progress_total'],0)
+        self.assertEqual(report['progress_done'],report['progress_total'])

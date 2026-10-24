@@ -99,6 +99,7 @@ private:
         StartMenuGame,
         ExportMenuGameShaders,
         ImportMenuGameShaders,
+        OpenShaderProfileDirectory,
         OpenMenuGameDirectory,
         CopyMenuGamePath,
         ConfigureMenuGame,

@@ -153,3 +153,47 @@ le nouvel aller-retour Mac → Windows et les FPS/stutters comparatifs restent �
 ## Validation synthétique du 24 octobre 2026
 
 Voir [les tests, mesures et limites](SYNTHETIC_2026_10_24.md). Zstd reste au niveau 3.
+
+
+## Dépôt automatique et écran de chargement
+
+Le dossier durable `nxshader/`, dans le répertoire de données de NXEmu (à côté
+de `shader/`), conserve les profils partagés. Il ne fait pas partie du cache
+jetable. Le menu du jeu **Shader profile → Open NXShader folder** l’ouvre et le
+crée si nécessaire. L’import par sélection de fichier y range également le
+profil après validation, avec remplacement atomique du profil précédent.
+
+Décompresser le ZIP éventuel et déposer le fichier nommé par titre, par exemple
+`nxshader/0100000000010000.nxshader` pour Super Mario Odyssey. Le ZIP lui-même
+n’est pas chargé. Au démarrage, la priorité est : option CLI explicite, fichier
+dans `nxshader/`, fichier nommé par titre dans le cache du jeu ou le dossier
+`shader/`, sélection GUI existante, puis fichier à côté du jeu.
+
+Sur l’écran habituel avec la jaquette, une intégration nécessaire affiche :
+**Lecture et vérification NXShader**, **Importation NXShader**, puis
+**Compilation NXShader**. Chaque phase possède son compteur réel et sa barre ;
+les premières lectures de métadonnées sans total connu restent indéterminées.
+La compilation inclut le préchauffage du cache local de ce lancement. Le
+démarrage du jeu suit normalement. Sans nouvelle intégration, l’écran revient à
+la préparation habituelle des shaders.
+
+Les compteurs sont actualisés au maximum toutes les 50 ms, avec émission
+immédiate des changements de phase et des fins de phase. Un reçu vérifié évite
+de reconstruire un profil déjà intégré ; un fichier modifié ou un cache incomplet
+invalide ce reçu. Un échec d’import ne bloque pas le démarrage normal et reste
+consigné dans le journal.
+
+Validation du 24 octobre : application et modules macOS compilés ; 13 tests
+natifs, 78 tests Python et les tests ciblés ASan/UBSan réussis. Les tests couvrent
+la priorité des dossiers, les titres absents, les répertoires pris à tort pour des
+fichiers, la conservation du profil après suppression du cache, et la progression
+terminale du lecteur. Les quatre nouveaux libellés sont traduits dans les dix
+catalogues. Le contrôle global des traductions conserve des erreurs préexistantes
+sans rapport avec ces libellés ; aucune erreur supplémentaire n’a été ajoutée.
+
+Le profil Windows fourni a passé `Inspect` sans lecture du jeu :
+libellé **SUPER MARIO ODYSSEY 1.3.0**, titre `0100000000010000`,
+2 705 recettes graphiques, 26 compute, 284 observations non résolues,
+216 809 octets. Le libellé est une métadonnée descriptive, pas une preuve de
+version CNMT. L’import réel et le rendu de cet écran pendant le lancement de
+Mario restent à valider avec son conteneur local ; aucun essai en jeu n’est revendiqué.

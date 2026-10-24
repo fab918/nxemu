@@ -31,6 +31,9 @@ enum class LoadCallbackStage {
     Prepare,
     Build,
     Complete,
+    ReadProfile,
+    ImportProfile,
+    BuildProfile,
 };
 using DiskResourceLoadCallback = std::function<void(LoadCallbackStage, std::size_t, std::size_t)>;
 

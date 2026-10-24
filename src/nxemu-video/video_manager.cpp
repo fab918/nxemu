@@ -180,6 +180,15 @@ struct VideoManager::Impl
                 case VideoCore::LoadCallbackStage::Complete:
                     stage_int = 2;
                     break;
+                case VideoCore::LoadCallbackStage::ReadProfile:
+                    stage_int = 3;
+                    break;
+                case VideoCore::LoadCallbackStage::ImportProfile:
+                    stage_int = 4;
+                    break;
+                case VideoCore::LoadCallbackStage::BuildProfile:
+                    stage_int = 5;
+                    break;
                 }
                 g_settings->SetInt(NXCoreSetting::DiskCacheLoadStage, stage_int);
                 g_settings->SetInt(NXCoreSetting::DiskCacheLoadCurrent, static_cast<int32_t>(value));

@@ -787,6 +787,8 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         std::mutex mutex;
         size_t total{};
         size_t built{};
+        VideoCore::LoadCallbackStage build_stage{VideoCore::LoadCallbackStage::Build};
+        std::chrono::steady_clock::time_point last_build_progress{};
         bool has_loaded{};
         size_t failures{};
         size_t deferred{};
@@ -798,10 +800,6 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     if (timing_option && *timing_option && std::string_view(timing_option) != "0")
         state.timings = std::make_unique<Timing::Metrics>();
     Timing::Timer startup_timer(state.timings.get(), Timing::Phase::StartupWall);
-    // Cache parsing/allocation can throw after work capturing this stack state is queued.
-    // Drain active work before state and the progress callback can leave scope.
-    SCOPE_EXIT { workers.WaitForRequests(); };
-
     if (device.IsKhrPipelineExecutablePropertiesEnabled()) {
         state.statistics = std::make_unique<PipelineStatistics>(device);
     }
@@ -821,6 +819,15 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             throw std::runtime_error("Startup shader input memory budget exceeded");
         buffered_input_bytes += bytes;
     };
+    const auto report_build=[&] {
+        if(!state.has_loaded)return;
+        const auto now=std::chrono::steady_clock::now();
+        if(state.built!=state.total && now-state.last_build_progress<std::chrono::milliseconds(50))return;
+        state.last_build_progress=now;
+        callback(state.build_stage,state.built,state.total);
+    };
+    // Drain workers before their captured progress helper and input budget leave scope.
+    SCOPE_EXIT { workers.WaitForRequests(); };
     const auto load_compute{[&](std::istream& file, FileEnvironment env, bool candidate=false, std::string record_id={}) {
         ComputePipelineCacheKey key{};
         file.read(reinterpret_cast<char*>(&key), sizeof(key));
@@ -846,7 +853,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     const auto queue_compute = [&](const ComputePipelineCacheKey& key, FileEnvironment env, bool candidate=false, std::string record_id={}) {
         const auto id=warmup_id('C',key,env.CompilationIdentity());
         if (defer_warmup(id)) return;
-        workers.QueueWork([this, key, id, candidate, record_id=std::move(record_id), env_ = std::move(env), &state, &callback, &buffered_input_bytes]() mutable {
+        workers.QueueWork([this, key, id, candidate, record_id=std::move(record_id), env_ = std::move(env), &state, &report_build, &buffered_input_bytes]() mutable {
             Timing::Context timing_context(state.timings.get());
             ShaderPools pools;
             if(candidate)env_.BeginReuseProof(false);
@@ -861,7 +868,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                     const auto proof_bytes=env_.ReuseProofBytes();
                     if(proof_bytes>256*1024*1024ULL-buffered_input_bytes) {
                         ++state.deferred;++state.built;
-                        if(state.has_loaded)callback(VideoCore::LoadCallbackStage::Build,state.built,state.total);
+                        report_build();
                         return;
                     }
                     buffered_input_bytes+=proof_bytes;
@@ -872,7 +879,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                 } else compute_cache.emplace(key, std::move(pipeline));
             } else ++state.failures;
             ++state.built;
-            if (state.has_loaded) callback(VideoCore::LoadCallbackStage::Build, state.built, state.total);
+            report_build();
         });
         ++state.total;
     };
@@ -882,7 +889,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         for (const auto& env : envs) inputs += env.CompilationIdentity();
         const auto id=warmup_id('G',key,inputs);
         if (defer_warmup(id)) return;
-        workers.QueueWork([this, key, id, candidate, record_id=std::move(record_id), envs_ = std::move(envs), &state, &callback, &buffered_input_bytes]() mutable {
+        workers.QueueWork([this, key, id, candidate, record_id=std::move(record_id), envs_ = std::move(envs), &state, &report_build, &buffered_input_bytes]() mutable {
             Timing::Context timing_context(state.timings.get());
             ShaderPools pools;
             if(candidate)for(auto& env:envs_)env.BeginReuseProof(key.state.app_stage==Tegra::Engines::Maxwell3D::EngineHint::OnHLEMacro);
@@ -900,7 +907,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                     size_t proof_bytes{};for(auto& env:envs_){env.SealReuseProof(program_equivalence.CanRebase(env.ProgramStorage(),env.ShaderStage(),env.StartAddress(),env.StartAddress()));proof_bytes+=env.ReuseProofBytes();}
                     if(proof_bytes>256*1024*1024ULL-buffered_input_bytes) {
                         ++state.deferred;++state.built;
-                        if(state.has_loaded)callback(VideoCore::LoadCallbackStage::Build,state.built,state.total);
+                        report_build();
                         return;
                     }
                     buffered_input_bytes+=proof_bytes;
@@ -910,9 +917,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                 } else graphics_cache.emplace(key, std::move(pipeline));
             } else { ++state.failures; }
             ++state.built;
-            if (state.has_loaded) {
-                callback(VideoCore::LoadCallbackStage::Build, state.built, state.total);
-            }
+            report_build();
         });
         ++state.total;
     }};
@@ -995,6 +1000,11 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         std::filesystem::rename(temporary,target);
 #endif
     };
+    const auto profile_directory=VideoCommon::ShaderProfile::ProfileDirectory(
+        Common::FS::GetYuzuPath(Common::FS::YuzuPath::YuzuDir));
+    // A failure to create the drop folder must not prevent normal startup.
+    if(!Common::FS::CreateDir(profile_directory))
+        LOG_WARNING(Render_Vulkan,"Cannot create NXShader profile directory");
     // Profiles are verified/projected only during startup. Explicit CLI input wins.
     std::string import_path,import_root,import_stamp,integration_stamp,selection_request,recipe_scope;
     JsonValue integrated;
@@ -1004,22 +1014,30 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     if(const char* option=std::getenv("NXEMU_SHADER_GAME_ROOT");option && *option)import_root=option;
     try {
 
-        if(import_path.empty()) {
-        if(std::filesystem::exists(base_dir/"community.json")) {
-        const auto selection=VideoCommon::ShaderProfile::ParseMetadata(read_small(base_dir/"community.json",16384));
-        const auto file=selection["file"].asString();
-        if(file.empty() || file.find_first_of("/\\:\0",0,4)!=std::string::npos)throw std::runtime_error("Invalid community profile name");
-        import_path=Common::FS::PathToUTF8String(base_dir/std::filesystem::u8path(file));import_root=selection["root"].asString();
-        selection_request=file;
-        } else if(!game_path.empty() && !content_identity.empty()) {
-            const auto profile=VideoCommon::ShaderProfile::FindGameProfile(std::filesystem::u8path(game_path),title_id);
-            if(!profile.empty()) {
-                import_path=Common::FS::PathToUTF8String(profile);
-                import_root=Common::FS::PathToUTF8String(std::filesystem::u8path(game_path).parent_path());
-                LOG_INFO(Render_Vulkan,"Detected shader profile: {}",import_path);
+        if(import_path.empty() && !game_path.empty() && !capture_context.empty()) {
+            // A dropped title-named profile takes precedence over an older GUI selection.
+            const auto dropped=VideoCommon::ShaderProfile::FindStartupProfile(base_dir,{},title_id,profile_directory);
+            if(!dropped.empty()) {
+                import_path=Common::FS::PathToUTF8String(dropped);
+                selection_request=dropped.filename().string();
             }
         }
+        if(import_path.empty() && std::filesystem::exists(base_dir/"community.json")) {
+            const auto selection=VideoCommon::ShaderProfile::ParseMetadata(read_small(base_dir/"community.json",16384));
+            const auto file=selection["file"].asString();
+            if(file.empty() || file.find_first_of("/\\:\0",0,4)!=std::string::npos)
+                throw std::runtime_error("Invalid community profile name");
+            import_path=Common::FS::PathToUTF8String((selection["location"].asString()=="nxshader"?profile_directory:base_dir)/std::filesystem::u8path(file));
+            import_root=selection["root"].asString();
+            selection_request=file;
         }
+        if(import_path.empty() && !game_path.empty() && !capture_context.empty()) {
+            const auto profile=VideoCommon::ShaderProfile::FindGameProfile(std::filesystem::u8path(game_path),title_id);
+            if(!profile.empty())import_path=Common::FS::PathToUTF8String(profile);
+        }
+        // Always resolve automatic profiles against the currently launched local game.
+        if(import_root.empty() && !game_path.empty())
+            import_root=Common::FS::PathToUTF8String(std::filesystem::u8path(game_path).parent_path());
         if(!import_path.empty()) {
         u32 flags{};unsigned bit{};
         for(bool feature:{dynamic_features.has_extended_dynamic_state,dynamic_features.has_extended_dynamic_state_2,
@@ -1087,8 +1105,23 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     size_t import_unresolved{},imported_records{};
     VideoCommon::ShaderProfile::ImportReport import_report;
     std::set<std::string> imported_record_ids,newly_loaded_ids;
+    auto profile_progress_stage=VideoCore::LoadCallbackStage::Prepare;
+    size_t last_profile_done=SIZE_MAX,last_profile_total=SIZE_MAX;
+    auto last_profile_progress=std::chrono::steady_clock::time_point{};
+    const auto profile_progress=[&](VideoCore::LoadCallbackStage stage,size_t done,size_t total) {
+        if(stop_loading.stop_requested())return false;
+        const auto now=std::chrono::steady_clock::now();
+        const bool changed=stage!=profile_progress_stage;
+        const bool endpoint=(done==0 || done==total) && (done!=last_profile_done || total!=last_profile_total);
+        if(changed || endpoint || now-last_profile_progress>=std::chrono::milliseconds(50)) {
+            profile_progress_stage=stage;last_profile_done=done;last_profile_total=total;last_profile_progress=now;
+            callback(stage,done,total);
+        }
+        return true;
+    };
     if (!import_path.empty()) {
         try {
+            profile_progress(VideoCore::LoadCallbackStage::ReadProfile,0,0);
             const char* path=import_path.c_str();const char* root=import_root.c_str();
             if (!*root) throw std::runtime_error("Local game resource directory is required");
             size_t unresolved_count{};
@@ -1102,7 +1135,9 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             }
             const auto recipes = VideoCommon::ShaderProfile::Read(
                 std::filesystem::u8path(path), std::filesystem::u8path(root), title_id, &unresolved_count,
-                state.timings.get(),[&](size_t,size_t){return !stop_loading.stop_requested();}, &import_report, capture_context, &existing_recipes, &available_programs, true);
+                state.timings.get(),[&](size_t done,size_t total){return profile_progress(VideoCore::LoadCallbackStage::ReadProfile,done,total);}, &import_report, capture_context, &existing_recipes, &available_programs, true);
+            state.build_stage=VideoCore::LoadCallbackStage::BuildProfile;
+            profile_progress(VideoCore::LoadCallbackStage::ImportProfile,0,recipes.size());
             // Validate every guest projection before queueing work or appending local records.
             for (const auto& recipe : recipes) {
                 Timing::Timer projection_timer(state.timings.get(), Timing::Phase::GuestProjection);
@@ -1176,6 +1211,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                 if(recipe.compute)load_compute(stream,std::move(envs.front()),recipe.requires_validation,id);
                 else load_graphics(stream,std::move(envs),recipe.requires_validation,id);
                 ++imported;
+                profile_progress(VideoCore::LoadCallbackStage::ImportProfile,imported,recipes.size());
                 if(imported%128==0)publish_integration(false);
             }
             if (imported==recipes.size() && !stop_loading.stop_requested()) {
@@ -1188,7 +1224,9 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             if (unresolved_count) LOG_WARNING(Render_Vulkan,
                 "NXShader retains {} observations without serialized environments; these cannot be prewarmed", unresolved_count);
         } catch (const std::exception& error) {
+            state.build_stage=VideoCore::LoadCallbackStage::Build;
             LOG_ERROR(Render_Vulkan, "NXShader import failed: {}", error.what());
+            callback(VideoCore::LoadCallbackStage::Prepare,0,0);
         }
     }
     // Other-version records from this selected profile remain guarded candidates.
@@ -1403,7 +1441,8 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     LOG_INFO(Render_Vulkan, "Total Pipeline Count: {}", state.total);
 
     std::unique_lock lock{state.mutex};
-    callback(VideoCore::LoadCallbackStage::Build, 0, state.total);
+    callback(state.build_stage,state.built,state.total);
+    state.last_build_progress=std::chrono::steady_clock::now();
     state.has_loaded = true;
     lock.unlock();
 

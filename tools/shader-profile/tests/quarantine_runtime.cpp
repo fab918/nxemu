@@ -29,6 +29,33 @@ int main(int argc, char **argv) try {
   Check(FindGameProfile(path.parent_path()/"game.dnsp",0x100152000022000ULL)==sidecar);
   Check(FindGameProfile(path.parent_path()/"game.dnsp",1).empty());
   Check(FindGameProfile({},0x100152000022000ULL).empty());
+  const auto cache=path.parent_path()/"startup-cache"/"0100152000022000";
+  std::filesystem::create_directories(cache);
+  Check(FindStartupProfile(cache,path.parent_path()/"game.dnsp",0x100152000022000ULL)==sidecar);
+  const auto shared=cache.parent_path()/sidecar.filename();
+  {std::ofstream out(shared);out<<"shared fixture";}
+  Check(FindStartupProfile(cache,path.parent_path()/"game.dnsp",0x100152000022000ULL)==shared);
+  const auto local=cache/sidecar.filename();
+  {std::ofstream out(local);out<<"local fixture";}
+  Check(FindStartupProfile(cache,path.parent_path()/"game.dnsp",0x100152000022000ULL)==local);
+  Check(FindStartupProfile(cache,{},0x100152000022000ULL)==local);
+  Check(FindStartupProfile(cache,{},1).empty());
+  Check(FindStartupProfile(cache,{},0).empty());
+  const auto profiles=ProfileDirectory(path.parent_path()/"startup-data");
+  Check(profiles.filename()=="nxshader");
+  std::filesystem::create_directories(profiles);
+  const auto durable=profiles/sidecar.filename();
+  {std::ofstream out(durable);out<<"durable fixture";}
+  Check(FindStartupProfile(cache,{},0x100152000022000ULL,profiles)==durable);
+  std::filesystem::remove_all(cache.parent_path());
+  Check(FindStartupProfile(cache,{},0x100152000022000ULL,profiles)==durable);
+  std::filesystem::remove_all(profiles.parent_path());
+  std::filesystem::create_directories(cache);
+  {std::ofstream out(shared);out<<"shared fixture";}
+  std::filesystem::remove(local);
+  std::filesystem::create_directory(local); // A directory is never imported as a file.
+  Check(FindStartupProfile(cache,{},0x100152000022000ULL)==shared);
+  std::filesystem::remove_all(cache.parent_path());
   std::filesystem::remove(sidecar);
   Runtime::QuarantinedKeys<int> graphics, compute;
   Vulkan::StartupPipelineVariants<int, int> variants;

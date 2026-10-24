@@ -12,6 +12,7 @@
 #include <nxemu/ui/platform/file_dialogs.h>
 #include <stdexcept>
 #include <yuzu_common/fs/fs.h>
+#include <yuzu_common/fs/path_util.h>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -172,10 +173,18 @@ void ShaderProfileDialog::Start()
                 }
                 if (success && m_importing)
                 {
-                    const auto name = "community-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".nxshader";
-                    std::filesystem::rename(std::filesystem::u8path(profile), m_cache / name);
+                    const auto name=VideoCommon::ShaderProfile::ProfileFilename(m_title);
+                    const auto directory=VideoCommon::ShaderProfile::ProfileDirectory(
+                        Common::FS::GetYuzuPath(Common::FS::YuzuPath::YuzuDir));
+                    std::filesystem::create_directories(directory);
+                    // Validate first, then atomically replace the durable shared profile.
+                    // Copy through the writer so custom cache/data volumes also work.
+                    AtomicWrite(directory/name,ReadSmall(std::filesystem::u8path(profile),33*1024*1024));
+                    std::error_code cleanup_error;
+                    std::filesystem::remove(std::filesystem::u8path(profile),cleanup_error);
                     JsonValue selection;
                     selection["file"] = name;
+                    selection["location"] = "nxshader";
                     selection["root"] = m_root;
                     AtomicWrite(m_cache / "community.json", JsonStyledWriter().write(selection));
                 }

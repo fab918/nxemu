@@ -917,6 +917,7 @@ static std::vector<Recipe> ReadCompactImpl(std::string_view payload, const std::
         outcome.candidates+=p.recipe.requires_validation;
         result.push_back(std::move(p.recipe));
     }
+    Check(!progress || progress(groups.size(),groups.size()), "Shader profile operation cancelled");
     outcome.accepted = result.size();
     if (report) *report = outcome;
     Check(!result.empty() || outcome.reused, "No compatible shader recipes: local resources are missing or incompatible");

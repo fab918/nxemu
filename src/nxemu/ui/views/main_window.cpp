@@ -1,4 +1,5 @@
 #include "main_window.h"
+#include "yuzu_video_core/shader_profile_location.h"
 #include <nxemu/ui/i18n/translation.h>
 #include "resolution_scales.h"
 #include "rml_events.h"
@@ -30,6 +31,7 @@
 #include <tuple>
 #include <yuzu_common/fs/filesystem_interfaces.h>
 #include <yuzu_common/fs/path_util.h>
+#include <yuzu_common/fs/fs.h>
 
 namespace
 {
@@ -665,6 +667,13 @@ void MainWindow::Run(Action action)
             m_menuDirty = true;
         }
         break;
+    case Action::OpenShaderProfileDirectory:
+    {
+        const auto directory=VideoCommon::ShaderProfile::ProfileDirectory(
+            Common::FS::GetYuzuPath(Common::FS::YuzuPath::YuzuDir));
+        if(Common::FS::CreateDir(directory))OpenDirectory(Common::FS::PathToUTF8String(directory));
+        break;
+    }
     case Action::ExportMenuGameShaders:
     case Action::ImportMenuGameShaders:
     {
@@ -1699,6 +1708,7 @@ void MainWindow::ShowGameMenu(Rml::Element * origin)
     const std::vector<MenuItem> items = {
         MenuItem::Action(static_cast<int>(Action::StartMenuGame), Tr("Start Game"),{},!m_shaderProfileDialog->Busy()),
         MenuItem::Submenu(Tr("Shader profile"),{
+            MenuItem::Action(static_cast<int>(Action::OpenShaderProfileDirectory),Tr("Open NXShader folder")),
             MenuItem::Action(static_cast<int>(Action::ExportMenuGameShaders),Tr("Export shader profile"),{},cacheExists && !m_session.IsRunning() && !m_shaderProfileDialog->Busy()),
             MenuItem::Action(static_cast<int>(Action::ImportMenuGameShaders),Tr("Import shader profile"),{},!m_session.IsRunning() && !m_shaderProfileDialog->Busy()),
         }),

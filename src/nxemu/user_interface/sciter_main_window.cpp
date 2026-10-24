@@ -1388,9 +1388,13 @@ void SciterMainWindow::RefreshDiskCacheLoadingText()
         UpdateLoadingProgressBar(fillEl, true, 0, false);
         break;
     case 1:
+    case 3:
+    case 4:
+    case 5:
         text = stdstr_f(
-            "<span class=\"loading-verb\">Loading shaders</span> <span class=\"loading-shader-count\">%d / %d</span>",
-            current, total);
+            "<span class=\"loading-verb\">%s</span> <span class=\"loading-shader-count\">%d / %d</span>",
+            stage == 3 ? "Reading and verifying NXShader" : stage == 4 ? "Importing NXShader" :
+            stage == 5 ? "Compiling NXShader" : "Loading shaders", current, total);
         if (total > 0)
         {
             const int pct = static_cast<int>((100.0 * static_cast<double>(current)) / static_cast<double>(total));

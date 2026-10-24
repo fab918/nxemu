@@ -65,7 +65,11 @@ int main(int argc,char** argv) try {
         } else throw std::runtime_error("invalid test option");
     }
     VideoCommon::ShaderProfile::ImportReport report;
-    const VideoCommon::ShaderProfile::ResourceProgress progress=[&](size_t,size_t){return !cancel;};
+    size_t progress_done{},progress_total{};
+    const VideoCommon::ShaderProfile::ResourceProgress progress=[&](size_t done,size_t total){
+        if(done>total)throw std::runtime_error("invalid import progress");
+        progress_done=done;progress_total=total;return !cancel;
+    };
     const auto recipes=metadata ? VideoCommon::ShaderProfile::ReadCompact(payload,argv[2],std::stoull(argv[3],nullptr,16),nullptr,timings,progress,&report,context,&existing,&programs,cross_version) :
         VideoCommon::ShaderProfile::Read(argv[1],argv[2],std::stoull(argv[3],nullptr,16),nullptr,timings,progress,&report,context,&existing,&programs,cross_version);
     size_t graphics{},compute{};
@@ -91,7 +95,7 @@ int main(int argc,char** argv) try {
     }
     const auto read=VideoCommon::CacheStore::Read(argv[4],20);
     std::cout<<"{\"recipes\":"<<recipes.size()<<",\"graphics\":"<<graphics<<",\"compute\":"<<compute
-             <<",\"candidates\":"<<report.candidates<<",\"reused\":"<<report.reused<<",\"skipped\":"<<report.skipped<<",\"incompatible_contexts\":"<<report.incompatible_contexts<<",\"missing_resources\":"<<report.missing_resources<<",\"incompatible_resources\":"<<report.incompatible_resources
+             <<",\"progress_done\":"<<progress_done<<",\"progress_total\":"<<progress_total<<",\"candidates\":"<<report.candidates<<",\"reused\":"<<report.reused<<",\"skipped\":"<<report.skipped<<",\"incompatible_contexts\":"<<report.incompatible_contexts<<",\"missing_resources\":"<<report.missing_resources<<",\"incompatible_resources\":"<<report.incompatible_resources
              <<",\"unique_local_records\":"<<read.size()<<",\"cache_bytes\":"<<(std::filesystem::exists(argv[4])?std::filesystem::file_size(argv[4]):0);
     std::cout<<",\"recipe_ids\":[";
     bool comma{};
