@@ -9,6 +9,7 @@
 #include "yuzu_video_core/shader_profile_hash.h"
 #include "yuzu_video_core/shader_profile_journal.h"
 #include "yuzu_video_core/shader_profile_resources.h"
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -349,24 +350,55 @@ JsonValue Assemble(Model & model, const ExportOptions & options, ExportReport & 
         r["texture_pool"] = Array();
         r["texture_pool"].Append(Num(At(key, 408, 4)));
         r["texture_pool"].Append(Num(At(key, 412, 4)));
-        if (!source.contains(key))
+        auto found = source.find(key);
+        bool hle_alias = false;
+        if (found == source.end())
+        {
+            // Runtime already permits a plain draw to share a replacement-free
+            // HLE pipeline. Recover the same directed alias at export, keeping
+            // every other normalized byte (programs, sizes, pool and state).
+            Vulkan::FixedPipelineState state{};
+            state.raw2 = static_cast<u32>(At(key, 420, 4));
+            using Hint = Tegra::Engines::Maxwell3D::EngineHint;
+            if (state.app_stage == Hint::None)
+            {
+                state.app_stage.Assign(Hint::OnHLEMacro);
+                auto twin = key;
+                Put(twin, 420, state.raw2, 4);
+                found = source.find(twin);
+                hle_alias = found != source.end();
+            }
+        }
+        bool matched = false;
+        if (found != source.end())
+        {
+            for (auto it = found->second.rbegin(); it != found->second.rend(); ++it)
+            {
+                // Never drop real HLE replacements, nor infer that a plain
+                // capture proves a future HLE draw has no replacements.
+                if (hle_alias && std::any_of(it->begin(), it->end(), [&](const auto& id) {
+                        return !model.profile["environments"][id]["cbuf_replacements"].empty();
+                    }))
+                    continue;
+                matched = true;
+                r["environments"] = Array();
+                for (const auto & id : *it)
+                    r["environments"].Append(id);
+                if (seen.insert(Canonical(r)).second)
+                {
+                    graphics.Append(r);
+                    ++report.graphics;
+                }
+            }
+        }
+        if (!matched)
         {
             r["reason"] = "no_serialized_environment_for_source_key";
             unresolved.Append(std::move(r));
             ++report.unresolved;
-            continue;
         }
-        for (auto it = source.at(key).rbegin(); it != source.at(key).rend(); ++it)
-        {
-            r["environments"] = Array();
-            for (const auto & id : *it)
-                r["environments"].Append(id);
-            if (seen.insert(Canonical(r)).second)
-            {
-                graphics.Append(r);
-                ++report.graphics;
-            }
-        }
+        else if (hle_alias)
+            ++report.resolved_hle_aliases;
     }
     for (const auto & r : std::as_const(recipes))
         graphics.Append(r);

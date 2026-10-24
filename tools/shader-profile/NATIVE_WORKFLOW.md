@@ -197,3 +197,42 @@ libellé **SUPER MARIO ODYSSEY 1.3.0**, titre `0100000000010000`,
 216 809 octets. Le libellé est une métadonnée descriptive, pas une preuve de
 version CNMT. L’import réel et le rendu de cet écran pendant le lancement de
 Mario restent à valider avec son conteneur local ; aucun essai en jeu n’est revendiqué.
+
+
+## Variantes HLE récupérées à l’export
+
+L’exporteur recherche d’abord la clé exacte. À défaut, une observation normale
+peut retrouver la même clé avec le seul marqueur HLE activé, à condition que
+**tous** les environnements correspondants soient sans remplacement HLE.
+Aucun autre octet de la clé normalisée n’est modifié. L’inférence inverse
+(normal vers HLE) reste interdite : une capture normale ne prouve pas l’absence
+de remplacements dans un futur draw HLE.
+
+Ce rapprochement réutilise les environnements existants et conserve l’état
+invité de l’observation normale. Il n’ajoute aucune recherche, allocation ou
+vérification sur le chemin des draws. Le format NXSHBIN4 et Zstd 3 restent
+inchangés. Le rapport de l’outil natif expose `resolved_hle_aliases`, qui compte
+les observations récupérées par cette règle.
+
+Sur le profil Windows de Mario Odyssey fourni le 24 octobre, le défaut a été
+reproduit hors ligne avec les 284 observations non résolues d’origine, sans
+ajouter les nouvelles captures de la session Mac. Après correction : 234
+observations récupérées, 50 restantes, 2 939 recettes graphiques et 26 compute.
+Les 2 731 identités de recettes originales sont conservées ; 234 s’y ajoutent.
+
+Une copie corrigée du profil a été réencodée avec le contexte source original,
+puis relue contre les ressources du jeu local : aucun programme absent ou
+incompatible. Elle fait 216 588 octets, contre 216 809 pour le fichier fourni.
+Le profil installé a été remplacé après sauvegarde de l’original ; le jeu en
+cours n’a pas été redémarré pour ce correctif.
+
+Validation : 13 tests natifs, 87 tests Python dont neuf nouveaux scénarios
+d’export HLE, compilation complète de l’application et des modules. Les scénarios
+couvrent les remplacements sur un stage autre que le premier, le sens interdit,
+les changements de programme/état/buffer/table, la priorité de la source exacte,
+les variantes mélangées sûres et incompatibles, et le déterminisme du fichier.
+Les 36 tests du workflow natif passent également avec l’exporteur et le lecteur
+sous ASan/UBSan (détection de fuites indisponible sur le runtime Apple utilisé).
+
+Résultats détaillés :
+[reports/hle-alias-export-2026-10-24.json](reports/hle-alias-export-2026-10-24.json).

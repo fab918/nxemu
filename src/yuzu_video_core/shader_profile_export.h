@@ -22,6 +22,7 @@ struct ExportReport
 {
     u64 programs{}, environments{}, graphics{}, compute{}, unresolved{}, missing{};
     u64 reused{}, searched_resources{}, decoded_bytes{}, bytes{};
+    u64 resolved_hle_aliases{}; // Observations recovered via a replacement-free HLE source.
     double seconds{};
 };
 // Throws on cancellation/error; publication is atomic and never replaces an output.

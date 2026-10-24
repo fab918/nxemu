@@ -60,6 +60,7 @@ int main(int argc, char **argv) try {
   std::cout << "{\"programs\":" << r.programs
             << ",\"environments\":" << r.environments
             << ",\"graphics\":" << r.graphics << ",\"compute\":" << r.compute
+            << ",\"resolved_hle_aliases\":" << r.resolved_hle_aliases
             << ",\"unresolved\":" << r.unresolved
             << ",\"missing\":" << r.missing << ",\"reused\":" << r.reused
             << ",\"resources\":" << r.searched_resources

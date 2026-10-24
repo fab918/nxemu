@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import struct
 import tempfile
 import unittest
 from nxshader import canonical
@@ -405,3 +406,127 @@ class NativeWorkflowTests(unittest.TestCase):
         report=json.loads(self.read(packed,'progress-result').stdout)
         self.assertGreater(report['progress_total'],0)
         self.assertEqual(report['progress_done'],report['progress_total'])
+
+    def hle_graphics_capture(self, hle=True, replacements=(), vertex=False, cbuf=False, pool=False):
+        code=bytes(80)+b'12345678'  # Hand-authored bytes, no game instructions.
+        digest=hashlib.sha256(code).hexdigest()
+        env=dict(shader=digest,local_memory_size=0,texture_bound=0,guest_start_address=0,
+                 guest_read_lowest=0,guest_read_highest=80,viewport_transform_state=1,stage=4,
+                 texture_types=[],texture_pixel_formats=[],cbuf_values=[],
+                 cbuf_replacements=list(replacements),program_header_sha256=hashlib.sha256(code[:80]).hexdigest())
+        if cbuf:env['cbuf_values']=[[0xffffffff,16]]
+        if pool:env['cbuf_values']=[[str(0xfffffffffffffffe),12],[str(0xfffffffffffffffd),12]]
+        eid=hashlib.sha256(canonical(env)).hexdigest()
+        guest=[1]+[0]*277;guest[2]=(1<<17) if hle else 0
+        hashes=[0]*5+[reference.native_program_hash(code)]
+        sizes=[[0]*18 for _ in range(5)]
+        if cbuf:sizes[4][0]=16
+        recipe=dict(kind='graphics',guest_words=guest,shader_hashes=[str(h) for h in hashes],
+                    cbuf_sizes=sizes,texture_pool=[12,12] if pool else [0,0],environments=[eid])
+        profile=copy.deepcopy(self.profile)
+        profile['shaders']={digest:dict(size=len(code),references=[dict(encoding='raw',file='game.dat',offset=0,size=len(code))])}
+        profile['environments']={eid:env};profile['recipes']=[recipe]
+        # Keep one independent compute recipe so negative graphics cases still export.
+        compute=copy.deepcopy(self.profile)
+        for shader in compute['shaders'].values():shader['references'][0]['offset']=80
+        profile['shaders'].update(compute['shaders'])
+        profile['environments'].update(compute['environments'])
+        profile['recipes'].extend(compute['recipes'])
+        if vertex:
+            v=copy.deepcopy(env);v['stage']=0;v['cbuf_replacements']=[]
+            vid=hashlib.sha256(canonical(v)).hexdigest()
+            profile['environments'][vid]=v;recipe['environments'].insert(0,vid)
+            hashes[1]=hashes[5];recipe['shader_hashes'][1]=str(hashes[1])
+        self.profile=profile
+        (self.root/'game.dat').write_bytes(code)
+        self.cache(profile,'graphics')
+        observed=copy.deepcopy(recipe);observed['guest_words'][2]^=1<<17
+        return observed
+
+    def record_graphics_observation(self, recipe):
+        hashes=[int(h) for h in recipe['shader_hashes']]
+        key=struct.pack('<6Q',*hashes)
+        key+=struct.pack('<90I',*(n for bank in recipe['cbuf_sizes'] for n in bank))
+        key+=struct.pack('<2I',*recipe['texture_pool'])
+        words=recipe['guest_words']+list(struct.unpack('<104I',key))
+        (self.root/'recording.json').write_bytes(canonical(dict(failed=False,projection_mismatches=0,
+            dropped_observations=0,guest_state_word_count=278,feature_bits=67,
+            recipes=[dict(words=words,source_feature_bits=67)])))
+
+    def export_graphics_observation(self, observation, name='alias', source='graphics'):
+        self.record_graphics_observation(observation)
+        result=self.export(name,source=source)
+        self.assertEqual(result.returncode,0,result.stderr)
+        return json.loads(result.stdout)
+
+    def test_export_recovers_plain_observation_from_unreplaced_hle(self):
+        observation=self.hle_graphics_capture()
+        report=self.export_graphics_observation(observation)
+        self.assertEqual((report['graphics'],report['unresolved'],report['resolved_hle_aliases']),(1,0,1))
+        imported=self.read(self.root/'alias.nxshader','alias-read')
+        self.assertEqual(imported.returncode,0,imported.stderr)
+        # Imported pipeline keeps the requested PLAIN state; only its environment is borrowed.
+        records=reference.parse_cache(reference.legacy_bytes((self.root/'alias-read.nxc').read_bytes()))
+        self.assertEqual(struct.unpack_from('<I',records[0][1],420)[0] & (7<<17),0)
+        again=self.export('alias-again',source='graphics')
+        self.assertEqual(again.returncode,0,again.stderr)
+        self.assertEqual((self.root/'alias.nxshader').read_bytes(),(self.root/'alias-again.nxshader').read_bytes())
+
+    def test_export_rejects_hle_alias_with_any_stage_replacement(self):
+        observation=self.hle_graphics_capture(replacements=[[0,0]],vertex=True)
+        report=self.export_graphics_observation(observation)
+        self.assertEqual((report['graphics'],report['unresolved'],report['resolved_hle_aliases']),(0,1,0))
+
+    def test_export_does_not_infer_hle_replacements_from_plain_capture(self):
+        observation=self.hle_graphics_capture(hle=False)
+        report=self.export_graphics_observation(observation)
+        self.assertEqual((report['graphics'],report['unresolved'],report['resolved_hle_aliases']),(0,1,0))
+
+    def test_export_hle_alias_requires_every_other_projected_state_bit(self):
+        observation=self.hle_graphics_capture()
+        observation['guest_words'][2]|=1<<15  # Alpha-to-coverage, independently significant.
+        report=self.export_graphics_observation(observation)
+        self.assertEqual((report['unresolved'],report['resolved_hle_aliases']),(1,0))
+
+    def test_export_hle_alias_requires_same_program_combination(self):
+        observation=self.hle_graphics_capture()
+        observation['shader_hashes'][5]=str(int(observation['shader_hashes'][5])^1)
+        report=self.export_graphics_observation(observation)
+        self.assertEqual((report['unresolved'],report['resolved_hle_aliases']),(1,0))
+
+    def test_export_hle_alias_requires_same_queried_buffer_size(self):
+        observation=self.hle_graphics_capture(cbuf=True)
+        observation['cbuf_sizes'][4][0]=32
+        report=self.export_graphics_observation(observation)
+        self.assertEqual((report['unresolved'],report['resolved_hle_aliases']),(1,0))
+
+    def test_export_hle_alias_requires_same_queried_texture_pool(self):
+        observation=self.hle_graphics_capture(pool=True)
+        observation['texture_pool'][0]=13
+        report=self.export_graphics_observation(observation)
+        self.assertEqual((report['unresolved'],report['resolved_hle_aliases']),(1,0))
+
+    def test_export_exact_source_wins_over_hle_alias(self):
+        observation=self.hle_graphics_capture()
+        plain=copy.deepcopy(self.profile['recipes'][0]);plain['guest_words'][2]=0
+        env=copy.deepcopy(self.profile['environments'][self.profile['recipes'][0]['environments'][0]]);env['local_memory_size']=16
+        eid=hashlib.sha256(canonical(env)).hexdigest()
+        self.profile['environments'][eid]=env;plain['environments']=[eid]
+        self.profile['recipes'].append(plain);self.cache(self.profile,'both')
+        report=self.export_graphics_observation(observation,source='both')
+        self.assertEqual((report['graphics'],report['unresolved'],report['resolved_hle_aliases']),(1,0,0))
+        result=self.read(self.root/'alias.nxshader','exact-read')
+        self.assertEqual(result.returncode,0,result.stderr)
+        records=reference.parse_cache(reference.legacy_bytes((self.root/'exact-read.nxc').read_bytes()))
+        self.assertEqual(records[0][0][0][0]['local_memory_size'],16)
+
+    def test_export_filters_unsafe_environment_variant_without_dropping_safe_one(self):
+        observation=self.hle_graphics_capture()
+        unsafe=copy.deepcopy(self.profile['environments'][self.profile['recipes'][0]['environments'][0]])
+        unsafe['cbuf_replacements']=[[0,0]]
+        eid=hashlib.sha256(canonical(unsafe)).hexdigest()
+        self.profile['environments'][eid]=unsafe
+        recipe=copy.deepcopy(self.profile['recipes'][0]);recipe['environments']=[eid]
+        self.profile['recipes'].append(recipe);self.cache(self.profile,'variants')
+        report=self.export_graphics_observation(observation,source='variants')
+        self.assertEqual((report['graphics'],report['unresolved'],report['resolved_hle_aliases']),(1,0,1))

@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-24",
+  "format_changed": false,
+  "zstd_level": 3,
+  "rule": "Only a plain observation may borrow an exactly matching HLE source whose every stage has zero recorded replacements. Exact matches win. Reverse inference is rejected.",
+  "tests": {
+    "native": 13,
+    "python": 87,
+    "new_alias_tests": 9,
+    "full_app_build": true,
+    "asan_ubsan_native_workflow": 36,
+    "leak_detection": "Unsupported on the Apple ASan runtime used; disabled."
+  },
+  "mario": {
+    "original_graphics": 2705,
+    "corrected_graphics": 2939,
+    "compute": 26,
+    "original_unresolved": 284,
+    "corrected_unresolved": 50,
+    "recovered": 234,
+    "original_recipe_identities_preserved": 2731,
+    "added_recipe_identities": 234,
+    "missing_resources": 0,
+    "incompatible_resources": 0,
+    "original_source_context_preserved": true,
+    "original_bytes": 216809,
+    "corrected_bytes": 216588,
+    "original_sha256": "808e2ef0bd6860f5daf9ae503d59e36a3bb7ed70fd37d006e836546e34208a02",
+    "corrected_sha256": "f59d89faea23df285c31fb85e67260c2f6b3d7f821557ae010d831b0478ae000",
+    "comparison_source": "Original profile reconstructed and re-exported offline with all-static projection; same initial 284 unresolved reproduced. No extra gameplay captures were used.",
+    "corrected_profile": "Validated against the local game after restoring the original verified context from the source profile.",
+    "game_restarted": false
+  },
+  "before_export": {
+    "programs": 1934,
+    "environments": 2162,
+    "graphics": 2705,
+    "compute": 26,
+    "unresolved": 284,
+    "missing": 0,
+    "reused": 1934,
+    "resources": 0,
+    "bytes": 216711,
+    "seconds": 0.805438
+  },
+  "after_export": {
+    "programs": 1934,
+    "environments": 2162,
+    "graphics": 2939,
+    "compute": 26,
+    "resolved_hle_aliases": 234,
+    "unresolved": 50,
+    "missing": 0,
+    "reused": 1934,
+    "resources": 0,
+    "bytes": 216477,
+    "seconds": 0.786185
+  }
+}
