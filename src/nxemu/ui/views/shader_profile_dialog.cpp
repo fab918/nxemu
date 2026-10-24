@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "shader_profile_dialog.h"
+#include "yuzu_video_core/shader_profile_location.h"
 #include <RmlUi/Core.h>
 #include <chrono>
 #include <common/json.h>
@@ -92,6 +93,7 @@ void ShaderProfileDialog::Prepare(IVideo & video, bool importing, std::string ga
 void ShaderProfileDialog::OnOpen()
 {
     SetText("profile-title", Tr(m_importing ? "Import shader profile" : "Export shader profile"));
+    SetText("profile-start", Tr(m_importing ? "Choose profile" : "Export .nxshader"));
     SetText("profile-game", m_label);
     SetText("profile-detail", Tr(m_importing ? "Select a profile. NXEmu verifies it against your local game before prewarming at game startup." : "The profile contains recipes and resource references. Shader instructions stay in your local game."));
     SetText("profile-update", m_update.empty() ? Tr("No update selected") : m_update);
@@ -118,7 +120,8 @@ void ShaderProfileDialog::Start()
     }
     Path selected;
     const auto filter = FileFilter({{Tr("Shader profile"), "*.nxshader"}});
-    const bool chosen = m_importing ? FileSelect(m_window.NativeHandle(), m_root.c_str(), filter.c_str(), true, selected) : FileSave(m_window.NativeHandle(), m_root.c_str(), filter.c_str(), "profile.nxshader", selected);
+    const auto suggested=VideoCommon::ShaderProfile::ProfileFilename(m_title);
+    const bool chosen = m_importing ? FileSelect(m_window.NativeHandle(), m_root.c_str(), filter.c_str(), true, selected) : FileSave(m_window.NativeHandle(), m_root.c_str(), filter.c_str(), suggested.c_str(), selected);
     if (!chosen) return;
     m_profile = static_cast<const char *>(selected);
     m_cancel = false;
@@ -206,7 +209,9 @@ void ShaderProfileDialog::OnUpdate()
     std::scoped_lock lock(m_mutex);
     if (m_finished)
     {
-        if (m_success)
+        if(m_success && m_importing)
+            SetText("profile-detail",Tr("Profile selected. Local shaders will be verified when the game starts."));
+        else if (m_success)
             SetText("profile-detail", Tr("%1 graphics recipes, %2 compute recipes, %3 unresolved observations, %4 missing programs. %5 bytes.", {std::to_string(m_result.graphics), std::to_string(m_result.compute), std::to_string(m_result.unresolved), std::to_string(m_result.missing), std::to_string(m_result.bytes)}));
         else
             SetText("profile-detail", m_error);

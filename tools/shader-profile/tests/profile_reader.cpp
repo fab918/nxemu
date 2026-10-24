@@ -16,15 +16,23 @@ void assert_fail_impl() {throw std::runtime_error("renderer assertion");}
 [[noreturn]] void unreachable_impl() {throw std::runtime_error("renderer unreachable");}
 void put(std::string& out,u64 value,size_t size) {for(size_t i=0;i<size;++i)out.push_back(static_cast<char>(value>>(8*i)));}
 int main(int argc,char** argv) try {
-    if(argc!=6)throw std::runtime_error("usage: nxshader-reader profile game-root title-id output.nxc target-feature-bits");
+    if(argc!=6 && argc!=7)throw std::runtime_error("usage: nxshader-reader profile game-root title-id output.nxc target-feature-bits");
     const auto bits=std::stoul(argv[5]);if(bits>127)throw std::runtime_error("invalid features");
     const Vulkan::DynamicFeatures features{bool(bits&1),bool(bits&2),bool(bits&4),bool(bits&8),bool(bits&16),bool(bits&32),bool(bits&64)};
+    if(argc==7 && std::string_view(argv[6])=="--inspect") {
+        const auto m=VideoCommon::ShaderProfile::Inspect(argv[1],std::stoull(argv[3],nullptr,16));
+        std::cout<<"{\"graphics\":"<<m.graphics<<",\"compute\":"<<m.compute<<",\"unresolved\":"<<m.unresolved<<"}\n";
+        return 0;
+    }
     if(std::filesystem::exists(argv[4]))throw std::runtime_error("output already exists");
     namespace Timing=VideoCommon::ShaderProfile::Timing;
     Timing::Metrics measurements;
     const char* option=std::getenv("NXEMU_NXSHADER_TIMING");
     auto* timings=option && *option && std::string_view(option)!="0" ? &measurements : nullptr;
-    const auto recipes=VideoCommon::ShaderProfile::Read(argv[1],argv[2],std::stoull(argv[3],nullptr,16),nullptr,timings);
+    const bool cancel=argc==7 && std::string_view(argv[6])=="--cancel";
+    if(argc==7 && !cancel)throw std::runtime_error("invalid test option");
+    const auto recipes=VideoCommon::ShaderProfile::Read(argv[1],argv[2],std::stoull(argv[3],nullptr,16),nullptr,timings,
+        [&](size_t,size_t){return !cancel;});
     size_t graphics{},compute{};
     for(const auto& r:recipes) {
         Timing::Timer projection_timer(timings,Timing::Phase::GuestProjection);

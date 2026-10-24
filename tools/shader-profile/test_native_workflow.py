@@ -82,6 +82,38 @@ class NativeWorkflowTests(unittest.TestCase):
         self.assertNotIn(b'12345678',(self.root/'index.json').read_bytes())
         self.assertEqual(self.export('resumed').returncode,0)
 
+    def test_import_cancellation_retry_and_repeated_imports(self):
+        for fmt,extra in (('json',()),('compact',('--compact',))):
+            profile=self.root/(fmt+'.nxshader')
+            self.assertEqual(self.export(fmt,extra=extra).returncode,0)
+            output=self.root/(fmt+'-cancel.nxc')
+            args=[self.reader,str(profile),str(self.root),self.profile['title_id'],str(output),'67']
+            cancelled=subprocess.run([*args,'--cancel'],capture_output=True)
+            self.assertNotEqual(cancelled.returncode,0,cancelled.stdout)
+            self.assertIn(b'cancelled',cancelled.stderr)
+            self.assertFalse(output.exists())
+            self.assertEqual(subprocess.run(args,capture_output=True).returncode,0)
+            before=output.read_bytes()
+            self.assertNotEqual(subprocess.run(args,capture_output=True).returncode,0)
+            self.assertEqual(output.read_bytes(),before)
+            retry=self.read(profile,fmt+'-retry')
+            self.assertEqual(retry.returncode,0,retry.stderr)
+            self.assertEqual((self.root/(fmt+'-retry.nxc')).read_bytes(),before)
+
+    def test_inspection_validates_metadata_without_game_resource_io(self):
+        for fmt,extra in (('inspect-json',()),('inspect-compact',('--compact',))):
+            self.assertEqual(self.export(fmt,extra=extra).returncode,0)
+        (self.root/'game.dat').unlink()
+        for fmt in ('inspect-json','inspect-compact'):
+            args=[self.reader,str(self.root/(fmt+'.nxshader')),str(self.root),self.profile['title_id'],str(self.root/'never.nxc'),'67','--inspect']
+            inspected=subprocess.run(args,capture_output=True)
+            self.assertEqual(inspected.returncode,0,inspected.stderr)
+            self.assertEqual(json.loads(inspected.stdout)['compute'],1)
+            self.assertFalse((self.root/'never.nxc').exists())
+            args[3]='0000000000000001'
+            self.assertNotEqual(subprocess.run(args,capture_output=True).returncode,0)
+            self.assertNotEqual(self.read(self.root/(fmt+'.nxshader'),fmt+'-missing').returncode,0)
+
     def test_existing_output_is_preserved(self):
         target=self.root/'kept.nxshader';target.write_bytes(b'KEEP')
         self.assertNotEqual(self.export('kept').returncode,0)

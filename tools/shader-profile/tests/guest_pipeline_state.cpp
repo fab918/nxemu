@@ -4,6 +4,8 @@
 #include <iostream>
 #include <memory>
 #include <stdexcept>
+#include <unordered_set>
+#include "yuzu_video_core/renderer_vulkan/cbuf_size_dependencies.h"
 #include "yuzu_common/bit_cast.h"
 #include "video_settings.h"
 #include "yuzu_common/logging/log.h"
@@ -65,6 +67,40 @@ static void Initialise(Maxwell& regs) {
 }
 
 int main() try {
+    // First HLE translation narrows conservative CBUF sizes. Its normalized
+    // alias must retain replacement-free eligibility for a later plain draw.
+    {
+        std::unordered_map<int, std::shared_ptr<int>> cache;
+        std::unordered_set<int> unreplaced;
+        const auto pipeline = std::make_shared<int>(1);
+        cache.emplace(10, pipeline);
+        unreplaced.insert(10);
+        Check(PublishNormalizedPipelineAlias(10, 11, pipeline, cache, unreplaced),
+              "normalized HLE pipeline alias missing");
+        Check(cache.at(11) == pipeline && unreplaced.contains(11),
+              "normalized alias lost replacement-free HLE eligibility");
+        Check(FindUnreplacedPipelineAlias(11, cache, unreplaced) == pipeline,
+              "plain draw would queue a new build instead of sharing HLE twin");
+        Check(!PublishNormalizedPipelineAlias(10, 11, pipeline, cache, unreplaced),
+              "existing alias republished");
+        // Replacement-bearing shaders must keep their own native combinations.
+        cache.emplace(20, pipeline);
+        Check(PublishNormalizedPipelineAlias(20, 21, pipeline, cache, unreplaced) &&
+                  !unreplaced.contains(21), "replacement-bearing alias became reusable");
+        Check(!FindUnreplacedPipelineAlias(21, cache, unreplaced),
+              "replacement-bearing twin reused before translation");
+        const auto other = std::make_shared<int>(2);
+        cache.emplace(31, other);
+        Check(!PublishNormalizedPipelineAlias(10, 31, pipeline, cache, unreplaced) &&
+                  cache.at(31) == other && !unreplaced.contains(31),
+              "conflicting pipeline inherited unrelated HLE eligibility");
+        Check(!PublishNormalizedPipelineAlias(10, 10, pipeline, cache, unreplaced),
+              "identity alias published");
+        cache.emplace(40, nullptr);unreplaced.insert(40);unreplaced.insert(41);
+        Check(!FindUnreplacedPipelineAlias(40, cache, unreplaced) &&
+                  !FindUnreplacedPipelineAlias(41, cache, unreplaced),
+              "missing or failed HLE pipeline reused");
+    }
     auto tracking = std::make_unique<Tegra::Engines::Maxwell3D::DirtyState>();
     GuestPipelineState::Track(*tracking);
     const auto tracked = [&](size_t byte) { return tracking->shader_profile_registers[byte / 4] != 0; };

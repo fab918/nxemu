@@ -4,6 +4,7 @@
 #include "yuzu_video_core/engines/draw_manager.h"
 #include "yuzu_video_core/renderer_vulkan/fixed_pipeline_state.h"
 #include "yuzu_video_core/shader_profile_journal.h"
+#include "yuzu_video_core/shader_profile_runtime.h"
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -23,6 +24,7 @@ public:
     {
         auto saved = VideoCommon::ShaderProfile::Journal::Read(path);
         entries = std::move(saved.entries);
+        loaded_recipes = entries.size();
         if (saved.incomplete_tail) std::filesystem::resize_file(path, saved.valid_bytes);
         if (!std::filesystem::exists(path))
         {
@@ -31,6 +33,12 @@ public:
             if (!out) throw std::runtime_error("Cannot initialize guest recipe journal");
         }
         timing = std::getenv("NXEMU_RECIPE_RECORD_TIMING") != nullptr;
+        if (const char * output = std::getenv("NXEMU_RECIPE_RECORD_REPORT"); output && *output)
+        {
+            report_path = std::filesystem::u8path(output);
+            timing = true;
+        }
+        if (timing) write_metrics = std::make_shared<VideoCommon::ShaderProfile::Journal::WriteMetrics>();
     }
     static void MarkFailed(const std::filesystem::path & target) noexcept
     {
@@ -105,10 +113,25 @@ public:
             if (entries.size() >= VideoCommon::ShaderProfile::Journal::MaxEntries)
                 throw std::runtime_error("Automatic guest recipe journal is full");
             entries.insert(entry);
-            writer.QueueWork([target = path, entry] {
+            writer.QueueWork([target = path, entry, metrics = write_metrics] {
                 try
                 {
-                    VideoCommon::ShaderProfile::Journal::Append(target, entry);
+                    const auto before = metrics ? VideoCommon::ShaderProfile::Runtime::ThreadCpu() : VideoCommon::ShaderProfile::Runtime::CpuSample{};
+                    VideoCommon::ShaderProfile::Journal::Append(target, entry, metrics.get());
+                    if (metrics)
+                    {
+                        const auto after = VideoCommon::ShaderProfile::Runtime::ThreadCpu();
+                        if (before.time_available && after.time_available && after.ns >= before.ns)
+                        {
+                            metrics->cpu_ns += after.ns - before.ns;
+                            ++metrics->cpu_samples;
+                        }
+                        if (before.cycles_available && after.cycles_available && after.cycles >= before.cycles)
+                        {
+                            metrics->cpu_cycles += after.cycles - before.cycles;
+                            ++metrics->cycle_samples;
+                        }
+                    }
                 }
                 catch (const std::exception & e)
                 {
@@ -126,7 +149,27 @@ public:
     }
     ~GuestPipelineRecorder()
     {
-        LOG_INFO(Render_Vulkan, "Automatic guest recipes: unique={} captures={} failed={} measured_draws={} cpu_ns={}", entries.size(), captures, failed, calls, elapsed_ns);
+        LOG_INFO(Render_Vulkan, "Automatic guest recipes: total_unique={} loaded={} new={} captures={} failed={} measured_observations={} observer_wall_ns={}", entries.size(), loaded_recipes, entries.size()-loaded_recipes, captures, failed, calls, elapsed_ns);
+        // All writer work is drained before this recorder is destroyed. Observer
+        // time is elapsed steady-clock time, not per-thread CPU accounting.
+        if (!report_path.empty() && write_metrics) try
+            {
+                const auto & m = *write_metrics;
+                std::ofstream out(report_path, std::ios::binary | std::ios::trunc);
+                out << "{\"schema\":2,\"observer_timing_enabled\":true,\"observer_scope\":\"Observe only; excludes register revision tracking\",\"unique_recipes\":" << entries.size()
+                    << ",\"loaded_recipes\":" << loaded_recipes << ",\"new_recipes\":" << entries.size()-loaded_recipes << ",\"captures\":" << captures
+                    << ",\"failed\":" << failed << ",\"observed_draws\":" << calls << ",\"observer_wall_ns\":" << elapsed_ns
+                    << ",\"worker_frames\":" << m.frames << ",\"worker_frame_bytes\":" << m.bytes
+                    << ",\"worker_encoding_ns\":" << m.encoding_ns << ",\"worker_io_ns\":" << m.io_ns
+                    << ",\"worker_cpu_ns\":" << m.cpu_ns << ",\"worker_cpu_samples\":" << m.cpu_samples
+                    << ",\"worker_cpu_cycles\":" << m.cpu_cycles << ",\"worker_cycle_samples\":" << m.cycle_samples << "}";
+                out.flush();
+                if (!out) LOG_WARNING(Render_Vulkan, "Cannot write guest recording cost report");
+            }
+            catch (const std::exception & e)
+            {
+                LOG_WARNING(Render_Vulkan, "Guest recording cost report: {}", e.what());
+            }
     }
 
 private:
@@ -136,10 +179,12 @@ private:
     std::array<u32, 104> last_prefix{};
     GuestPipelineState guest{};
     Engine * channel{};
-    u64 revision{}, captures{}, calls{}, elapsed_ns{};
+    u64 revision{}, captures{}, calls{}, elapsed_ns{}, loaded_recipes{};
     Engine::Regs::PrimitiveTopology last_topology{};
     Engine::EngineHint last_hint{};
     bool failed{};
     bool timing{};
+    std::filesystem::path report_path;
+    std::shared_ptr<VideoCommon::ShaderProfile::Journal::WriteMetrics> write_metrics;
 };
 } // namespace Vulkan

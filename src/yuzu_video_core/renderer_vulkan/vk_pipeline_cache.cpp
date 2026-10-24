@@ -47,6 +47,8 @@
 #include "yuzu_video_core/shader_profile_export.h"
 #include "yuzu_video_core/shader_profile_hash.h"
 #include "yuzu_video_core/shader_profile_identity.h"
+#include "yuzu_video_core/shader_profile_import_status.h"
+#include "yuzu_video_core/shader_profile_location.h"
 #include "yuzu_video_core/shader_profile_audit.h"
 #include "yuzu_video_core/renderer_vulkan/startup_pipeline_variants.h"
 #include "yuzu_video_core/shader_notify.h"
@@ -655,10 +657,16 @@ void PipelineCache::WaitForBuilds() {
 PipelineCache::~PipelineCache() {
     WaitForBuilds();
     if (guest_recipe_probe) guest_recipe_probe->Flush();
+    if(runtime_report && !runtime_report->Flush(quarantined_graphics,quarantined_compute))
+        LOG_WARNING(Render_Vulkan,"Cannot write NXShader runtime diagnostic report");
     if (use_vulkan_pipeline_cache && !vulkan_pipeline_cache_filename.empty()) {
         SerializeVulkanPipelineCache(vulkan_pipeline_cache_filename, vulkan_pipeline_cache,
                                      CACHE_VERSION);
     }
+}
+
+void PipelineCache::RecordDiagnosticFrame() {
+    if(runtime_report && runtime_report->active)runtime_report->Frame();
 }
 
 GraphicsPipeline* PipelineCache::CurrentGraphicsPipeline() {
@@ -719,6 +727,7 @@ ComputePipeline* PipelineCache::CurrentComputePipeline() {
         key.cbuf_sizes[bank] = ((size_mask >> bank) & 1) != 0
                                   ? qmd.const_buffer_config[bank].size.Value() : 0;
     }
+    if(runtime_report)quarantined_compute.Requested(key);
     const auto [pair, is_new]{compute_cache.try_emplace(key)};
     auto& pipeline{pair->second};
     if (!is_new) {
@@ -729,7 +738,7 @@ ComputePipeline* PipelineCache::CurrentComputePipeline() {
 }
 
 void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading,
-                                      const VideoCore::DiskResourceLoadCallback& callback, std::string_view content_identity) {
+                                      const VideoCore::DiskResourceLoadCallback& callback, std::string_view content_identity, [[maybe_unused]] std::string_view game_path) {
     namespace Timing = VideoCommon::ShaderProfile::Timing;
     if (title_id == 0) {
         return;
@@ -740,6 +749,8 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         LOG_ERROR(Common_Filesystem, "Failed to create pipeline cache directories");
         return;
     }
+    if(const char* output=std::getenv("NXEMU_NXSHADER_RUNTIME_REPORT");output && *output)
+        runtime_report=std::make_unique<VideoCommon::ShaderProfile::Runtime::Report>(std::filesystem::u8path(output));
     pipeline_cache_filename = base_dir / "vulkan.nxc";
     try {
         guest_recipe_recorder = std::make_unique<GuestPipelineRecorder>(base_dir / "guest-recipes.nxr", serialization_thread);
@@ -885,16 +896,26 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     std::string import_path,import_root,import_stamp;
     if(const char* option=std::getenv("NXEMU_IMPORT_NXSHADER");option && *option)import_path=option;
     if(const char* option=std::getenv("NXEMU_SHADER_GAME_ROOT");option && *option)import_root=option;
-    if(import_path.empty() && std::filesystem::exists(base_dir/"community.json"))try {
+    if(import_path.empty())try {
         const auto read_small=[](const std::filesystem::path& file,size_t limit){
             if(std::filesystem::file_size(file)>limit)throw std::runtime_error("Profile metadata size limit");
             std::ifstream input(file,std::ios::binary);if(!input)throw std::runtime_error("Cannot read profile metadata");
             return std::string((std::istreambuf_iterator<char>(input)),{});
         };
+        if(std::filesystem::exists(base_dir/"community.json")) {
         const auto selection=VideoCommon::ShaderProfile::ParseMetadata(read_small(base_dir/"community.json",16384));
         const auto file=selection["file"].asString();
         if(file.empty() || file.find_first_of("/\\:\0",0,4)!=std::string::npos)throw std::runtime_error("Invalid community profile name");
         import_path=Common::FS::PathToUTF8String(base_dir/std::filesystem::u8path(file));import_root=selection["root"].asString();
+        } else if(!game_path.empty() && !content_identity.empty()) {
+            const auto profile=VideoCommon::ShaderProfile::FindGameProfile(std::filesystem::u8path(game_path),title_id);
+            if(!profile.empty()) {
+                import_path=Common::FS::PathToUTF8String(profile);
+                import_root=Common::FS::PathToUTF8String(std::filesystem::u8path(game_path).parent_path());
+                LOG_INFO(Render_Vulkan,"Detected shader profile: {}",import_path);
+            }
+        }
+        if(!import_path.empty()) {
         u32 flags{};unsigned bit{};
         for(bool feature:{dynamic_features.has_extended_dynamic_state,dynamic_features.has_extended_dynamic_state_2,
             dynamic_features.has_extended_dynamic_state_2_extra,dynamic_features.has_extended_dynamic_state_3_blend,
@@ -907,10 +928,9 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
            std::filesystem::exists(base_dir/"community.imported")) {
             try {
                 const auto marker=VideoCommon::ShaderProfile::ParseMetadata(read_small(base_dir/"community.imported",16384));
-                if(marker["schema"].asUInt64()==2 && marker["stamp"].asString()==import_stamp &&
-                   marker["status"].asString()=="ready-compatible-subset" && marker["native_failures"].asUInt64()==0 &&
-                   marker["native_completed"].asUInt64()==marker["native_queued"].asUInt64())import_path.clear();
+                if(VideoCommon::ShaderProfile::ReusableImportMarker(marker,import_stamp))import_path.clear();
             } catch(const std::exception&) { /* Older/partial markers require fresh validation. */ }
+        }
         }
     } catch(const std::exception& error){LOG_WARNING(Render_Vulkan,"Community profile selection rejected: {}",error.what());import_path.clear();}
     bool import_records_ready{};
@@ -1025,8 +1045,10 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
 
     // Wait until all records are known before choosing a candidate. Equality of
     // keys alone cannot select among different constants, texture answers or HLE replacements.
+    const char* alias_audit_path = std::getenv("NXEMU_NXSHADER_AUDIT_HLE_ALIASES");
     const char* variant_audit_path = std::getenv("NXEMU_NXSHADER_AUDIT_VARIANTS");
-    struct AuditPair { GraphicsPipelineCacheKey key; std::vector<FileEnvironment> first, second; };
+    if (alias_audit_path && *alias_audit_path) variant_audit_path = alias_audit_path;
+    struct AuditPair { GraphicsPipelineCacheKey key; std::vector<FileEnvironment> first, second; GraphicsPipelineCacheKey second_key; };
     std::vector<AuditPair> audit_pairs;
     size_t audit_bytes{}; bool audit_truncated{};
     const auto clone=[](const auto& envs) {
@@ -1034,6 +1056,34 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         for(const auto& env:envs)result.push_back(env.CloneForDiagnostic());
         return result;
     };
+    // Explicit offline diagnostic: compare both HLE hints using their own key and
+    // captured environment. This never changes which entries are safe to warm.
+    if (alias_audit_path && *alias_audit_path) {
+        using EngineHint = Tegra::Engines::Maxwell3D::EngineHint;
+        std::unordered_map<GraphicsPipelineCacheKey, size_t> plain;
+        for (size_t i = 0; i < graphics_inputs.size(); ++i) {
+            auto key = Normalized(graphics_inputs[i].key);
+            if (key.state.app_stage == EngineHint::None) plain.try_emplace(key, i);
+        }
+        std::unordered_set<GraphicsPipelineCacheKey> seen;
+        for (const auto& input : graphics_inputs) {
+            auto key = Normalized(input.key);
+            if (key.state.app_stage != EngineHint::OnHLEMacro ||
+                std::ranges::any_of(input.envs, [](const auto& env) { return env.HasHLEMacroState(); })) continue;
+            auto twin = key;
+            twin.state.app_stage.Assign(EngineHint::None);
+            const auto it = plain.find(twin);
+            if (it == plain.end() || !seen.insert(key).second) continue;
+            const auto& other = graphics_inputs[it->second].envs;
+            size_t bytes{};
+            for (const auto& env : input.envs) bytes += env.CompilationInputBytes();
+            for (const auto& env : other) bytes += env.CompilationInputBytes();
+            if (audit_pairs.size() < 256 && bytes <= 32*1024*1024ULL-audit_bytes) {
+                audit_bytes += bytes;
+                audit_pairs.push_back({key, clone(input.envs), clone(other), twin});
+            } else audit_truncated = true;
+        }
+    }
     StartupPipelineVariants<GraphicsPipelineCacheKey, std::vector<FileEnvironment>> graphics_variants;
     StartupPipelineVariants<ComputePipelineCacheKey, FileEnvironment> compute_variants;
     for (auto& input : compute_inputs) {
@@ -1051,7 +1101,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             if(!equal && variant_audit_path && *variant_audit_path) {
                 size_t bytes{};for(const auto& env:a)bytes+=env.CompilationInputBytes();for(const auto& env:b)bytes+=env.CompilationInputBytes();
                 if(audit_pairs.size()<256 && bytes<=32*1024*1024ULL-audit_bytes) {
-                    audit_bytes+=bytes;audit_pairs.push_back({input.key,clone(a),clone(b)});
+                    audit_bytes+=bytes;audit_pairs.push_back({input.key,clone(a),clone(b),input.key});
                 } else audit_truncated=true;
             }
             return equal;
@@ -1064,16 +1114,17 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         size_t same{},different{},failed{},nondeterministic{},unsupported{};
         for(auto& pair:audit_pairs) {
             if(stop_loading.stop_requested()){report["cancelled"]=true;break;}
-            const auto compile=[&](auto envs,auto& hashes){
+            const auto compile=[&](const auto& key,auto envs,auto& hashes){
                 ShaderPools pools;VideoCommon::ShaderProfile::Audit::Context audit(hashes);
                 boost::container::static_vector<Shader::Environment*,Maxwell::MaxShaderProgram> pointers;
                 for(auto& env:envs)pointers.push_back(&env);
-                auto pipeline=CreateGraphicsPipeline(pools,pair.key,MakeSpan(pointers),nullptr,false);
+                auto pipeline=CreateGraphicsPipeline(pools,key,MakeSpan(pointers),nullptr,false);
                 return pipeline && pipeline->IsBuilt() && !hashes.spirv.empty() && hashes.interfaces_captured;
             };
             VideoCommon::ShaderProfile::Audit::Capture a,b,control;
-            const bool valid=compile(clone(pair.first),a) && compile(clone(pair.first),control) && compile(clone(pair.second),b);
+            const bool valid=compile(pair.key,clone(pair.first),a) && compile(pair.key,clone(pair.first),control) && compile(pair.second_key,clone(pair.second),b);
             JsonValue result(JsonValueType::Object);result["key_hash"]=std::to_string(pair.key.Hash());
+            result["second_key_hash"]=std::to_string(pair.second_key.Hash());
             result["native_creations_succeeded"]=valid;
             result["difference_masks"]=JsonValue(JsonValueType::Array);
             for(size_t i=0;i<pair.first.size() && i<pair.second.size();++i)
@@ -1097,7 +1148,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         file<<VideoCommon::ShaderProfile::Canonical(report);
         LOG_INFO(Render_Vulkan,"Startup environment audit: identical={} different={} failed={} nondeterministic={} truncated={}",same,different,failed,nondeterministic,audit_truncated);
     }
-    const auto ambiguous_compute = compute_variants.ConsumeSafe(queue_compute);
+    const auto ambiguous_compute = compute_variants.ConsumeSafe(queue_compute,[&](const auto& key){if(runtime_report)quarantined_compute.Reject(key);});
     const auto ambiguous_graphics = graphics_variants.ConsumeSafe([&](const auto& key, auto envs) {
         using EngineHint = Tegra::Engines::Maxwell3D::EngineHint;
         if (key.state.app_stage != EngineHint::OnHLEMacro) plain_keys.insert(key);
@@ -1107,7 +1158,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             return;
         }
         queue_graphics(key, std::move(envs));
-    });
+    },[&](const auto& key){if(runtime_report)quarantined_graphics.Reject(key);});
     if(ambiguous_compute || ambiguous_graphics)
         LOG_WARNING(Render_Vulkan, "Skipped ambiguous startup keys: graphics={} compute={}; keeping every disk variant for investigation and normal runtime compilation", ambiguous_graphics, ambiguous_compute);
 
@@ -1148,8 +1199,8 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
 
     // This marker means the compatible subset was imported AND all its queued
     // native creations completed. It is never written merely after queueing work.
-    if (import_records_ready && !import_stamp.empty() && !stop_loading.stop_requested() &&
-        state.built == state.total && state.failures == 0) {
+    if (VideoCommon::ShaderProfile::CanPublishImport(import_records_ready,import_stamp,stop_loading.stop_requested(),
+        state.built,state.total,state.failures)) {
         auto temporary = base_dir / "community.imported.partial";
         JsonValue status(JsonValueType::Object);
         status["schema"]=2U;status["stamp"]=import_stamp;status["status"]="ready-compatible-subset";
@@ -1190,6 +1241,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             if (!file) LOG_WARNING(Render_Vulkan, "Cannot write NXShader timing report");
         }
     }
+    if(runtime_report)runtime_report->active=true;
 }
 
 GraphicsPipeline* PipelineCache::WaitForCurrentGraphicsPipeline() {
@@ -1289,6 +1341,9 @@ void PipelineCache::SerializeGraphicsEnvironments(const GraphicsPipelineCacheKey
                 env_ptrs.push_back(&envs[index]);
             }
         }
+        VideoCommon::ShaderProfile::Runtime::Span cache_write(
+            runtime_report && runtime_report->active ? runtime_report->Begin(key.Hash(),false,quarantined_graphics.Contains(key)) : nullptr,
+            VideoCommon::ShaderProfile::Runtime::Work::DiskCache);
         SerializePipeline(key, env_ptrs, pipeline_cache_filename, CACHE_VERSION);
     });
 }
@@ -1314,7 +1369,8 @@ void PipelineCache::FinishGraphicsPipeline(const GraphicsPipelineCacheKey& key) 
         if (pipeline) {
             GraphicsPipelineCacheKey normalized_key{key};
             NormalizeCbufSizes(normalized_key);
-            if (normalized_key != key && graphics_cache.try_emplace(normalized_key, pipeline).second) {
+            if (PublishNormalizedPipelineAlias(key, normalized_key, pipeline,
+                                               graphics_cache, hle_unreplaced_keys)) {
                 pipeline->SetSharedKey(normalized_key);
             }
             SerializeGraphicsEnvironments(key, job->environments);
@@ -1375,6 +1431,9 @@ GraphicsPipeline* PipelineCache::CurrentGraphicsPipelineSlowPath() {
         if (!job->build.IsComplete() && ShouldWaitForAsyncPipeline()) {
             withdrawn = WithdrawGraphicsPipeline(job);
             if (!withdrawn) {
+                VideoCommon::ShaderProfile::Runtime::Span wait_timer(
+                    runtime_report ? runtime_report->Begin(job->key.Hash(),false,quarantined_graphics.Contains(job->key)) : nullptr,
+                    VideoCommon::ShaderProfile::Runtime::Work::Wait);
                 job->build.Wait();
             }
         }
@@ -1405,7 +1464,10 @@ GraphicsPipeline* PipelineCache::CurrentGraphicsPipelineSlowPath() {
                 // cannot be skipped, unless a compiler is already building the first one.
                 withdrawn = WithdrawGraphicsPipeline(job);
                 if (!withdrawn) {
-                    job->build.Wait();
+                    VideoCommon::ShaderProfile::Runtime::Span wait_timer(
+                    runtime_report ? runtime_report->Begin(job->key.Hash(),false,quarantined_graphics.Contains(job->key)) : nullptr,
+                    VideoCommon::ShaderProfile::Runtime::Work::Wait);
+                job->build.Wait();
                 }
             }
             if (!withdrawn) {
@@ -1427,18 +1489,33 @@ GraphicsPipeline* PipelineCache::CurrentGraphicsPipelineSlowPath() {
             }
         }
     }
+    if(runtime_report)quarantined_graphics.Requested(graphics_key);
     const auto [pair, is_new]{graphics_cache.try_emplace(graphics_key)};
     auto& pipeline{pair->second};
     if (is_new) {
-        if (use_asynchronous_shaders && !ShouldWaitForAsyncPipeline() &&
-            graphics_key.state.app_stage != Tegra::Engines::Maxwell3D::EngineHint::OnHLEMacro &&
-            QueueGraphicsPipeline(graphics_key)) {
-            skipped_unfinished = true;
-            return nullptr;
+        // Check a proven replacement-free HLE twin before queuing a plain
+        // asynchronous build. The synchronous constructor already did this,
+        // but the worker path otherwise bypassed that reuse entirely.
+        using EngineHint = Tegra::Engines::Maxwell3D::EngineHint;
+        if (graphics_key.state.app_stage == EngineHint::None) {
+            auto twin = graphics_key;
+            twin.state.app_stage.Assign(EngineHint::OnHLEMacro);
+            pipeline = FindUnreplacedPipelineAlias(twin, graphics_cache, hle_unreplaced_keys);
+            if (pipeline) {
+                pipeline->SetSharedKey(graphics_key);
+            }
         }
-        // A draw that cannot be skipped waits for its pipeline, which goes before every pipeline
-        // already queued. Several such draws in a row still compile in parallel.
-        pipeline = CreateGraphicsPipeline(use_asynchronous_shaders && ShouldWaitForAsyncPipeline());
+        if (!pipeline) {
+            if (use_asynchronous_shaders && !ShouldWaitForAsyncPipeline() &&
+                graphics_key.state.app_stage != EngineHint::OnHLEMacro &&
+                QueueGraphicsPipeline(graphics_key)) {
+                skipped_unfinished = true;
+                return nullptr;
+            }
+            // A draw that cannot be skipped waits for its pipeline, which goes
+            // before every pipeline already queued.
+            pipeline = CreateGraphicsPipeline(use_asynchronous_shaders && ShouldWaitForAsyncPipeline());
+        }
     }
     if (!pipeline) {
         return nullptr;
@@ -1449,8 +1526,8 @@ GraphicsPipeline* PipelineCache::CurrentGraphicsPipelineSlowPath() {
         // must find this pipeline instead of building it again.
         GraphicsPipelineCacheKey normalized_key{graphics_key};
         NormalizeCbufSizes(normalized_key);
-        if (normalized_key != graphics_key &&
-            graphics_cache.try_emplace(normalized_key, pipeline).second) {
+        if (PublishNormalizedPipelineAlias(graphics_key, normalized_key, pipeline,
+                                           graphics_cache, hle_unreplaced_keys)) {
             pipeline->SetSharedKey(normalized_key);
         }
     }
@@ -1513,6 +1590,9 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
     ShaderPools& pools, const GraphicsPipelineCacheKey& key,
     std::span<Shader::Environment* const> envs, PipelineStatistics* statistics,
     bool build_in_parallel, const std::function<bool()>* skip_build) try {
+    namespace Runtime = VideoCommon::ShaderProfile::Runtime;
+    Runtime::Context runtime_context(runtime_report && runtime_report->active ? runtime_report->Begin(key.Hash(),false,quarantined_graphics.Contains(key)) : nullptr);
+    Runtime::Span runtime_timer(Runtime::current,Runtime::Work::Compiler);
     namespace Timing = VideoCommon::ShaderProfile::Timing;
     Timing::Timer compiler_timer(Timing::current, Timing::Phase::CompilerWall);
     auto hash = key.Hash();
@@ -1892,6 +1972,9 @@ std::shared_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(bool urg
                 env_ptrs.push_back(&envs[index]);
             }
         }
+        VideoCommon::ShaderProfile::Runtime::Span cache_write(
+            runtime_report && runtime_report->active ? runtime_report->Begin(key.Hash(),false,quarantined_graphics.Contains(key)) : nullptr,
+            VideoCommon::ShaderProfile::Runtime::Work::DiskCache);
         SerializePipeline(key, env_ptrs, pipeline_cache_filename, CACHE_VERSION);
     });
     return pipeline;
@@ -1911,6 +1994,9 @@ std::unique_ptr<ComputePipeline> PipelineCache::CreateComputePipeline(
         return pipeline;
     }
     serialization_thread.QueueWork([this, key, env_ = std::move(env)] {
+        VideoCommon::ShaderProfile::Runtime::Span cache_write(
+            runtime_report && runtime_report->active ? runtime_report->Begin(key.Hash(),true,quarantined_compute.Contains(key)) : nullptr,
+            VideoCommon::ShaderProfile::Runtime::Work::DiskCache);
         SerializePipeline(key, std::array<const GenericEnvironment*, 1>{&env_},
                           pipeline_cache_filename, CACHE_VERSION);
     });
@@ -1920,6 +2006,9 @@ std::unique_ptr<ComputePipeline> PipelineCache::CreateComputePipeline(
 std::unique_ptr<ComputePipeline> PipelineCache::CreateComputePipeline(
     ShaderPools& pools, const ComputePipelineCacheKey& key, Shader::Environment& env,
     PipelineStatistics* statistics, bool build_in_parallel) try {
+    namespace Runtime = VideoCommon::ShaderProfile::Runtime;
+    Runtime::Context runtime_context(runtime_report && runtime_report->active ? runtime_report->Begin(key.Hash(),true,quarantined_compute.Contains(key)) : nullptr);
+    Runtime::Span runtime_timer(Runtime::current,Runtime::Work::Compiler);
     namespace Timing = VideoCommon::ShaderProfile::Timing;
     Timing::Timer compiler_timer(Timing::current, Timing::Phase::CompilerWall);
     auto hash = key.Hash();

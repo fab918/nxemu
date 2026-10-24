@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2019 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "yuzu_video_core/shader_profile_runtime.h"
 #pragma once
 
 #include <array>
@@ -119,6 +120,7 @@ public:
     ~PipelineCache();
 
     void WaitForBuilds();
+    void RecordDiagnosticFrame();
 
     [[nodiscard]] GraphicsPipeline* CurrentGraphicsPipeline();
 
@@ -134,7 +136,7 @@ public:
     [[nodiscard]] ComputePipeline* CurrentComputePipeline();
 
     void LoadDiskResources(u64 title_id, std::stop_token stop_loading,
-                           const VideoCore::DiskResourceLoadCallback& callback, std::string_view content_identity = {});
+                           const VideoCore::DiskResourceLoadCallback& callback, std::string_view content_identity = {}, std::string_view game_path = {});
 
 private:
     struct PendingGraphicsPipeline {
@@ -217,6 +219,9 @@ private:
     /// generated code through those replacements, so these match their non-HLE twin.
     std::unordered_set<GraphicsPipelineCacheKey> hle_unreplaced_keys;
 
+    std::unique_ptr<VideoCommon::ShaderProfile::Runtime::Report> runtime_report;
+    VideoCommon::ShaderProfile::Runtime::QuarantinedKeys<GraphicsPipelineCacheKey> quarantined_graphics;
+    VideoCommon::ShaderProfile::Runtime::QuarantinedKeys<ComputePipelineCacheKey> quarantined_compute;
     ShaderPools main_pools;
 
     Shader::Profile profile;

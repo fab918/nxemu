@@ -1013,6 +1013,7 @@ RasterizerVulkan::FrameDraws RasterizerVulkan::TakeFrameDraws() {
 }
 
 void RasterizerVulkan::TickFrame() {
+    pipeline_cache.RecordDiagnosticFrame();
     draw_counter = 0;
     fence_manager.TickFrame();
     staging_pool.TickFrame();
@@ -1090,8 +1091,8 @@ std::optional<FramebufferTextureInfo> RasterizerVulkan::AccelerateDisplay(
 }
 
 void RasterizerVulkan::LoadDiskResources(u64 title_id, std::stop_token stop_loading,
-                                         const VideoCore::DiskResourceLoadCallback& callback, std::string_view content_identity) {
-    pipeline_cache.LoadDiskResources(title_id, stop_loading, callback, content_identity);
+                                         const VideoCore::DiskResourceLoadCallback& callback, std::string_view content_identity, [[maybe_unused]] std::string_view game_path) {
+    pipeline_cache.LoadDiskResources(title_id, stop_loading, callback, content_identity, game_path);
 }
 
 void RasterizerVulkan::FlushWork() {

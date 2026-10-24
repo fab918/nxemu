@@ -42,21 +42,11 @@ bool VideoManager::ProcessShaderProfile(const ShaderProfileTask & task, IShaderP
         if (!task.title_id || !task.profile || !task.game_root) throw std::runtime_error("Missing shader profile task inputs");
         if (task.importing)
         {
-            size_t unresolved{};
-            const auto recipes = VideoCommon::ShaderProfile::Read(path(task.profile), path(task.game_root), task.title_id, &unresolved, nullptr,
-                                                                  [&](size_t done, size_t total) { return progress.ProfileProgress("verify", done, total); });
-            for (const auto & recipe : recipes)
-            {
-                if (recipe.compute)
-                    ++result.compute;
-                else
-                {
-                    if (!Vulkan::GuestPipelineState::FromWords(recipe.guest_words)) throw std::runtime_error("Unsupported guest state");
-                    ++result.graphics;
-                }
-            }
-            result.unresolved = unresolved;
-            result.bytes = std::filesystem::file_size(path(task.profile));
+            if(!progress.ProfileProgress("profile",0,1))throw std::runtime_error("Shader profile operation cancelled");
+            const auto metadata=VideoCommon::ShaderProfile::Inspect(path(task.profile),task.title_id);
+            if(!progress.ProfileProgress("profile",1,1))throw std::runtime_error("Shader profile operation cancelled");
+            result.graphics=metadata.graphics;result.compute=metadata.compute;
+            result.unresolved=metadata.unresolved;result.bytes=metadata.bytes;
             return true;
         }
         VideoCommon::ShaderProfile::ExportOptions options;
@@ -204,7 +194,8 @@ struct VideoManager::Impl
                         m_gpuCore->Renderer().ReadRasterizer()->LoadDiskResources(
                             program_id, stop_token, notify_disk_cache_progress,
                             VideoCommon::ShaderProfile::LoadedContentIdentity(m_modules.Systemloader(), program_id,
-                                std::filesystem::u8path(g_settings->GetString(NXCoreSetting::GameFile))));
+                                std::filesystem::u8path(g_settings->GetString(NXCoreSetting::GameFile))),
+                            g_settings->GetString(NXCoreSetting::GameFile));
                     } catch (const std::exception& exception) {
                         // std::async stores exceptions in its future. If one escapes here,
                         // Start is never called and guest GPU requests wait indefinitely.

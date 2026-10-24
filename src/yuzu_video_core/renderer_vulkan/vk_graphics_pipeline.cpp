@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2021 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "yuzu_video_core/shader_profile_runtime.h"
 #include <algorithm>
 #include "yuzu_video_core/shader_profile_metrics.h"
 #include <cstring>
@@ -505,7 +506,8 @@ GraphicsPipeline::GraphicsPipeline(
             }
         }
     }
-    auto func{[this, shader_notify, &render_pass_cache, &descriptor_pool, pipeline_statistics] {
+    auto func{[this, shader_notify, &render_pass_cache, &descriptor_pool, pipeline_statistics, runtime_event=VideoCommon::ShaderProfile::Runtime::current] {
+        VideoCommon::ShaderProfile::Runtime::Span runtime_timer(runtime_event,VideoCommon::ShaderProfile::Runtime::Work::Native);
         bool success{};
         try {
             DescriptorLayoutBuilder builder{MakeBuilder(
@@ -603,6 +605,7 @@ GraphicsPipeline::GraphicsPipeline(
             LOG_ERROR(Render_Vulkan, "Graphics pipeline {:016x} build failed: {}", key.Hash(),
                       exception.what());
         }
+        VideoCommon::ShaderProfile::Runtime::NativeResult(runtime_event,success);
         {
             std::scoped_lock lock{build_mutex};
             is_built.store(success, std::memory_order_release);

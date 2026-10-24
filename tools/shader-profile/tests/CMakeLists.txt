@@ -115,3 +115,27 @@ target_compile_definitions(recipe-projection PRIVATE NOMINMAX WIN32_LEAN_AND_MEA
 if(MSVC)
     target_compile_options(recipe-projection PRIVATE /utf-8 /EHsc)
 endif()
+
+add_executable(quarantine-runtime quarantine_runtime.cpp)
+target_link_libraries(quarantine-runtime PRIVATE profile-storage Threads::Threads)
+if(MSVC)
+    target_compile_options(quarantine-runtime PRIVATE /utf-8 /EHsc)
+endif()
+add_test(NAME quarantine-runtime COMMAND quarantine-runtime "${CMAKE_CURRENT_BINARY_DIR}/runtime-report.json")
+
+add_executable(cache-inventory cache_inventory.cpp)
+target_link_libraries(cache-inventory PRIVATE profile-storage)
+target_sources(cache-inventory PRIVATE "${NXEMU_ROOT}/src/yuzu_common/cityhash.cpp")
+if(MSVC)
+    target_compile_options(cache-inventory PRIVATE /utf-8 /EHsc)
+endif()
+
+add_executable(resource-gap-audit resource_gap_audit.cpp
+    "${NXEMU_ROOT}/src/yuzu_video_core/renderer_vulkan/fixed_pipeline_state.cpp"
+    "${NXEMU_ROOT}/src/yuzu_video_core/surface.cpp"
+    "${NXEMU_ROOT}/src/yuzu_common/cityhash.cpp")
+target_link_libraries(resource-gap-audit PRIVATE profile-storage)
+target_compile_definitions(resource-gap-audit PRIVATE FMT_HEADER_ONLY)
+if(MSVC)
+    target_compile_options(resource-gap-audit PRIVATE /utf-8 /EHsc)
+endif()

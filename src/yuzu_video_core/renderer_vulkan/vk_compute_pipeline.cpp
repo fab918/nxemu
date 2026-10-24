@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2019 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "yuzu_video_core/shader_profile_runtime.h"
 #include <algorithm>
 #include "yuzu_video_core/shader_profile_metrics.h"
 #include <cstring>
@@ -50,7 +51,8 @@ ComputePipeline::ComputePipeline(const Device& device_, vk::PipelineCache& pipel
     writes_images = std::ranges::any_of(info.image_descriptors, is_written) ||
                     std::ranges::any_of(info.image_buffer_descriptors, is_written);
 
-    auto func{[this, &descriptor_pool, shader_notify, pipeline_statistics] {
+    auto func{[this, &descriptor_pool, shader_notify, pipeline_statistics, runtime_event=VideoCommon::ShaderProfile::Runtime::current] {
+        VideoCommon::ShaderProfile::Runtime::Span runtime_timer(runtime_event,VideoCommon::ShaderProfile::Runtime::Work::Native);
         try {
             DescriptorLayoutBuilder builder{device};
             builder.Add(info, VK_SHADER_STAGE_COMPUTE_BIT);
@@ -97,6 +99,7 @@ ComputePipeline::ComputePipeline(const Device& device_, vk::PipelineCache& pipel
             LOG_ERROR(Render_Vulkan, "Compute pipeline build failed: {}", exception.what());
             build_failed = true;
         }
+        VideoCommon::ShaderProfile::Runtime::NativeResult(runtime_event,!build_failed);
         std::scoped_lock lock{build_mutex};
         is_built = true;
         build_condvar.notify_one();

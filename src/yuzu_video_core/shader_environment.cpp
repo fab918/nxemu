@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2021 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "yuzu_video_core/shader_profile_sph.h"
 #include <algorithm>
 #include <boost/container/static_vector.hpp>
 #include <cstring>
@@ -903,7 +904,7 @@ u32 FileEnvironment::CompilationDifferenceMask(const FileEnvironment& o) const n
        texture_bound!=o.texture_bound || read_lowest!=o.read_lowest || read_highest!=o.read_highest ||
        initial_offset!=o.initial_offset || viewport_transform_state!=o.viewport_transform_state ||
        stage!=o.stage || start_address!=o.start_address || is_proprietary_driver!=o.is_proprietary_driver)mask|=64;
-    if(gp_passthrough_mask!=o.gp_passthrough_mask || std::memcmp(&sph,&o.sph,sizeof(sph)))mask|=128;
+    if(gp_passthrough_mask!=o.gp_passthrough_mask || ShaderProfile::CanonicalGuestHeader(sph)!=ShaderProfile::CanonicalGuestHeader(o.sph))mask|=128;
     return mask;
 }
 

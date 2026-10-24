@@ -26,19 +26,28 @@ public:
         else if (!it->second.ambiguous && !equal(it->second.inputs, inputs))
             it->second.ambiguous = true;
     }
-    template <class F>
-    size_t ConsumeSafe(F consume)
+    template <class F, class Rejected>
+    size_t ConsumeSafe(F consume, Rejected reject)
     {
         size_t rejected{};
         for (auto & [key, candidate] : entries)
         {
             if (candidate.ambiguous)
+            {
                 ++rejected;
+                reject(key);
+            }
             else
                 consume(key, std::move(candidate.inputs));
         }
         entries.clear();
         return rejected;
+    }
+
+    template <class F>
+    size_t ConsumeSafe(F consume)
+    {
+        return ConsumeSafe(std::move(consume), [](const Key &) {});
     }
 
 private:

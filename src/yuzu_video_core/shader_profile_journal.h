@@ -3,6 +3,7 @@
 #include "yuzu_common/common_types.h"
 #include "yuzu_video_core/shader_profile_hash.h"
 #include <array>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -64,15 +65,32 @@ inline Contents Read(const std::filesystem::path & path)
     result.incomplete_tail = size != result.valid_bytes;
     return result;
 }
-// Called only by the existing cache serialization worker, never on a draw.
-inline void Append(const std::filesystem::path & path, const Entry & entry)
+struct WriteMetrics
 {
+    u64 frames{}, bytes{}, encoding_ns{}, io_ns{}, cpu_ns{}, cpu_samples{}, cpu_cycles{}, cycle_samples{};
+};
+// Called only by the existing cache serialization worker, never on a draw.
+inline void Append(const std::filesystem::path & path, const Entry & entry, WriteMetrics * metrics = nullptr)
+{
+    const auto started = metrics ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const bool fresh = !std::filesystem::exists(path);
     std::ofstream out(path, std::ios::binary | std::ios::app);
     if (fresh) out.write(Magic.data(), Magic.size());
+    const auto encode_start = metrics ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const auto bytes = Encode(entry);
+    const auto encoded = metrics ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     out.write(bytes.data(), bytes.size());
     out.flush();
+    out.close();
     if (!out) throw std::runtime_error("Cannot append guest recipe journal");
+    if (metrics)
+    {
+        const auto finished = std::chrono::steady_clock::now();
+        const auto ns = [](auto duration) { return std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count(); };
+        ++metrics->frames;
+        metrics->bytes += bytes.size() + (fresh ? Magic.size() : 0);
+        metrics->encoding_ns += ns(encoded - encode_start);
+        metrics->io_ns += ns(encode_start - started) + ns(finished - encoded);
+    }
 }
 } // namespace VideoCommon::ShaderProfile::Journal

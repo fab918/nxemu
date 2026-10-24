@@ -427,7 +427,7 @@ std::string PackCompact(const JsonValue & profile)
     return Pack(out.bytes);
 }
 
-std::vector<Recipe> ReadCompact(std::string_view payload, const std::filesystem::path & root, u64 title_id, size_t * unresolved_count, Timing::Metrics * timings, const ResourceProgress & progress)
+static std::vector<Recipe> ReadCompactImpl(std::string_view payload, const std::filesystem::path & root, u64 title_id, size_t * unresolved_count, Timing::Metrics * timings, const ResourceProgress & progress, bool metadata_only)
 {
     Timing::Timer schema_timer(timings, Timing::Phase::SchemaAndLocators);
     Reader in{payload};
@@ -609,6 +609,11 @@ std::vector<Recipe> ReadCompact(std::string_view payload, const std::filesystem:
     if (unresolved_count) *unresolved_count = unresolved;
     // Parsing and all table references finish before touching local resources.
     schema_timer.Stop();
+    if(metadata_only) {
+        std::vector<Recipe> metadata;metadata.reserve(pending.size());
+        for(auto& p:pending)metadata.push_back(std::move(p.recipe));
+        return metadata;
+    }
     Timing::Timer resources_timer(timings, Timing::Phase::ResourceTotal);
     std::vector<std::string> codes(programs.size());
     size_t completed_resources{};
@@ -691,6 +696,22 @@ std::vector<Recipe> ReadCompact(std::string_view payload, const std::filesystem:
         timings->Add(Timing::Counter::Recipes, result.size());
         timings->Add(Timing::Counter::ResourceGroups, groups.size());
     }
+    return result;
+}
+std::vector<Recipe> ReadCompact(std::string_view payload,const std::filesystem::path& root,u64 title_id,
+    size_t* unresolved_count,Timing::Metrics* timings,const ResourceProgress& progress) {
+    return ReadCompactImpl(payload,root,title_id,unresolved_count,timings,progress,false);
+}
+ProfileInspection Inspect(const std::filesystem::path& path,u64 title_id) {
+    const auto size=std::filesystem::file_size(path);
+    Check(size<=33*1024*1024,"Profile size limit");
+    std::ifstream file(path,std::ios::binary);std::string packed(static_cast<size_t>(size),'\0');
+    Check(bool(file.read(packed.data(),static_cast<std::streamsize>(size))) && file.peek()==std::char_traits<char>::eof(),"Cannot read profile metadata");
+    auto payload=Unpack(packed);
+    if(!payload.starts_with("NXSHBIN3"))payload=Unpack(PackCompact(ParseMetadata(payload,32*1024*1024)));
+    ProfileInspection result;result.bytes=size;
+    const auto recipes=ReadCompactImpl(payload,{},title_id,&result.unresolved,nullptr,{},true);
+    for(const auto& recipe:recipes)if(recipe.compute)++result.compute;else ++result.graphics;
     return result;
 }
 } // namespace VideoCommon::ShaderProfile

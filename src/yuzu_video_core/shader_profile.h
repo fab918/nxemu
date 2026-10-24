@@ -23,6 +23,9 @@ struct Recipe {
     u32 texture_table_size{};
     std::vector<std::string> environments;
 };
+struct ProfileInspection { size_t graphics{},compute{},unresolved{},bytes{}; };
+// Structure/title validation only. Reads no game resources and creates no pipelines.
+ProfileInspection Inspect(const std::filesystem::path& profile,u64 title_id);
 // Only metadata is accepted from the profile; all instruction bytes come from game_root.
 std::vector<Recipe> Read(const std::filesystem::path& path,
                          const std::filesystem::path& game_root, u64 title_id,

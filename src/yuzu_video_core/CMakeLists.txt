@@ -13,6 +13,10 @@ add_library(video_core STATIC
     pipeline_cache_store.cpp
     pipeline_cache_store.h
     shader_profile_audit.h
+    shader_profile_location.h
+    shader_profile_runtime.h
+    shader_profile_sph.h
+    shader_profile_import_status.h
     shader_profile_identity.h
     shader_profile_validation.h
     renderer_vulkan/startup_pipeline_variants.h
