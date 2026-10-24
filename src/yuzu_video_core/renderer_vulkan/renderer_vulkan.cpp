@@ -26,6 +26,7 @@
 #include "yuzu_video_core/present.h"
 #include "yuzu_video_core/renderer_vulkan/present/util.h"
 #include "yuzu_video_core/renderer_vulkan/renderer_vulkan.h"
+#include "yuzu_video_core/renderer_vulkan/vk_diagnostic_trace.h"
 #include "yuzu_video_core/renderer_vulkan/vk_blit_screen.h"
 #include "yuzu_video_core/renderer_vulkan/vk_rasterizer.h"
 #include "yuzu_video_core/renderer_vulkan/vk_scheduler.h"
@@ -130,6 +131,8 @@ try :
     applet_frame(),
     wm{}
 {
+    Diagnostic::Record(Diagnostic::Event::RendererCreate, Diagnostic::Id(this),
+                       Diagnostic::Id(&display), Diagnostic::Id(&scheduler));
     if (videoSettings.renderer_force_max_clock && device.ShouldBoostClocks())
     {
         turbo_mode.emplace(display.GetInstance(), display.GetDispatch());
@@ -146,6 +149,7 @@ catch (const vk::Exception & exception)
 
 RendererVulkan::~RendererVulkan()
 {
+    Diagnostic::Record(Diagnostic::Event::RendererDestroy, Diagnostic::Id(this));
     scheduler.RegisterOnSubmit([] {});
     rasterizer.WaitForShaderBuilds();
     scheduler.Finish();
@@ -163,8 +167,11 @@ void RendererVulkan::Composite(std::span<const Tegra::FramebufferConfig> framebu
         return;
     }
 
+    Diagnostic::Record(Diagnostic::Event::CompositeBegin, Diagnostic::Id(this), framebuffers.size());
+
     SCOPE_EXIT
     {
+        Diagnostic::Record(Diagnostic::Event::CompositeEnd, Diagnostic::Id(this));
         render_window.OnFrameDisplayed();
     };
 

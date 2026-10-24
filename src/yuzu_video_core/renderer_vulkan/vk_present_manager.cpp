@@ -7,6 +7,7 @@
 #include "frontend/emu_window.h"
 #include "yuzu_video_core/renderer_vulkan/vk_display.h"
 #include "yuzu_video_core/renderer_vulkan/vk_present_manager.h"
+#include "yuzu_video_core/renderer_vulkan/vk_diagnostic_trace.h"
 #include "yuzu_video_core/renderer_vulkan/vk_scheduler.h"
 #include "yuzu_video_core/renderer_vulkan/vk_swapchain.h"
 #include "yuzu_video_core/vulkan_common/vulkan_device.h"
@@ -72,7 +73,12 @@ Frame* PresentManager::GetRenderFrame() {
     free_queue.pop();
 
     // Wait for the presentation to be finished so all frame resources are free
+    Diagnostic::Record(Diagnostic::Event::FrameWaitBegin, Diagnostic::Id(this),
+                       Diagnostic::Id(frame), Diagnostic::Id(*frame->present_done),
+                       Diagnostic::Id(*frame->render_ready));
     frame->present_done.Wait();
+    Diagnostic::Record(Diagnostic::Event::FrameWaitEnd, Diagnostic::Id(this),
+                       Diagnostic::Id(frame), Diagnostic::Id(*frame->present_done));
     frame->present_done.Reset();
 
     return frame;

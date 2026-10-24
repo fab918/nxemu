@@ -129,6 +129,7 @@ namespace
         {nullptr, "GameBrowser\\ShowDetails", &uiSettings.showGameDetails, false},
         {nullptr, "ShowEmulationControls", &uiSettings.showEmulationControls, kShowEmulationControlsDefault},
         {nullptr, "Shortcuts", &uiSettings.shortcuts},
+        {nullptr, "Controllers\\InputDevices", &uiSettings.controllerInputDevices},
         {nullptr, "Performance\\Show", &uiSettings.showPerformance, false},
         {nullptr, "Performance\\History", &uiSettings.performanceHistory, true},
         {nullptr, "Performance\\Range", &uiSettings.performanceRange, false},

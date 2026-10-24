@@ -10,6 +10,7 @@
 #include "yuzu_video_core/renderer_vulkan/present/fsr.h"
 #include "yuzu_video_core/renderer_vulkan/present/fxaa.h"
 #include "yuzu_video_core/renderer_vulkan/present/layer.h"
+#include "yuzu_video_core/renderer_vulkan/vk_diagnostic_trace.h"
 #include "yuzu_video_core/renderer_vulkan/present/present_push_constants.h"
 #include "yuzu_video_core/renderer_vulkan/present/smaa.h"
 #include "yuzu_video_core/renderer_vulkan/present/util.h"
@@ -82,7 +83,11 @@ void Layer::ConfigureDraw(PresentPushConstants* out_push_constants,
 
     // Finish any pending renderpass
     scheduler.RequestOutsideRenderPassOperationContext();
+    Diagnostic::Record(Diagnostic::Event::ResourceWaitBegin, Diagnostic::Id(this),
+                       image_index, resource_ticks[image_index], scheduler.CurrentTick());
     scheduler.Wait(resource_ticks[image_index]);
+    Diagnostic::Record(Diagnostic::Event::ResourceWaitEnd, Diagnostic::Id(this), image_index,
+                       resource_ticks[image_index]);
     SCOPE_EXIT {
         resource_ticks[image_index] = scheduler.CurrentTick();
     };

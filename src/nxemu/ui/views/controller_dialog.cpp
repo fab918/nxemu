@@ -17,6 +17,7 @@
 #include <nxemu/ui/host/ui_window.h>
 #include <nxemu/ui/i18n/translation.h>
 #include <nxemu/ui/input/input_text.h>
+#include <nxemu/settings/ui_settings.h>
 
 namespace
 {
@@ -201,7 +202,8 @@ std::string Escaped(const std::string & text)
 bool SameDevice(const IParamPackage & a, const IParamPackage & b)
 {
     return std::string(a.GetString("engine", "")) == b.GetString("engine", "") && std::string(a.GetString("guid", "")) == b.GetString("guid", "") &&
-           a.GetInt("port", 0) == b.GetInt("port", 0) && a.GetInt("pad", 0) == b.GetInt("pad", 0);
+           a.GetInt("port", 0) == b.GetInt("port", 0) && a.GetInt("pad", 0) == b.GetInt("pad", 0) &&
+           std::string(a.GetString("guid2", "")) == b.GetString("guid2", "");
 }
 
 bool Alone(const Slot & slot)
@@ -363,6 +365,16 @@ void ControllerDialog::SetConnected(int player, bool connected)
 
 void ControllerDialog::Finish(bool save)
 {
+    if (save)
+    {
+        // A selection change and Save can arrive before the next frame.
+        std::vector<std::string> changes;
+        changes.swap(m_changes);
+        for (const std::string & id : changes)
+        {
+            ApplyChange(id);
+        }
+    }
     StopListening();
     IOperatingSystem & os = Os();
     std::vector<IEmulatedController *> pads = {&os.GetEmulatedController(NpadIdType::Handheld)};
@@ -381,6 +393,12 @@ void ControllerDialog::Finish(bool save)
             SettingsStore::GetInstance().SetBool(VibrationEnabledSetting(player), m_vibration[player]);
             SettingsStore::GetInstance().SetInt(VibrationStrengthSetting(player), m_strength[player]);
         }
+        uiSettings.controllerInputDevices.clear();
+        for (const InputParams & device : m_deviceChoice)
+        {
+            uiSettings.controllerInputDevices.push_back(device.Text());
+        }
+        SaveUISetting();
         m_session.FlushSettings();
     }
     else if (m_changed)
@@ -413,9 +431,20 @@ void ControllerDialog::OnOpen()
     Document()->SetClass("stacked", WindowWidth() < kStackedBelow);
     BuildRows();
     ReadDevices();
+    const auto & choices = uiSettings.controllerInputDevices;
     for (int player = 0; player < kPlayers; ++player)
     {
-        m_device[player] = MappedDevice(player);
+        m_deviceChoice[player] = player < static_cast<int>(choices.size()) ? InputParams(choices[player]) : InputParams();
+        // Infer only old configurations without an explicit device choice.
+        if (m_deviceChoice[player].Unset())
+        {
+            const int mapped = MappedDevice(player);
+            if (mapped >= 0 && mapped < static_cast<int>(m_devices.size()))
+            {
+                m_deviceChoice[player] = m_devices[mapped];
+            }
+        }
+        m_device[player] = SelectedDevice(player);
     }
     FillDevices();
 
@@ -449,7 +478,7 @@ void ControllerDialog::OnUpdate()
         {
             for (int player = 0; player < kPlayers; ++player)
             {
-                m_device[player] = MappedDevice(player);
+                m_device[player] = SelectedDevice(player);
             }
             FillDevices();
         }
@@ -620,6 +649,19 @@ void ControllerDialog::FillTypes()
             ++index;
         }
     }
+}
+
+int ControllerDialog::SelectedDevice(int player) const
+{
+    for (size_t i = 0; i < m_devices.size(); ++i)
+    {
+        if (SameDevice(m_devices[i], m_deviceChoice[player]))
+        {
+            return static_cast<int>(i);
+        }
+    }
+    // Retain the identity so reconnecting restores the choice.
+    return 0;
 }
 
 int ControllerDialog::MappedDevice(int player) const
@@ -1049,6 +1091,7 @@ void ControllerDialog::ApplyChange(const std::string & id)
         {
             StopListening();
             m_device[m_player] = device;
+            m_deviceChoice[m_player] = m_devices[device];
             if (device != 0)
             {
                 ApplyDevice(m_player, device);

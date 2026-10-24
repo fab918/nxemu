@@ -10,6 +10,7 @@
 #include "yuzu_video_core/renderer_vulkan/present/util.h"
 #include "yuzu_video_core/renderer_vulkan/renderer_vulkan.h"
 #include "yuzu_video_core/renderer_vulkan/vk_display.h"
+#include "yuzu_video_core/renderer_vulkan/vk_diagnostic_trace.h"
 #include "yuzu_video_core/renderer_vulkan/vk_present_manager.h"
 #include "yuzu_video_core/renderer_vulkan/vk_shader_util.h"
 #include "yuzu_video_core/vulkan_common/vulkan_debug_callback.h"
@@ -89,6 +90,8 @@ Display::Display(const WindowSystemInfo& window, Core::Frontend::GraphicsContext
       memory_allocator(device), swapchain(*surface, device, width, height), window_info(window),
       presented_window(window.render_surface),
       blit_supported(CanBlitToSwapchain(device.GetPhysical(), swapchain.GetImageViewFormat())) {
+    Diagnostic::Record(Diagnostic::Event::DisplayCreate, Diagnostic::Id(this),
+                       Diagnostic::Id(&device));
     const auto& logical = device.GetLogical();
     cmdpool = logical.CreateCommandPool({
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -109,8 +112,11 @@ Display::Display(const WindowSystemInfo& window, Core::Frontend::GraphicsContext
 }
 
 Display::~Display() {
+    Diagnostic::Record(Diagnostic::Event::DisplayDestroy, Diagnostic::Id(this));
     std::scoped_lock lock{present_mutex, device.QueueMutex()};
+    Diagnostic::Record(Diagnostic::Event::DeviceIdleBegin, Diagnostic::Id(this));
     void(device.GetLogical().WaitIdle());
+    Diagnostic::Record(Diagnostic::Event::DeviceIdleEnd, Diagnostic::Id(this));
 }
 
 Frame* Display::Present(Frame* frame, const WindowSystemInfo& window) {
@@ -174,7 +180,11 @@ VkCommandBuffer Display::BeginInterfaceFrame(u32 width, u32 height, VkImage& ima
 
 void Display::WaitInterfaceIdle() {
     if (interface_submission_pending) {
+        Diagnostic::Record(Diagnostic::Event::InterfaceWaitBegin, Diagnostic::Id(this),
+                           Diagnostic::Id(*interface_done), interface_serial);
         interface_done.Wait();
+        Diagnostic::Record(Diagnostic::Event::InterfaceWaitEnd, Diagnostic::Id(this),
+                           Diagnostic::Id(*interface_done), interface_serial);
         interface_submission_pending = false;
     }
 }
@@ -196,10 +206,18 @@ void Display::EndInterfaceFrame(const DisplayArea* area) {
         .pSignalSemaphores = nullptr,
     };
     {
+        Diagnostic::Record(Diagnostic::Event::QueueLockBegin, Diagnostic::Id(this));
         std::scoped_lock lock{device.QueueMutex()};
+        Diagnostic::Record(Diagnostic::Event::QueueLockEnd, Diagnostic::Id(this));
         // Leave the fence signalled if starting/recording the frame fails.
         interface_done.Reset();
-        vk::Check(device.GetGraphicsQueue().Submit(submit_info, *interface_done));
+        Diagnostic::Record(Diagnostic::Event::InterfaceSubmitBegin, Diagnostic::Id(this),
+                           Diagnostic::Id(*interface_done), Diagnostic::Id(*interface_cmdbuf),
+                           interface_serial + 1, Diagnostic::Id(device.GetGraphicsQueue().Handle()));
+        const auto result = device.GetGraphicsQueue().Submit(submit_info, *interface_done);
+        Diagnostic::Record(Diagnostic::Event::InterfaceSubmitEnd, Diagnostic::Id(this),
+                           Diagnostic::Id(result));
+        vk::Check(result);
         // A failed submit leaves the reset fence unsignalled. Teardown must
         // only wait for work that was actually submitted successfully.
         interface_submission_pending = true;
@@ -231,7 +249,11 @@ bool Display::GameIsPresenting() const {
 
 void Display::WaitOwnPresents() {
     for (const PresentSlot& slot : slots) {
+        Diagnostic::Record(Diagnostic::Event::OwnPresentWaitBegin, Diagnostic::Id(this),
+                           Diagnostic::Id(*slot.done));
         slot.done.Wait();
+        Diagnostic::Record(Diagnostic::Event::OwnPresentWaitEnd, Diagnostic::Id(this),
+                           Diagnostic::Id(*slot.done));
     }
 }
 
@@ -287,7 +309,11 @@ void Display::PresentImage(Frame* frame, bool fresh) {
     if (!fresh) {
         slot = &slots[next_slot];
         next_slot = (next_slot + 1) % slots.size();
+        Diagnostic::Record(Diagnostic::Event::OwnPresentWaitBegin, Diagnostic::Id(this),
+                           Diagnostic::Id(*slot->done));
         slot->done.Wait();
+        Diagnostic::Record(Diagnostic::Event::OwnPresentWaitEnd, Diagnostic::Id(this),
+                           Diagnostic::Id(*slot->done));
         slot->done.Reset();
     }
     const vk::CommandBuffer cmdbuf{fresh ? frame->cmdbuf : slot->cmdbuf};
@@ -325,9 +351,19 @@ void Display::PresentImage(Frame* frame, bool fresh) {
         .pSignalSemaphores = &render_semaphore,
     };
     {
+        Diagnostic::Record(Diagnostic::Event::QueueLockBegin, Diagnostic::Id(this), fresh);
         std::scoped_lock submit_lock{device.QueueMutex()};
+        Diagnostic::Record(Diagnostic::Event::QueueLockEnd, Diagnostic::Id(this), fresh);
         const VkFence done = fresh ? *frame->present_done : *slot->done;
-        switch (const VkResult result = device.GetGraphicsQueue().Submit(submit_info, done)) {
+        Diagnostic::Record(Diagnostic::Event::PresentSubmitBegin, Diagnostic::Id(this),
+                           Diagnostic::Id(done), Diagnostic::Id(present_semaphore),
+                           fresh ? Diagnostic::Id(*frame->render_ready) : 0,
+                           Diagnostic::Id(render_semaphore), Diagnostic::Id(*cmdbuf),
+                           fresh, Diagnostic::Id(device.GetGraphicsQueue().Handle()));
+        const VkResult submit_result = device.GetGraphicsQueue().Submit(submit_info, done);
+        Diagnostic::Record(Diagnostic::Event::PresentSubmitEnd, Diagnostic::Id(this),
+                           Diagnostic::Id(submit_result));
+        switch (const VkResult result = submit_result) {
         case VK_SUCCESS:
             break;
         case VK_ERROR_DEVICE_LOST:
@@ -499,7 +535,9 @@ void Display::RecreateSwapchain(u32 width, u32 height) {
     if (!swapchain_framebuffers.empty()) {
         // Earlier presents may still be drawing into the views.
         std::scoped_lock lock{device.QueueMutex()};
+        Diagnostic::Record(Diagnostic::Event::DeviceIdleBegin, Diagnostic::Id(this));
         void(device.GetLogical().WaitIdle());
+        Diagnostic::Record(Diagnostic::Event::DeviceIdleEnd, Diagnostic::Id(this));
     }
     swapchain_framebuffers.clear();
     swapchain_views.clear();
@@ -589,7 +627,9 @@ void Display::CreateInterfaceTargets(u32 width, u32 height) {
     {
         // Presents still running may read the targets being replaced.
         std::scoped_lock lock{device.QueueMutex()};
+        Diagnostic::Record(Diagnostic::Event::DeviceIdleBegin, Diagnostic::Id(this));
         void(logical.WaitIdle());
+        Diagnostic::Record(Diagnostic::Event::DeviceIdleEnd, Diagnostic::Id(this));
     }
     interface_ready = false;
     interface_back = 0;

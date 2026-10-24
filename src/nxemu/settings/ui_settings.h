@@ -33,6 +33,7 @@ struct UISettings
     bool showGameDetails;
     bool showEmulationControls;
     StringMap shortcuts;
+    Stringlist controllerInputDevices;
     bool showPerformance;
     bool performanceHistory;
     bool performanceRange;

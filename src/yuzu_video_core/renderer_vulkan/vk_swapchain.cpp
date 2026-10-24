@@ -12,6 +12,7 @@
 #include "yuzu_common/settings.h"
 #include <nxemu-module-spec/base.h>
 #include "yuzu_video_core/renderer_vulkan/vk_swapchain.h"
+#include "yuzu_video_core/renderer_vulkan/vk_diagnostic_trace.h"
 #include "yuzu_video_core/vulkan_common/vk_enum_string_helper.h"
 #include "yuzu_video_core/vulkan_common/vulkan_device.h"
 #include "yuzu_video_core/vulkan_common/vulkan_wrapper.h"
@@ -135,9 +136,15 @@ void Swapchain::Create(VkSurfaceKHR surface_, u32 width_, u32 height_) {
 }
 
 bool Swapchain::AcquireNextImage() {
+    Diagnostic::Record(Diagnostic::Event::AcquireBegin, Diagnostic::Id(this),
+                       Diagnostic::Id(*swapchain), frame_index,
+                       Diagnostic::Id(*present_semaphores[frame_index]));
     const VkResult result = device.GetLogical().AcquireNextImageKHR(
         *swapchain, std::numeric_limits<u64>::max(), *present_semaphores[frame_index],
         VK_NULL_HANDLE, &image_index);
+    Diagnostic::Record(Diagnostic::Event::AcquireEnd, Diagnostic::Id(this),
+                       Diagnostic::Id(result), frame_index, image_index,
+                       Diagnostic::Id(*present_semaphores[frame_index]));
     switch (result) {
     case VK_SUCCESS:
         break;
@@ -174,8 +181,16 @@ void Swapchain::Present(VkSemaphore render_semaphore) {
         .pImageIndices = &image_index,
         .pResults = nullptr,
     };
+    Diagnostic::Record(Diagnostic::Event::QueueLockBegin, Diagnostic::Id(this));
     std::scoped_lock lock{device.QueueMutex()};
-    switch (const VkResult result = present_queue.Present(present_info)) {
+    Diagnostic::Record(Diagnostic::Event::QueueLockEnd, Diagnostic::Id(this));
+    Diagnostic::Record(Diagnostic::Event::PresentBegin, Diagnostic::Id(this),
+                       Diagnostic::Id(*swapchain), image_index, frame_index,
+                       Diagnostic::Id(render_semaphore), Diagnostic::Id(present_queue.Handle()));
+    const VkResult present_result = present_queue.Present(present_info);
+    Diagnostic::Record(Diagnostic::Event::PresentEnd, Diagnostic::Id(this),
+                       Diagnostic::Id(present_result));
+    switch (const VkResult result = present_result) {
     case VK_SUCCESS:
         break;
     case VK_SUBOPTIMAL_KHR:
@@ -282,6 +297,9 @@ void Swapchain::CreateSwapchain(const VkSurfaceCapabilitiesKHR& capabilities) {
 
     images = swapchain.GetImages();
     image_count = static_cast<u32>(images.size());
+    Diagnostic::Record(Diagnostic::Event::SwapchainCreate, Diagnostic::Id(this),
+                       Diagnostic::Id(*swapchain), image_count, present_mode,
+                       extent.width, extent.height);
     LOG_INFO(Render_Vulkan, "Swapchain {}x{}, {} images (requested {}), {}, mailbox={}, immediate={}",
              extent.width, extent.height, image_count, requested_image_count,
              string_VkPresentModeKHR(present_mode), has_mailbox, has_imm);

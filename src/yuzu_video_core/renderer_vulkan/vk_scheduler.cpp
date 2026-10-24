@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "yuzu_video_core/renderer_vulkan/vk_query_cache.h"
+#include "yuzu_video_core/renderer_vulkan/vk_diagnostic_trace.h"
 
 #include "yuzu_common/thread.h"
 #include "yuzu_video_core/renderer_vulkan/vk_command_pool.h"
@@ -241,7 +242,9 @@ u64 Scheduler::SubmitExecution(VkSemaphore signal_semaphore, VkSemaphore wait_se
             on_submit();
         }
 
+        Diagnostic::Record(Diagnostic::Event::QueueLockBegin, Diagnostic::Id(this), signal_value);
         std::scoped_lock lock{device.QueueMutex()};
+        Diagnostic::Record(Diagnostic::Event::QueueLockEnd, Diagnostic::Id(this), signal_value);
         switch (const VkResult result = master_semaphore->SubmitQueue(
                     cmdbuf, upload_cmdbuf, signal_semaphore, wait_semaphore, signal_value)) {
         case VK_SUCCESS:

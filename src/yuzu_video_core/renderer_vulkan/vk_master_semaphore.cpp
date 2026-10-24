@@ -8,6 +8,7 @@
 #include "yuzu_common/settings.h"
 #include "video_settings.h"
 #include "yuzu_video_core/renderer_vulkan/vk_master_semaphore.h"
+#include "yuzu_video_core/renderer_vulkan/vk_diagnostic_trace.h"
 #include "yuzu_video_core/vulkan_common/vulkan_device.h"
 #include "yuzu_video_core/vulkan_common/vulkan_wrapper.h"
 
@@ -38,6 +39,8 @@ MasterSemaphore::MasterSemaphore(const Device& device_) : device(device_) {
         .flags = 0,
     };
     semaphore = device.GetLogical().CreateSemaphore(semaphore_ci);
+    Diagnostic::Record(Diagnostic::Event::TimelineCreate, Diagnostic::Id(this),
+                       Diagnostic::Id(&device), Diagnostic::Id(*semaphore));
 
     if (!videoSettings.renderer_debug) {
         return;
@@ -55,7 +58,9 @@ MasterSemaphore::MasterSemaphore(const Device& device_) : device(device_) {
     });
 }
 
-MasterSemaphore::~MasterSemaphore() = default;
+MasterSemaphore::~MasterSemaphore() {
+    Diagnostic::Record(Diagnostic::Event::TimelineDestroy, Diagnostic::Id(this));
+}
 
 void MasterSemaphore::Refresh() {
     if (!semaphore) {
@@ -104,6 +109,8 @@ void MasterSemaphore::Wait(u64 tick) {
     }
 
     // If none of the above is hit, fallback to a regular wait
+    Diagnostic::Record(Diagnostic::Event::TimelineWaitBegin, Diagnostic::Id(this), tick,
+                       KnownGpuTick(), CurrentTick(), Diagnostic::Id(*semaphore));
     try {
         while (!semaphore.Wait(tick)) {
         }
@@ -112,10 +119,14 @@ void MasterSemaphore::Wait(u64 tick) {
             throw;
         }
         MarkDeviceLost();
+        Diagnostic::Record(Diagnostic::Event::TimelineWaitEnd, Diagnostic::Id(this), tick,
+                           KnownGpuTick(), Diagnostic::Id(exception.GetResult()));
         return;
     }
 
     Refresh();
+    Diagnostic::Record(Diagnostic::Event::TimelineWaitEnd, Diagnostic::Id(this), tick,
+                       KnownGpuTick(), 0);
 }
 
 void MasterSemaphore::MarkDeviceLost() {
@@ -130,12 +141,16 @@ void MasterSemaphore::MarkDeviceLost() {
 VkResult MasterSemaphore::SubmitQueue(vk::CommandBuffer& cmdbuf, vk::CommandBuffer& upload_cmdbuf,
                                       VkSemaphore signal_semaphore, VkSemaphore wait_semaphore,
                                       u64 host_tick) {
-    if (semaphore) {
-        return SubmitQueueTimeline(cmdbuf, upload_cmdbuf, signal_semaphore, wait_semaphore,
-                                   host_tick);
-    } else {
-        return SubmitQueueFence(cmdbuf, upload_cmdbuf, signal_semaphore, wait_semaphore, host_tick);
-    }
+    Diagnostic::Record(Diagnostic::Event::SubmitBegin, Diagnostic::Id(this), host_tick,
+                       Diagnostic::Id(*semaphore), Diagnostic::Id(signal_semaphore),
+                       Diagnostic::Id(wait_semaphore), Diagnostic::Id(*cmdbuf),
+                       Diagnostic::Id(*upload_cmdbuf), Diagnostic::Id(device.GetGraphicsQueue().Handle()));
+    const auto result = semaphore
+        ? SubmitQueueTimeline(cmdbuf, upload_cmdbuf, signal_semaphore, wait_semaphore, host_tick)
+        : SubmitQueueFence(cmdbuf, upload_cmdbuf, signal_semaphore, wait_semaphore, host_tick);
+    Diagnostic::Record(Diagnostic::Event::SubmitEnd, Diagnostic::Id(this), host_tick,
+                       Diagnostic::Id(result));
+    return result;
 }
 
 static constexpr std::array<VkPipelineStageFlags, 2> wait_stage_masks{
