@@ -3,6 +3,7 @@
 #include "yuzu_common/thread_worker.h"
 #include "yuzu_video_core/engines/draw_manager.h"
 #include "yuzu_video_core/renderer_vulkan/fixed_pipeline_state.h"
+#include "yuzu_video_core/renderer_vulkan/guest_recipe_input_cache.h"
 #include "yuzu_video_core/shader_profile_journal.h"
 #include "yuzu_video_core/shader_profile_runtime.h"
 #include <chrono>
@@ -12,8 +13,8 @@
 
 namespace Vulkan
 {
-// Register writes only increment a revision. Canonical capture and deduplication
-// happen on semantic transitions. Exact dedup uses a local non-cryptographic
+// Register writes only mark changed input groups. Exact input memoization avoids
+// canonical capture for recently known recipes. Exact dedup uses a non-cryptographic
 // hash; resource SHA-256 and file I/O run on the cache worker.
 class GuestPipelineRecorder
 {
@@ -39,6 +40,12 @@ public:
         entries.reserve(VideoCommon::ShaderProfile::Journal::MaxEntries);
         entries.insert(saved.entries.begin(), saved.entries.end());
         loaded_recipes = entries.size();
+        pending_writes.reserve(BatchEntries);
+        if (const char* trace=std::getenv("NXEMU_RECIPE_INPUT_TRACE"); trace && *trace) {
+            input_trace_path=std::filesystem::u8path(trace);
+            input_trace.reserve(524288);
+            input_cache.EnableDiagnosticKeys();
+        }
         if (saved.incomplete_tail) std::filesystem::resize_file(path, saved.valid_bytes);
         if (!std::filesystem::exists(path))
         {
@@ -46,7 +53,8 @@ public:
             out << VideoCommon::ShaderProfile::Journal::Magic;
             if (!out) throw std::runtime_error("Cannot initialize guest recipe journal");
         }
-        timing = std::getenv("NXEMU_RECIPE_RECORD_TIMING") != nullptr;
+        if (const char* option=std::getenv("NXEMU_RECIPE_RECORD_TIMING"))
+            timing=*option && std::string_view(option)!="0";
         if (const char * output = std::getenv("NXEMU_RECIPE_RECORD_REPORT"); output && *output)
         {
             report_path = std::filesystem::u8path(output);
@@ -102,67 +110,96 @@ public:
         try
         {
             const bool untracked = dirty.shader_profile_registers[offsetof(Engine::Regs, alpha_test_enabled) / 4] == 0;
-            const bool changed = untracked || channel != source || revision != dirty.shader_profile_revision ||
+            const bool full_capture = untracked || channel != source;
+            const bool changed = full_capture || dirty.shader_profile_changes != 0 ||
                                  topology != last_topology || hint != last_hint;
-            if (!changed && std::memcmp(last_prefix.data(), &key, sizeof(last_prefix)) == 0) return;
-            if (changed)
+            const bool prefix_changed = std::memcmp(last_prefix.data(), &key, sizeof(last_prefix)) != 0;
+            if (!changed && !prefix_changed) return;
+            const u32 feature_bits = (features.has_extended_dynamic_state ? 1U : 0U) |
+                (features.has_extended_dynamic_state_2 ? 2U : 0U) |
+                (features.has_extended_dynamic_state_2_extra ? 4U : 0U) |
+                (features.has_extended_dynamic_state_3_blend ? 8U : 0U) |
+                (features.has_extended_dynamic_state_3_enables ? 16U : 0U) |
+                (features.has_dynamic_vertex_input ? 32U : 0U) |
+                (features.has_vertex_stride_workaround ? 64U : 0U);
             {
                 if (untracked) GuestPipelineState::Track(dirty);
-                const auto next = [&] {
-                    StageSample measured(timing, capture_wall_ns);
-                    return GuestPipelineState::Capture(regs, topology, hint);
+                const auto cached = [&] {
+                    StageSample measured(timing, input_lookup_wall_ns);
+                    return input_cache.Find(regs, dirty.shader_profile_changes, full_capture,
+                                            topology, hint, feature_bits, &key, prefix_changed);
                 }();
-                const bool same_guest = channel &&
-                    next.enabled_vertex_streams == guest.enabled_vertex_streams &&
-                    std::memcmp(&next.complete, &guest.complete, sizeof(next.complete)) == 0;
-                channel = source;
-                revision = dirty.shader_profile_revision;
-                last_topology = topology;
-                last_hint = hint;
-                ++captures;
-                if (same_guest && std::memcmp(last_prefix.data(), &key, sizeof(last_prefix)) == 0) {
-                    if (timing) ++unchanged_captures;
-                    return;
-                }
-                if (!same_guest) {
+                current_state = cached.state;
+                if (!input_trace_path.empty() && input_trace.size()<524288)
+                    input_trace.push_back(input_cache.DiagnosticKey());
+                if (timing) { ++capture_candidates; cached_state_hits += cached.hit; }
+                if (!cached.hit) {
+                    const auto captured = [&] {
+                        StageSample measured(timing, capture_wall_ns);
+                        return GuestPipelineState::Capture(regs, topology, hint);
+                    }();
+                    ++captures;
                     StageSample measured(timing, canonical_wall_ns);
-                    guest = next;
-                    guest.WriteWords(std::span<u32, GuestPipelineState::WordCount>(pending_entry.data()+1, GuestPipelineState::WordCount));
-                    projected = guest.Project(features);
+                    captured.WriteWords(std::span<u32, GuestPipelineState::WordCount>(current_state->entry.data()+1, GuestPipelineState::WordCount));
+                    current_state->entry[0] = feature_bits;
+                    current_state->projected = captured.Project(features);
                     if (timing) ++canonical_updates;
                 }
+                channel = source;
+                dirty.shader_profile_changes = 0;
+                last_topology = topology;
+                last_hint = hint;
             }
-            std::memcpy(last_prefix.data(), &key, sizeof(last_prefix));
-            // Reuse the same projection as normal rendering, including host dynamic states.
-            if (projected != key.state)
+            if (prefix_changed || full_capture) std::memcpy(last_prefix.data(), &key, sizeof(last_prefix));
+            if (current_state->projected != key.state)
                 throw std::runtime_error("Automatic guest recipe projection mismatch");
-            pending_entry[0] = (features.has_extended_dynamic_state ? 1U : 0U) |
-                       (features.has_extended_dynamic_state_2 ? 2U : 0U) |
-                       (features.has_extended_dynamic_state_2_extra ? 4U : 0U) |
-                       (features.has_extended_dynamic_state_3_blend ? 8U : 0U) |
-                       (features.has_extended_dynamic_state_3_enables ? 16U : 0U) |
-                       (features.has_dynamic_vertex_input ? 32U : 0U) |
-                       (features.has_vertex_stride_workaround ? 64U : 0U);
+            auto& pending_entry = current_state->entry;
+            if (current_state->prefix_known) {
+                if (timing) ++cached_recipe_hits;
+                return;
+            }
             static_assert(GuestPipelineState::WordCount == 278);
-            std::copy(last_prefix.begin(), last_prefix.end(), pending_entry.begin() + 279);
+            std::copy(last_prefix.begin(), last_prefix.end(), pending_entry.begin()+279);
             const bool duplicate = [&] {
                 StageSample measured(timing, dedup_wall_ns);
                 return entries.contains(pending_entry);
             }();
-            if (duplicate) { if (timing) ++duplicate_entries; return; }
+            if (duplicate) { current_state->prefix_known = true; if (timing) ++duplicate_entries; return; }
             if (entries.size() >= VideoCommon::ShaderProfile::Journal::MaxEntries)
                 throw std::runtime_error("Automatic guest recipe journal is full");
             {
                 StageSample measured(timing, dedup_wall_ns);
                 entries.insert(pending_entry);
             }
-            const auto entry = pending_entry;
+            current_state->prefix_known = true;
             StageSample measured(timing, enqueue_wall_ns);
-            writer.QueueWork([target = path, entry, metrics = write_metrics] {
+            if (writer_failed->load(std::memory_order_relaxed)) {
+                failed = true;
+                return;
+            }
+            pending_writes.push_back(pending_entry);
+            if (pending_writes.size() == BatchEntries) Flush();
+        }
+        catch (const std::exception & e)
+        {
+            failed = true;
+            writer.QueueWork([target = path] { MarkFailed(target); });
+            LOG_ERROR(Render_Vulkan, "Automatic guest recipe recorder stopped: {}", e.what());
+        }
+    }
+    // Called on the GPU thread at frame boundaries and before shutdown drain.
+    // Existing independently checked journal frames retain their exact layout.
+    void Flush() noexcept {
+        if (pending_writes.empty()) return;
+        try {
+            auto batch = std::move(pending_writes);
+            pending_writes = {};
+            pending_writes.reserve(BatchEntries);
+            writer.QueueWork([target = path, batch = std::move(batch), metrics = write_metrics, write_failed = writer_failed] {
                 try
                 {
                     const auto before = metrics ? VideoCommon::ShaderProfile::Runtime::ThreadCpu() : VideoCommon::ShaderProfile::Runtime::CpuSample{};
-                    VideoCommon::ShaderProfile::Journal::Append(target, entry, metrics.get());
+                    VideoCommon::ShaderProfile::Journal::AppendBatch(target, batch, metrics.get());
                     if (metrics)
                     {
                         const auto after = VideoCommon::ShaderProfile::Runtime::ThreadCpu();
@@ -180,20 +217,29 @@ public:
                 }
                 catch (const std::exception & e)
                 {
+                    write_failed->store(true, std::memory_order_relaxed);
                     MarkFailed(target);
                     LOG_ERROR(Render_Vulkan, "Guest recipe journal: {}", e.what());
                 }
             });
-        }
-        catch (const std::exception & e)
-        {
+        } catch (const std::exception& error) {
             failed = true;
-            writer.QueueWork([target = path] { MarkFailed(target); });
-            LOG_ERROR(Render_Vulkan, "Automatic guest recipe recorder stopped: {}", e.what());
+            MarkFailed(path);
+            LOG_ERROR(Render_Vulkan, "Guest recipe batch stopped: {}", error.what());
         }
     }
     ~GuestPipelineRecorder()
     {
+        Flush();
+        writer.WaitForRequests();
+        failed = failed || writer_failed->load(std::memory_order_relaxed);
+        if (!input_trace_path.empty()) try {
+            std::ofstream trace(input_trace_path,std::ios::binary|std::ios::trunc);
+            trace.write("NXITR001",8);
+            trace.write(reinterpret_cast<const char*>(input_trace.data()),input_trace.size()*sizeof(input_trace.front()));
+            trace.flush();
+            if(!trace)LOG_WARNING(Render_Vulkan,"Cannot write bounded input-cache diagnostic trace");
+        } catch(const std::exception&) { LOG_WARNING(Render_Vulkan,"Cannot save input-cache diagnostic trace"); }
         LOG_INFO(Render_Vulkan, "Automatic guest recipes: total_unique={} loaded={} new={} captures={} failed={} measured_observations={} observer_wall_ns={}", entries.size(), loaded_recipes, entries.size()-loaded_recipes, captures, failed, calls, elapsed_ns);
         // All writer work is drained before this recorder is destroyed. Observer
         // time is elapsed steady-clock time, not per-thread CPU accounting.
@@ -201,13 +247,16 @@ public:
             {
                 const auto & m = *write_metrics;
                 std::ofstream out(report_path, std::ios::binary | std::ios::trunc);
-                out << "{\"schema\":2,\"observer_timing_enabled\":true,\"observer_scope\":\"Observe only; excludes register revision tracking\",\"unique_recipes\":" << entries.size()
+                out << "{\"schema\":3,\"observer_timing_enabled\":true,\"observer_scope\":\"Observe only; excludes register revision tracking\",\"unique_recipes\":" << entries.size()
                     << ",\"loaded_recipes\":" << loaded_recipes << ",\"new_recipes\":" << entries.size()-loaded_recipes << ",\"captures\":" << captures
-                    << ",\"unchanged_captures\":" << unchanged_captures << ",\"canonical_updates\":" << canonical_updates << ",\"duplicate_entries\":" << duplicate_entries
+                    << ",\"capture_candidates\":" << capture_candidates << ",\"cached_state_hits\":" << cached_state_hits << ",\"cached_recipe_hits\":" << cached_recipe_hits << ",\"input_lookup_wall_ns\":" << input_lookup_wall_ns << ",\"canonical_updates\":" << canonical_updates << ",\"duplicate_entries\":" << duplicate_entries
                     << ",\"capture_wall_ns\":" << capture_wall_ns << ",\"canonical_wall_ns\":" << canonical_wall_ns
                     << ",\"dedup_wall_ns\":" << dedup_wall_ns << ",\"enqueue_wall_ns\":" << enqueue_wall_ns
                     << ",\"failed\":" << failed << ",\"observed_draws\":" << calls << ",\"observer_wall_ns\":" << elapsed_ns
-                    << ",\"worker_frames\":" << m.frames << ",\"worker_frame_bytes\":" << m.bytes
+                    << ",\"observer_mean_ns_per_observation\":" << (calls?elapsed_ns/calls:0)
+                    << ",\"capture_mean_ns_per_capture\":" << (captures?capture_wall_ns/captures:0)
+                    << ",\"memo_storage_bytes\":" << input_cache.StorageBytes()
+                    << ",\"worker_batches\":" << m.batches << ",\"worker_frames\":" << m.frames << ",\"worker_frame_bytes\":" << m.bytes
                     << ",\"worker_encoding_ns\":" << m.encoding_ns << ",\"worker_io_ns\":" << m.io_ns
                     << ",\"worker_cpu_ns\":" << m.cpu_ns << ",\"worker_cpu_samples\":" << m.cpu_samples
                     << ",\"worker_cpu_cycles\":" << m.cpu_cycles << ",\"worker_cycle_samples\":" << m.cycle_samples << "}";
@@ -221,16 +270,21 @@ public:
     }
 
 private:
+    static constexpr size_t BatchEntries = 32;
+    std::filesystem::path input_trace_path;
+    std::vector<std::array<u64,10>> input_trace;
+    std::vector<Entry> pending_writes;
+    std::shared_ptr<std::atomic_bool> writer_failed{std::make_shared<std::atomic_bool>(false)};
     std::filesystem::path path;
     Common::ThreadWorker & writer;
     std::unordered_set<Entry, VideoCommon::ShaderProfile::Journal::EntryHash> entries;
-    Entry pending_entry{};
+    GuestRecipeInputCache<> input_cache;
+    GuestRecipeInputCache<>::State* current_state{};
     std::array<u32, 104> last_prefix{};
-    GuestPipelineState guest{};
-    FixedPipelineState projected{};
     const void* channel{};
-    u64 revision{}, captures{}, calls{}, elapsed_ns{}, loaded_recipes{};
-    u64 unchanged_captures{}, canonical_updates{}, duplicate_entries{};
+    u64 captures{}, calls{}, elapsed_ns{}, loaded_recipes{};
+    u64 canonical_updates{}, duplicate_entries{}, capture_candidates{}, cached_state_hits{}, cached_recipe_hits{};
+    u64 input_lookup_wall_ns{};
     u64 capture_wall_ns{}, canonical_wall_ns{}, dedup_wall_ns{}, enqueue_wall_ns{};
     Engine::Regs::PrimitiveTopology last_topology{};
     Engine::EngineHint last_hint{};

@@ -160,3 +160,35 @@ if(MSVC)
     target_compile_options(recorder-replay PRIVATE /utf-8 /EHsc)
 endif()
 add_test(NAME recorder-replay COMMAND recorder-replay "${CMAKE_CURRENT_BINARY_DIR}/recorder-replay-")
+
+add_executable(recorder-hotpath recorder_hotpath.cpp
+    "${NXEMU_ROOT}/src/yuzu_video_core/renderer_vulkan/fixed_pipeline_state.cpp"
+    "${NXEMU_ROOT}/src/yuzu_video_core/surface.cpp"
+    "${NXEMU_ROOT}/src/yuzu_common/cityhash.cpp")
+target_link_libraries(recorder-hotpath PRIVATE profile-storage Threads::Threads)
+target_compile_definitions(recorder-hotpath PRIVATE FMT_HEADER_ONLY)
+if(MSVC)
+    target_compile_options(recorder-hotpath PRIVATE /utf-8 /EHsc)
+endif()
+
+add_executable(recorder-input-cache recorder_input_cache.cpp
+    "${NXEMU_ROOT}/src/yuzu_video_core/renderer_vulkan/fixed_pipeline_state.cpp"
+    "${NXEMU_ROOT}/src/yuzu_video_core/surface.cpp"
+    "${NXEMU_ROOT}/src/yuzu_common/cityhash.cpp")
+target_link_libraries(recorder-input-cache PRIVATE profile-storage Threads::Threads)
+target_compile_definitions(recorder-input-cache PRIVATE FMT_HEADER_ONLY)
+if(MSVC)
+    target_compile_options(recorder-input-cache PRIVATE /utf-8 /EHsc)
+endif()
+add_test(NAME recorder-input-cache COMMAND recorder-input-cache)
+
+if(WIN32)
+    add_executable(recorder-session-monitor recorder_session_monitor.cpp)
+    target_compile_features(recorder-session-monitor PRIVATE cxx_std_20)
+    target_compile_definitions(recorder-session-monitor PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(recorder-session-monitor PRIVATE user32 psapi)
+endif()
+
+add_executable(recorder-cache-trace recorder_cache_trace.cpp
+    "${NXEMU_ROOT}/src/yuzu_common/cityhash.cpp")
+target_link_libraries(recorder-cache-trace PRIVATE profile-storage)

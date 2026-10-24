@@ -1,0 +1,413 @@
+{
+  "scope": "CPU microbenchmarks and isolated integration; not a presentation FPS comparison",
+  "native_benchmarks": [
+    {
+      "trial": 0,
+      "variant": "baseline",
+      "report": {
+        "scope": "complete_ObserveState_plus_register_tracking_CPU_only",
+        "per_draw_clocks": false,
+        "scenarios": [
+          {
+            "workload": "unchanged",
+            "recorder": false,
+            "observations": 2000000,
+            "median_ns_per_observation": 1.34837,
+            "median_cycles_per_observation": 6.31338,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0008
+          },
+          {
+            "workload": "unchanged",
+            "recorder": true,
+            "observations": 2000000,
+            "median_ns_per_observation": 7.10875,
+            "median_cycles_per_observation": 33.1834,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0015
+          },
+          {
+            "workload": "known_transitions",
+            "recorder": false,
+            "observations": 2000000,
+            "median_ns_per_observation": 1.35025,
+            "median_cycles_per_observation": 6.32476,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0008
+          },
+          {
+            "workload": "known_transitions",
+            "recorder": true,
+            "observations": 2000000,
+            "median_ns_per_observation": 344.481,
+            "median_cycles_per_observation": 1602.5,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.00295
+          },
+          {
+            "workload": "discovery",
+            "recorder": false,
+            "observations": 512,
+            "median_ns_per_observation": 2.14844,
+            "median_cycles_per_observation": 17.4072,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0007
+          },
+          {
+            "workload": "discovery",
+            "recorder": true,
+            "observations": 512,
+            "median_ns_per_observation": 1584.08,
+            "median_cycles_per_observation": 7416.73,
+            "median_main_thread_allocations": 1796,
+            "median_worker_drain_ms": 23.2002
+          }
+        ],
+        "recipe_sets_verified": true,
+        "checksum": 61467648000
+      }
+    },
+    {
+      "trial": 0,
+      "variant": "optimized",
+      "report": {
+        "scope": "complete_ObserveState_plus_register_tracking_CPU_only",
+        "per_draw_clocks": false,
+        "scenarios": [
+          {
+            "workload": "unchanged",
+            "recorder": false,
+            "observations": 2000000,
+            "median_ns_per_observation": 1.3605,
+            "median_cycles_per_observation": 6.37519,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.00125
+          },
+          {
+            "workload": "unchanged",
+            "recorder": true,
+            "observations": 2000000,
+            "median_ns_per_observation": 7.32892,
+            "median_cycles_per_observation": 34.2734,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0014
+          },
+          {
+            "workload": "known_transitions",
+            "recorder": false,
+            "observations": 2000000,
+            "median_ns_per_observation": 1.35708,
+            "median_cycles_per_observation": 6.34645,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.00125
+          },
+          {
+            "workload": "known_transitions",
+            "recorder": true,
+            "observations": 2000000,
+            "median_ns_per_observation": 77.72,
+            "median_cycles_per_observation": 360.988,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0029
+          },
+          {
+            "workload": "discovery",
+            "recorder": false,
+            "observations": 512,
+            "median_ns_per_observation": 2.83203,
+            "median_cycles_per_observation": 21.5312,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0008
+          },
+          {
+            "workload": "discovery",
+            "recorder": true,
+            "observations": 512,
+            "median_ns_per_observation": 1535.74,
+            "median_cycles_per_observation": 7189.05,
+            "median_main_thread_allocations": 569,
+            "median_worker_drain_ms": 3.26975
+          }
+        ],
+        "recipe_sets_verified": true,
+        "checksum": 61467648000
+      }
+    },
+    {
+      "trial": 1,
+      "variant": "baseline",
+      "report": {
+        "scope": "complete_ObserveState_plus_register_tracking_CPU_only",
+        "per_draw_clocks": false,
+        "scenarios": [
+          {
+            "workload": "unchanged",
+            "recorder": false,
+            "observations": 2000000,
+            "median_ns_per_observation": 1.35213,
+            "median_cycles_per_observation": 6.33074,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.00145
+          },
+          {
+            "workload": "unchanged",
+            "recorder": true,
+            "observations": 2000000,
+            "median_ns_per_observation": 7.16943,
+            "median_cycles_per_observation": 33.5249,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.00145
+          },
+          {
+            "workload": "known_transitions",
+            "recorder": false,
+            "observations": 2000000,
+            "median_ns_per_observation": 1.35438,
+            "median_cycles_per_observation": 6.33461,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0009
+          },
+          {
+            "workload": "known_transitions",
+            "recorder": true,
+            "observations": 2000000,
+            "median_ns_per_observation": 348.71,
+            "median_cycles_per_observation": 1618.49,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.00315
+          },
+          {
+            "workload": "discovery",
+            "recorder": false,
+            "observations": 512,
+            "median_ns_per_observation": 2.14844,
+            "median_cycles_per_observation": 16.4922,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0007
+          },
+          {
+            "workload": "discovery",
+            "recorder": true,
+            "observations": 512,
+            "median_ns_per_observation": 1595.41,
+            "median_cycles_per_observation": 7495.06,
+            "median_main_thread_allocations": 1796,
+            "median_worker_drain_ms": 23.9466
+          }
+        ],
+        "recipe_sets_verified": true,
+        "checksum": 61467648000
+      }
+    },
+    {
+      "trial": 1,
+      "variant": "optimized",
+      "report": {
+        "scope": "complete_ObserveState_plus_register_tracking_CPU_only",
+        "per_draw_clocks": false,
+        "scenarios": [
+          {
+            "workload": "unchanged",
+            "recorder": false,
+            "observations": 2000000,
+            "median_ns_per_observation": 1.35785,
+            "median_cycles_per_observation": 6.34622,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.00075
+          },
+          {
+            "workload": "unchanged",
+            "recorder": true,
+            "observations": 2000000,
+            "median_ns_per_observation": 7.5359,
+            "median_cycles_per_observation": 34.9564,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.00145
+          },
+          {
+            "workload": "known_transitions",
+            "recorder": false,
+            "observations": 2000000,
+            "median_ns_per_observation": 1.35988,
+            "median_cycles_per_observation": 6.35068,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.001
+          },
+          {
+            "workload": "known_transitions",
+            "recorder": true,
+            "observations": 2000000,
+            "median_ns_per_observation": 75.0783,
+            "median_cycles_per_observation": 350.769,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0028
+          },
+          {
+            "workload": "discovery",
+            "recorder": false,
+            "observations": 512,
+            "median_ns_per_observation": 2.92969,
+            "median_cycles_per_observation": 21.9893,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0008
+          },
+          {
+            "workload": "discovery",
+            "recorder": true,
+            "observations": 512,
+            "median_ns_per_observation": 1319.43,
+            "median_cycles_per_observation": 6197.71,
+            "median_main_thread_allocations": 569,
+            "median_worker_drain_ms": 2.9166
+          }
+        ],
+        "recipe_sets_verified": true,
+        "checksum": 61467648000
+      }
+    }
+  ],
+  "integration": [
+    {
+      "phase": "fresh",
+      "reader_calls": 1,
+      "resource_bytes": 2430998419,
+      "integrated_records": 1076
+    },
+    {
+      "phase": "reuse",
+      "reader_calls": 0,
+      "resource_bytes": 0,
+      "native_queued": 969,
+      "native_failed": 0,
+      "native_deferred": 0,
+      "exit": 0
+    },
+    {
+      "phase": "repair-truncation",
+      "reader_calls": 1,
+      "resource_bytes": 2430998419,
+      "native_queued": 969,
+      "native_failed": 0,
+      "native_deferred": 0,
+      "exit": 0
+    },
+    {
+      "phase": "reuse-after-repair",
+      "reader_calls": 0,
+      "resource_bytes": 0,
+      "native_queued": 969,
+      "native_failed": 0,
+      "native_deferred": 0,
+      "exit": 0
+    }
+  ],
+  "automatic_menu_diagnostic": {
+    "schema": 3,
+    "observer_timing_enabled": true,
+    "observer_scope": "Observe only; excludes register revision tracking",
+    "unique_recipes": 2041,
+    "loaded_recipes": 2041,
+    "new_recipes": 0,
+    "captures": 169,
+    "capture_candidates": 94794,
+    "cached_state_hits": 94625,
+    "cached_recipe_hits": 94625,
+    "input_lookup_wall_ns": 27809300,
+    "canonical_updates": 169,
+    "duplicate_entries": 169,
+    "capture_wall_ns": 78400,
+    "canonical_wall_ns": 79800,
+    "dedup_wall_ns": 75000,
+    "enqueue_wall_ns": 0,
+    "failed": 0,
+    "observed_draws": 183048,
+    "observer_wall_ns": 38513100,
+    "observer_mean_ns_per_observation": 210,
+    "capture_mean_ns_per_capture": 463,
+    "memo_storage_bytes": 1232114,
+    "worker_batches": 0,
+    "worker_frames": 0,
+    "worker_frame_bytes": 0,
+    "worker_encoding_ns": 0,
+    "worker_io_ns": 0,
+    "worker_cpu_ns": 0,
+    "worker_cpu_samples": 0,
+    "worker_cpu_cycles": 0,
+    "worker_cycle_samples": 0
+  },
+  "manual_course": {
+    "loaded_recipes": 1998,
+    "new_recipes": 43,
+    "total_recipes": 2041,
+    "canonical_captures": 2792536,
+    "startup_requests": 1182,
+    "startup_failures": 0,
+    "post_startup_graphics_compiler_entries": 3,
+    "recorder_failed": false,
+    "race_markers_available": false,
+    "presentation_csv_rows": 2389,
+    "fps_comparison_validated": false
+  },
+  "final_diagnostics_disabled_microbenchmark": {
+    "scope": "complete_ObserveState_plus_register_tracking_CPU_only",
+    "per_draw_clocks": false,
+    "scenarios": [
+      {
+        "workload": "unchanged",
+        "recorder": false,
+        "observations": 2000000,
+        "median_ns_per_observation": 1.34545,
+        "median_cycles_per_observation": 6.30752,
+        "median_main_thread_allocations": 0,
+        "median_worker_drain_ms": 0.0008
+      },
+      {
+        "workload": "unchanged",
+        "recorder": true,
+        "observations": 2000000,
+        "median_ns_per_observation": 7.47832,
+        "median_cycles_per_observation": 34.9954,
+        "median_main_thread_allocations": 0,
+        "median_worker_drain_ms": 0.00145
+      },
+      {
+        "workload": "known_transitions",
+        "recorder": false,
+        "observations": 2000000,
+        "median_ns_per_observation": 1.35087,
+        "median_cycles_per_observation": 6.31948,
+        "median_main_thread_allocations": 0,
+        "median_worker_drain_ms": 0.00085
+      },
+      {
+        "workload": "known_transitions",
+        "recorder": true,
+        "observations": 2000000,
+        "median_ns_per_observation": 74.9552,
+        "median_cycles_per_observation": 351.103,
+        "median_main_thread_allocations": 0,
+        "median_worker_drain_ms": 0.0016
+      },
+      {
+        "workload": "discovery",
+        "recorder": false,
+        "observations": 512,
+        "median_ns_per_observation": 1.85547,
+        "median_cycles_per_observation": 16.0342,
+        "median_main_thread_allocations": 0,
+        "median_worker_drain_ms": 0.0007
+      },
+      {
+        "workload": "discovery",
+        "recorder": true,
+        "observations": 512,
+        "median_ns_per_observation": 1322.46,
+        "median_cycles_per_observation": 6212.83,
+        "median_main_thread_allocations": 569,
+        "median_worker_drain_ms": 3.0534
+      }
+    ],
+    "recipe_sets_verified": true,
+    "checksum": 61467648000
+  }
+}

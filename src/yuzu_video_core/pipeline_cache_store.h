@@ -4,6 +4,7 @@
 #include <span>
 #include <string>
 #include <vector>
+#include <set>
 #include "yuzu_common/common_types.h"
 
 namespace VideoCommon::CacheStore {
@@ -18,8 +19,9 @@ struct ReadLimits {
     size_t record_bytes{256 * 1024 * 1024};
 };
 std::vector<Record> Read(const std::filesystem::path& path, u32 shader_abi,
-                          const ReadLimits& limits = {});
-void Append(const std::filesystem::path& path, u32 shader_abi, const Record& record);
+                          const ReadLimits& limits = {}, std::set<std::string>* record_ids = nullptr);
+void Append(const std::filesystem::path& path, u32 shader_abi, const Record& record,
+            std::string* record_id = nullptr);
 // Vulkan v20 migration: validates both inputs, preserves every distinct record,
 // verifies the resulting store before replacing it, and leaves the legacy file intact.
 std::vector<Record> ReadLegacyVulkan(const std::filesystem::path& path, u32 shader_abi);

@@ -24,6 +24,15 @@ int main(int argc, char **argv) try {
   auto saved = Read(path);
   Check(saved.entries.size() == 3 && !saved.incomplete_tail,
         "Recipe combination lost");
+  auto batch_path=path;batch_path+=".batch";
+  const std::array entries{a,b,c};WriteMetrics metrics;
+  AppendBatch(batch_path,entries,&metrics);
+  const auto read_all=[](const auto& p){std::ifstream in(p,std::ios::binary);return std::string(std::istreambuf_iterator<char>(in),{});};
+  Check(read_all(path)==read_all(batch_path) && metrics.frames==3 && metrics.batches==1,
+        "Batch changed checked frame bytes or counters");
+  std::filesystem::remove(batch_path);
+  AppendBatch(batch_path,{},nullptr);
+  Check(!std::filesystem::exists(batch_path),"Empty batch created a journal");
   {
     std::ofstream out(path, std::ios::binary | std::ios::app);
     out << "torn frame";

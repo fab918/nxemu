@@ -249,9 +249,10 @@ void GuestPipelineState::Track(Tegra::Engines::Maxwell3D::DirtyState & dirty)
     using Regs = Tegra::Engines::Maxwell3D::Regs;
     auto & mask = dirty.shader_profile_registers;
 #define TRACK(field) std::fill_n(mask.begin() + offsetof(Regs, field) / 4, sizeof(Regs{}.field) / 4, u8{1})
-    TRACK(transform_feedback.controls);
-    TRACK(stream_out_layout);
-    TRACK(transform_feedback_enabled);
+#define TRACK_GROUP(field, group) std::fill_n(mask.begin() + offsetof(Regs, field) / 4, sizeof(Regs{}.field) / 4, u8{group})
+    TRACK_GROUP(transform_feedback.controls, Xfb);
+    TRACK_GROUP(stream_out_layout, Xfb);
+    TRACK_GROUP(transform_feedback_enabled, Xfb);
     TRACK(depth_mode);
     TRACK(polygon_mode_front);
     TRACK(tessellation.params);
@@ -269,41 +270,54 @@ void GuestPipelineState::Track(Tegra::Engines::Maxwell3D::DirtyState & dirty)
     TRACK(line_anti_alias_enable);
     TRACK(anti_alias_alpha_control);
     TRACK(point_size);
-    TRACK(vertex_attrib_format);
-    TRACK(vertex_stream_instances);
-    TRACK(blend);
-    TRACK(blend_per_target);
-    TRACK(blend_per_target_enabled);
-    TRACK(color_mask);
-    TRACK(color_mask_common);
-    TRACK(stencil_front_op);
-    TRACK(stencil_back_op);
-    TRACK(stencil_two_side_enable);
-    TRACK(stencil_enable);
-    TRACK(depth_write_enabled);
-    TRACK(depth_bounds_enable);
-    TRACK(depth_test_enable);
-    TRACK(depth_test_func);
-    TRACK(gl_front_face);
-    TRACK(gl_cull_face);
-    TRACK(gl_cull_test_enabled);
-    TRACK(logic_op);
-    TRACK(rasterize_enable);
-    TRACK(primitive_restart.enabled);
-    TRACK(polygon_offset_point_enable);
-    TRACK(polygon_offset_line_enable);
-    TRACK(polygon_offset_fill_enable);
-    TRACK(viewport_clip_control);
+    TRACK_GROUP(vertex_attrib_format, VertexInput);
+    TRACK_GROUP(vertex_stream_instances, VertexInput);
+    TRACK_GROUP(blend.color_op, Blend);
+    TRACK_GROUP(blend.color_source, Blend);
+    TRACK_GROUP(blend.color_dest, Blend);
+    TRACK_GROUP(blend.alpha_op, Blend);
+    TRACK_GROUP(blend.alpha_source, Blend);
+    TRACK_GROUP(blend.alpha_dest, Blend);
+    TRACK_GROUP(blend.enable, Blend);
+    // separate_alpha, color-key/ROP controls and padding are not read by the
+    // canonical pipeline projection; changes to them must not trigger capture.
+    for(size_t i=0;i<Regs::NumRenderTargets;++i)
+        for(size_t field:{offsetof(Regs::BlendPerTarget,color_op),offsetof(Regs::BlendPerTarget,color_source),
+            offsetof(Regs::BlendPerTarget,color_dest),offsetof(Regs::BlendPerTarget,alpha_op),
+            offsetof(Regs::BlendPerTarget,alpha_source),offsetof(Regs::BlendPerTarget,alpha_dest)})
+            mask[(offsetof(Regs,blend_per_target)+i*sizeof(Regs::BlendPerTarget)+field)/4]=Blend;
+    TRACK_GROUP(blend_per_target_enabled, Blend);
+    TRACK_GROUP(color_mask, Blend);
+    TRACK_GROUP(color_mask_common, Blend);
+    TRACK_GROUP(stencil_front_op, Dynamic);
+    TRACK_GROUP(stencil_back_op, Dynamic);
+    TRACK_GROUP(stencil_two_side_enable, Dynamic);
+    TRACK_GROUP(stencil_enable, Dynamic);
+    TRACK_GROUP(depth_write_enabled, Dynamic);
+    TRACK_GROUP(depth_bounds_enable, Dynamic);
+    TRACK_GROUP(depth_test_enable, Dynamic);
+    TRACK_GROUP(depth_test_func, Dynamic);
+    TRACK_GROUP(gl_front_face, Dynamic);
+    TRACK_GROUP(gl_cull_face, Dynamic);
+    TRACK_GROUP(gl_cull_test_enabled, Dynamic);
+    TRACK_GROUP(logic_op, Dynamic);
+    TRACK_GROUP(rasterize_enable, Dynamic);
+    TRACK_GROUP(primitive_restart.enabled, Dynamic);
+    TRACK_GROUP(polygon_offset_point_enable, Dynamic);
+    TRACK_GROUP(polygon_offset_line_enable, Dynamic);
+    TRACK_GROUP(polygon_offset_fill_enable, Dynamic);
+    TRACK_GROUP(viewport_clip_control, Dynamic);
     for (size_t i = 0; i < Regs::NumVertexArrays; ++i)
     {
-        mask[(offsetof(Regs, vertex_streams) + i * sizeof(Regs::VertexStream)) / 4] = 1;
-        mask[(offsetof(Regs, vertex_streams) + i * sizeof(Regs::VertexStream) + offsetof(Regs::VertexStream, frequency)) / 4] = 1;
+        mask[(offsetof(Regs, vertex_streams) + i * sizeof(Regs::VertexStream)) / 4] = Strides;
+        mask[(offsetof(Regs, vertex_streams) + i * sizeof(Regs::VertexStream) + offsetof(Regs::VertexStream, frequency)) / 4] = VertexInput;
     }
     for (size_t i = 0; i < 8; ++i)
         mask[(offsetof(Regs, rt) + i * sizeof(Regs{}.rt[0]) + offsetof(std::remove_reference_t<decltype(Regs{}.rt[0])>, format)) / 4] = 1;
     for (size_t i = 0; i < 16; ++i)
-        mask[(offsetof(Regs, viewport_transform) + i * sizeof(Regs{}.viewport_transform[0]) + offsetof(std::remove_reference_t<decltype(Regs{}.viewport_transform[0])>, swizzle)) / 4] = 1;
+        mask[(offsetof(Regs, viewport_transform) + i * sizeof(Regs{}.viewport_transform[0]) + offsetof(std::remove_reference_t<decltype(Regs{}.viewport_transform[0])>, swizzle)) / 4] = Viewport;
 #undef TRACK
+#undef TRACK_GROUP
 }
 
 GuestPipelineState GuestPipelineState::Capture(const Maxwell & regs,

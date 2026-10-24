@@ -306,6 +306,7 @@ static_assert(std::is_trivially_constructible_v<FixedPipelineState>);
 // This is an in-memory model, NOT a serialized C++ struct or a frozen public V2 ABI.
 struct GuestPipelineState {
     static constexpr size_t WordCount = 278;
+    enum Change : u8 { Scalar = 1, VertexInput = 2, Viewport = 4, Blend = 8, Strides = 16, Xfb = 32, Dynamic = 64, All = 127 };
     FixedPipelineState complete{};
     u32 enabled_vertex_streams{};
 

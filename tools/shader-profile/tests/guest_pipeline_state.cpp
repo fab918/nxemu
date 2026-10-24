@@ -105,7 +105,11 @@ int main() try {
     auto tracking = std::make_unique<Tegra::Engines::Maxwell3D::DirtyState>();
     GuestPipelineState::Track(*tracking);
     const auto tracked = [&](size_t byte) { return tracking->shader_profile_registers[byte / 4] != 0; };
-    Check(tracked(offsetof(Maxwell, vertex_streams)) && tracked(offsetof(Maxwell, blend)), "Portable state changes are untracked");
+    Check(tracked(offsetof(Maxwell, vertex_streams)) && tracked(offsetof(Maxwell, blend)+offsetof(Maxwell::Blend,color_op)), "Portable state changes are untracked");
+    Check(!tracked(offsetof(Maxwell,blend)+offsetof(Maxwell::Blend,separate_alpha)) &&
+          !tracked(offsetof(Maxwell,blend)+offsetof(Maxwell::Blend,enable_global_color_key)) &&
+          !tracked(offsetof(Maxwell,blend_per_target)+offsetof(Maxwell::BlendPerTarget,separate_alpha)),
+          "unused blend controls trigger capture");
     Check(tracked(offsetof(Maxwell, vertex_streams) + offsetof(Maxwell::VertexStream, frequency)), "Vertex divisor change untracked");
     Check(!tracked(offsetof(Maxwell, vertex_streams) + offsetof(Maxwell::VertexStream, address_low)), "Vertex address triggers recipe capture");
     Check(!tracked(offsetof(Maxwell, rt)), "Render target address triggers recipe capture");

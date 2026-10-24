@@ -38,6 +38,7 @@
     <ClInclude Include="shader_profile_compact.h" />
     <ClInclude Include="shader_profile_journal.h" />
     <ClInclude Include="renderer_vulkan\guest_pipeline_recorder.h" />
+    <ClInclude Include="renderer_vulkan\guest_recipe_input_cache.h" />
     <ClInclude Include="pipeline_cache_store.h" />
     <ClInclude Include="shader_profile_audit.h" />
     <ClInclude Include="shader_profile_location.h" />

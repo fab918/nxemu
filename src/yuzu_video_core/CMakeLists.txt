@@ -37,6 +37,7 @@ add_library(video_core STATIC
     shader_profile_codec.h
     renderer_vulkan/guest_pipeline_recipe_probe.h
     renderer_vulkan/guest_pipeline_recorder.h
+    renderer_vulkan/guest_recipe_input_cache.h
     buffer_cache/buffer_base.h
     buffer_cache/buffer_cache_base.h
     buffer_cache/buffer_cache.cpp

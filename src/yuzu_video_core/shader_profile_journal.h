@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <set>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -73,30 +74,35 @@ inline Contents Read(const std::filesystem::path & path)
 }
 struct WriteMetrics
 {
-    u64 frames{}, bytes{}, encoding_ns{}, io_ns{}, cpu_ns{}, cpu_samples{}, cpu_cycles{}, cycle_samples{};
+    u64 frames{}, batches{}, bytes{}, encoding_ns{}, io_ns{}, cpu_ns{}, cpu_samples{}, cpu_cycles{}, cycle_samples{};
 };
 // Called only by the existing cache serialization worker, never on a draw.
-inline void Append(const std::filesystem::path & path, const Entry & entry, WriteMetrics * metrics = nullptr)
+inline void AppendBatch(const std::filesystem::path& path, std::span<const Entry> entries,
+                        WriteMetrics* metrics = nullptr)
 {
+    if (entries.empty()) return;
     const auto started = metrics ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const bool fresh = !std::filesystem::exists(path);
     std::ofstream out(path, std::ios::binary | std::ios::app);
     if (fresh) out.write(Magic.data(), Magic.size());
-    const auto encode_start = metrics ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    const auto bytes = Encode(entry);
-    const auto encoded = metrics ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    out.write(bytes.data(), bytes.size());
-    out.flush();
-    out.close();
-    if (!out) throw std::runtime_error("Cannot append guest recipe journal");
-    if (metrics)
-    {
-        const auto finished = std::chrono::steady_clock::now();
-        const auto ns = [](auto duration) { return std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count(); };
-        ++metrics->frames;
-        metrics->bytes += bytes.size() + (fresh ? Magic.size() : 0);
-        metrics->encoding_ns += ns(encoded - encode_start);
-        metrics->io_ns += ns(encode_start - started) + ns(finished - encoded);
+    u64 encoding_ns{};
+    for (const auto& entry : entries) {
+        const auto encode_start = metrics ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+        const auto bytes = Encode(entry);
+        if (metrics) encoding_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-encode_start).count();
+        out.write(bytes.data(), bytes.size());
     }
+    out.flush(); out.close();
+    if (!out) throw std::runtime_error("Cannot append guest recipe journal");
+    if (metrics) {
+        const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-started).count();
+        metrics->frames += entries.size(); ++metrics->batches;
+        metrics->bytes += entries.size()*FrameBytes+(fresh ? Magic.size() : 0);
+        metrics->encoding_ns += encoding_ns;
+        metrics->io_ns += elapsed-encoding_ns;
+    }
+}
+inline void Append(const std::filesystem::path& path, const Entry& entry, WriteMetrics* metrics = nullptr) {
+    AppendBatch(path, std::span<const Entry>(&entry, 1), metrics);
 }
 } // namespace VideoCommon::ShaderProfile::Journal

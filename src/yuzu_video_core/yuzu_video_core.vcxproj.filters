@@ -9,6 +9,7 @@
     <ClCompile Include="shader_profile_compact.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClInclude Include="shader_profile_journal.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="renderer_vulkan\guest_pipeline_recorder.h"><Filter>Header Files\renderer_vulkan</Filter></ClInclude>
+    <ClInclude Include="renderer_vulkan\guest_recipe_input_cache.h"><Filter>Header Files\renderer_vulkan</Filter></ClInclude>
     <ClInclude Include="pipeline_cache_store.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="shader_profile_audit.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="shader_profile_location.h"><Filter>Header Files</Filter></ClInclude>

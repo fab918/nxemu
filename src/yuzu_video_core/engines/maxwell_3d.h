@@ -3100,7 +3100,11 @@ public:
         // Set once by the portable recipe recorder. Address/data writes do not
         // invalidate a recipe; only changes to its canonical graphics inputs do.
         Table shader_profile_registers{};
-        u64 shader_profile_revision{};
+        u64 shader_profile_changes{};
+        void MarkShaderProfileRegister(size_t method) noexcept {
+            shader_profile_changes |= shader_profile_registers[method];
+        }
+        void InvalidateShaderProfile() noexcept { shader_profile_changes |= 0xffU; }
     } dirty;
 
     std::unique_ptr<DrawManager> draw_manager;

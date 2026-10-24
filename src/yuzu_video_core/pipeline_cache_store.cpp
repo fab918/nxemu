@@ -149,11 +149,15 @@ Index Parse(const std::filesystem::path & path, u32 abi, bool records, const Rea
     return index;
 }
 } // namespace
-std::vector<Record> Read(const std::filesystem::path & path, u32 shader_abi, const ReadLimits& limits)
+std::vector<Record> Read(const std::filesystem::path & path, u32 shader_abi, const ReadLimits& limits,
+                         std::set<std::string>* record_ids)
 {
-    return Parse(path, shader_abi, true, limits).records;
+    auto parsed=Parse(path, shader_abi, true, limits);
+    if(record_ids)*record_ids=std::move(parsed.pipelines);
+    return std::move(parsed.records);
 }
-void Append(const std::filesystem::path & path, u32 shader_abi, const Record & record)
+void Append(const std::filesystem::path & path, u32 shader_abi, const Record & record,
+            std::string* record_id)
 {
     static std::mutex mutex;
     struct Writer
@@ -232,6 +236,7 @@ void Append(const std::filesystem::path & path, u32 shader_abi, const Record & r
         writer.index.pipelines.insert(pipeline_id);
         writer.index.valid_bytes += pending.size();
         writer.disk_size = writer.index.valid_bytes;
+        if(record_id)*record_id=pipeline_id;
     }
     catch (...)
     {
