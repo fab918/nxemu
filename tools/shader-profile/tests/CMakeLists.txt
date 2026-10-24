@@ -139,3 +139,24 @@ target_compile_definitions(resource-gap-audit PRIVATE FMT_HEADER_ONLY)
 if(MSVC)
     target_compile_options(resource-gap-audit PRIVATE /utf-8 /EHsc)
 endif()
+
+add_executable(recorder-cost recorder_cost.cpp
+    "${NXEMU_ROOT}/src/yuzu_video_core/renderer_vulkan/fixed_pipeline_state.cpp"
+    "${NXEMU_ROOT}/src/yuzu_video_core/surface.cpp"
+    "${NXEMU_ROOT}/src/yuzu_common/cityhash.cpp")
+target_link_libraries(recorder-cost PRIVATE profile-storage)
+target_compile_definitions(recorder-cost PRIVATE FMT_HEADER_ONLY)
+if(MSVC)
+    target_compile_options(recorder-cost PRIVATE /utf-8 /EHsc)
+endif()
+
+add_executable(recorder-replay recorder_replay.cpp
+    "${NXEMU_ROOT}/src/yuzu_video_core/renderer_vulkan/fixed_pipeline_state.cpp"
+    "${NXEMU_ROOT}/src/yuzu_video_core/surface.cpp"
+    "${NXEMU_ROOT}/src/yuzu_common/cityhash.cpp")
+target_link_libraries(recorder-replay PRIVATE profile-storage Threads::Threads)
+target_compile_definitions(recorder-replay PRIVATE FMT_HEADER_ONLY)
+if(MSVC)
+    target_compile_options(recorder-replay PRIVATE /utf-8 /EHsc)
+endif()
+add_test(NAME recorder-replay COMMAND recorder-replay "${CMAKE_CURRENT_BINARY_DIR}/recorder-replay-")

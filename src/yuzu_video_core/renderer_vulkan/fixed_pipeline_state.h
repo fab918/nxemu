@@ -305,6 +305,7 @@ static_assert(std::is_trivially_constructible_v<FixedPipelineState>);
 // `complete` always uses the all-static guest representation, with no host flags.
 // This is an in-memory model, NOT a serialized C++ struct or a frozen public V2 ABI.
 struct GuestPipelineState {
+    static constexpr size_t WordCount = 278;
     FixedPipelineState complete{};
     u32 enabled_vertex_streams{};
 
@@ -314,6 +315,7 @@ struct GuestPipelineState {
     [[nodiscard]] FixedPipelineState Project(const DynamicFeatures& features) const;
     // Field-wise words; no pointers, addresses, padding or shader instructions.
     [[nodiscard]] std::vector<u32> Words() const;
+    void WriteWords(std::span<u32, WordCount> words) const;
     [[nodiscard]] static std::optional<GuestPipelineState> FromWords(std::span<const u32> words);
 };
 

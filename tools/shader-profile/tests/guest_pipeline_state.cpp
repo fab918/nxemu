@@ -22,6 +22,7 @@ void assert_fail_impl() { throw std::runtime_error("renderer assertion"); }
 
 using namespace Vulkan;
 #include "legacy_fixed_state.inc"
+#include "legacy_guest_words.inc"
 
 static void Check(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
@@ -167,6 +168,13 @@ int main() try {
             const auto decoded=GuestPipelineState::FromWords(guest.Words());
             Check(decoded.has_value() && decoded->Words()==guest.Words() &&
                   decoded->Project(features)==projected, "recipe round-trip changed state");
+            std::array<u32, GuestPipelineState::WordCount+2> guarded{};
+            guarded.front() = 0x12345678; guarded.back() = 0x87654321;
+            guest.WriteWords(std::span<u32,GuestPipelineState::WordCount>(guarded.data()+1,GuestPipelineState::WordCount));
+            const auto legacy_words=LegacyWords(guest);
+            Check(guarded.front()==0x12345678 && guarded.back()==0x87654321 &&
+                  std::equal(legacy_words.begin(),legacy_words.end(),guarded.begin()+1),
+                  "allocation-free writer changed legacy words or bounds");
             if (!(local==projected)) {
                 std::cerr << "projection mismatch features=" << bits << " step=" << step << '\n';
                 const auto* x=reinterpret_cast<const unsigned char*>(&local);

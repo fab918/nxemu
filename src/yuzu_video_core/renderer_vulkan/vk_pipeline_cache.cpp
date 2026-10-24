@@ -753,7 +753,10 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         runtime_report=std::make_unique<VideoCommon::ShaderProfile::Runtime::Report>(std::filesystem::u8path(output));
     pipeline_cache_filename = base_dir / "vulkan.nxc";
     try {
-        guest_recipe_recorder = std::make_unique<GuestPipelineRecorder>(base_dir / "guest-recipes.nxr", serialization_thread);
+        // Explicit diagnostic A/B switch; normal runs record automatically.
+        const char* disable_recording = std::getenv("NXEMU_RECIPE_RECORD_DISABLE");
+        if (!disable_recording || std::string_view(disable_recording) != "1")
+            guest_recipe_recorder = std::make_unique<GuestPipelineRecorder>(base_dir / "guest-recipes.nxr", serialization_thread);
     } catch (const std::exception& e) {
         LOG_ERROR(Render_Vulkan, "Cannot initialize automatic guest recipes: {}", e.what());
     }

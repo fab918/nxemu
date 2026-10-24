@@ -369,37 +369,43 @@ FixedPipelineState GuestPipelineState::Project(const DynamicFeatures& features) 
 }
 
 std::vector<u32> GuestPipelineState::Words() const {
-    std::vector<u32> words;
-    words.reserve(300);
+    std::vector<u32> words(WordCount);
+    WriteWords(std::span<u32, WordCount>(words.data(), words.size()));
+    return words;
+}
+
+void GuestPipelineState::WriteWords(std::span<u32, WordCount> words) const {
+    size_t cursor{};
+    const auto push = [&](u32 value) { words[cursor++] = value; };
     const auto& s = complete;
-    words.insert(words.end(), {1U, s.raw1, s.raw2, enabled_vertex_streams});
-    for (auto x : s.color_formats) words.push_back(x);
-    words.push_back(s.alpha_test_ref);
-    words.push_back(s.point_size);
-    for (auto x : s.viewport_swizzles) words.push_back(x);
-    words.push_back(static_cast<u32>(s.enabled_divisors));
-    words.push_back(static_cast<u32>(s.enabled_divisors >> 32));
-    words.push_back(s.dynamic_state.raw1);
-    words.push_back(s.dynamic_state.raw2);
-    for (auto x : s.attachments) words.push_back(x.raw);
-    for (auto x : s.attributes) words.push_back(x.raw);
-    for (auto x : s.binding_divisors) words.push_back(x);
-    for (auto x : s.vertex_strides) words.push_back(x);
+    push(1U); push(s.raw1); push(s.raw2); push(enabled_vertex_streams);
+    for (auto x : s.color_formats) push(x);
+    push(s.alpha_test_ref);
+    push(s.point_size);
+    for (auto x : s.viewport_swizzles) push(x);
+    push(static_cast<u32>(s.enabled_divisors));
+    push(static_cast<u32>(s.enabled_divisors >> 32));
+    push(s.dynamic_state.raw1);
+    push(s.dynamic_state.raw2);
+    for (auto x : s.attachments) push(x.raw);
+    for (auto x : s.attributes) push(x.raw);
+    for (auto x : s.binding_divisors) push(x);
+    for (auto x : s.vertex_strides) push(x);
     for (auto x : s.xfb_state.layouts) {
-        words.insert(words.end(), {x.stream, x.varying_count, x.stride});
+        push(x.stream); push(x.varying_count); push(x.stride);
     }
     for (const auto& stream : s.xfb_state.varyings) {
         for (const auto& x : stream) {
-            words.push_back(x.attribute0.Value() | (x.attribute1.Value() << 8) |
+            push(x.attribute0.Value() | (x.attribute1.Value() << 8) |
                             (x.attribute2.Value() << 16) | (x.attribute3.Value() << 24));
         }
     }
-    return words;
+    ASSERT(cursor == WordCount);
 }
 
 std::optional<GuestPipelineState> GuestPipelineState::FromWords(std::span<const u32> words) {
     GuestPipelineState result;
-    if (words.size() != result.Words().size() || words[0] != 1) return std::nullopt;
+    if (words.size() != WordCount || words[0] != 1) return std::nullopt;
     size_t cursor = 1;
     const auto next = [&]() { return words[cursor++]; };
     auto& s = result.complete;
@@ -432,7 +438,8 @@ std::optional<GuestPipelineState> GuestPipelineState::FromWords(std::span<const 
         }
     }
     // Reject values truncated by narrower fields rather than silently changing a recipe.
-    const auto canonical = result.Words();
+    std::array<u32, WordCount> canonical;
+    result.WriteWords(canonical);
     if (!std::equal(words.begin(), words.end(), canonical.begin())) return std::nullopt;
     return result;
 }

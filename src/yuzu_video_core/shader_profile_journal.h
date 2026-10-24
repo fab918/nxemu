@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "yuzu_common/common_types.h"
+#include "yuzu_common/cityhash.h"
 #include "yuzu_video_core/shader_profile_hash.h"
 #include <array>
 #include <chrono>
@@ -17,6 +18,11 @@ namespace VideoCommon::ShaderProfile::Journal
 // Local metadata only. Each independently checked frame is committed by its trailing
 // digest. A torn final frame can be discarded without losing preceding sessions.
 using Entry = std::array<u32, 383>; // source feature bits, 278 guest + 104 key words
+struct EntryHash {
+    size_t operator()(const Entry& entry) const noexcept {
+        return Common::CityHash64(reinterpret_cast<const char*>(entry.data()), sizeof(entry));
+    }
+};
 inline constexpr std::string_view Magic = "NXREC001";
 inline constexpr size_t FrameBytes = 383 * 4 + 64;
 inline constexpr size_t MaxEntries = 16384;

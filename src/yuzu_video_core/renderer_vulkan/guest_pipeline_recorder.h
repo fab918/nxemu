@@ -8,22 +8,36 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <unordered_set>
 
 namespace Vulkan
 {
 // Register writes only increment a revision. Canonical capture and deduplication
-// happen on semantic transitions; all hashing and file I/O run on the cache worker.
+// happen on semantic transitions. Exact dedup uses a local non-cryptographic
+// hash; resource SHA-256 and file I/O run on the cache worker.
 class GuestPipelineRecorder
 {
     using Engine = Tegra::Engines::Maxwell3D;
     using Entry = VideoCommon::ShaderProfile::Journal::Entry;
+    struct StageSample {
+        u64* total{};
+        std::chrono::steady_clock::time_point start{};
+        StageSample(bool enabled, u64& sum) : total(enabled ? &sum : nullptr) {
+            if (total) start = std::chrono::steady_clock::now();
+        }
+        ~StageSample() {
+            if (total) *total += std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now()-start).count();
+        }
+    };
 
 public:
     GuestPipelineRecorder(std::filesystem::path path_, Common::ThreadWorker & writer_) :
         path(std::move(path_)), writer(writer_)
     {
         auto saved = VideoCommon::ShaderProfile::Journal::Read(path);
-        entries = std::move(saved.entries);
+        entries.reserve(VideoCommon::ShaderProfile::Journal::MaxEntries);
+        entries.insert(saved.entries.begin(), saved.entries.end());
         loaded_recipes = entries.size();
         if (saved.incomplete_tail) std::filesystem::resize_file(path, saved.valid_bytes);
         if (!std::filesystem::exists(path))
@@ -55,6 +69,16 @@ public:
     }
     void Observe(Engine & engine, const GraphicsPipelineCacheKey & key, const DynamicFeatures & features) noexcept
     {
+        ObserveState(engine.dirty, engine.regs, engine.draw_manager->GetDrawState().topology,
+                     engine.engine_state, &engine, key, features);
+    }
+    // Explicit engine inputs allow deterministic replay tests without constructing
+    // an emulated GPU. The live path above supplies exactly these same values.
+    void ObserveState(Engine::DirtyState& dirty, const Engine::Regs& regs,
+                      Engine::Regs::PrimitiveTopology topology, Engine::EngineHint hint,
+                      const void* source, const GraphicsPipelineCacheKey& key,
+                      const DynamicFeatures& features) noexcept
+    {
         static_assert(offsetof(GraphicsPipelineCacheKey, state) == 104 * sizeof(u32));
         struct Sample
         {
@@ -77,42 +101,63 @@ public:
         if (failed) return;
         try
         {
-            const auto topology = engine.draw_manager->GetDrawState().topology;
-            const auto hint = engine.engine_state;
-            const bool untracked = engine.dirty.shader_profile_registers[offsetof(Engine::Regs, alpha_test_enabled) / 4] == 0;
-            const bool changed = untracked || channel != &engine || revision != engine.dirty.shader_profile_revision ||
+            const bool untracked = dirty.shader_profile_registers[offsetof(Engine::Regs, alpha_test_enabled) / 4] == 0;
+            const bool changed = untracked || channel != source || revision != dirty.shader_profile_revision ||
                                  topology != last_topology || hint != last_hint;
             if (!changed && std::memcmp(last_prefix.data(), &key, sizeof(last_prefix)) == 0) return;
             if (changed)
             {
-                if (untracked) GuestPipelineState::Track(engine.dirty);
-                guest = GuestPipelineState::Capture(engine.regs, topology, hint);
-                channel = &engine;
-                revision = engine.dirty.shader_profile_revision;
+                if (untracked) GuestPipelineState::Track(dirty);
+                const auto next = [&] {
+                    StageSample measured(timing, capture_wall_ns);
+                    return GuestPipelineState::Capture(regs, topology, hint);
+                }();
+                const bool same_guest = channel &&
+                    next.enabled_vertex_streams == guest.enabled_vertex_streams &&
+                    std::memcmp(&next.complete, &guest.complete, sizeof(next.complete)) == 0;
+                channel = source;
+                revision = dirty.shader_profile_revision;
                 last_topology = topology;
                 last_hint = hint;
                 ++captures;
+                if (same_guest && std::memcmp(last_prefix.data(), &key, sizeof(last_prefix)) == 0) {
+                    if (timing) ++unchanged_captures;
+                    return;
+                }
+                if (!same_guest) {
+                    StageSample measured(timing, canonical_wall_ns);
+                    guest = next;
+                    guest.WriteWords(std::span<u32, GuestPipelineState::WordCount>(pending_entry.data()+1, GuestPipelineState::WordCount));
+                    projected = guest.Project(features);
+                    if (timing) ++canonical_updates;
+                }
             }
             std::memcpy(last_prefix.data(), &key, sizeof(last_prefix));
             // Reuse the same projection as normal rendering, including host dynamic states.
-            if (guest.Project(features) != key.state)
+            if (projected != key.state)
                 throw std::runtime_error("Automatic guest recipe projection mismatch");
-            Entry entry{};
-            entry[0] = (features.has_extended_dynamic_state ? 1U : 0U) |
+            pending_entry[0] = (features.has_extended_dynamic_state ? 1U : 0U) |
                        (features.has_extended_dynamic_state_2 ? 2U : 0U) |
                        (features.has_extended_dynamic_state_2_extra ? 4U : 0U) |
                        (features.has_extended_dynamic_state_3_blend ? 8U : 0U) |
                        (features.has_extended_dynamic_state_3_enables ? 16U : 0U) |
                        (features.has_dynamic_vertex_input ? 32U : 0U) |
                        (features.has_vertex_stride_workaround ? 64U : 0U);
-            const auto words = guest.Words();
-            if (words.size() != 278) throw std::runtime_error("Unsupported automatic guest state ABI");
-            std::copy(words.begin(), words.end(), entry.begin() + 1);
-            std::copy(last_prefix.begin(), last_prefix.end(), entry.begin() + 279);
-            if (entries.contains(entry)) return;
+            static_assert(GuestPipelineState::WordCount == 278);
+            std::copy(last_prefix.begin(), last_prefix.end(), pending_entry.begin() + 279);
+            const bool duplicate = [&] {
+                StageSample measured(timing, dedup_wall_ns);
+                return entries.contains(pending_entry);
+            }();
+            if (duplicate) { if (timing) ++duplicate_entries; return; }
             if (entries.size() >= VideoCommon::ShaderProfile::Journal::MaxEntries)
                 throw std::runtime_error("Automatic guest recipe journal is full");
-            entries.insert(entry);
+            {
+                StageSample measured(timing, dedup_wall_ns);
+                entries.insert(pending_entry);
+            }
+            const auto entry = pending_entry;
+            StageSample measured(timing, enqueue_wall_ns);
             writer.QueueWork([target = path, entry, metrics = write_metrics] {
                 try
                 {
@@ -158,6 +203,9 @@ public:
                 std::ofstream out(report_path, std::ios::binary | std::ios::trunc);
                 out << "{\"schema\":2,\"observer_timing_enabled\":true,\"observer_scope\":\"Observe only; excludes register revision tracking\",\"unique_recipes\":" << entries.size()
                     << ",\"loaded_recipes\":" << loaded_recipes << ",\"new_recipes\":" << entries.size()-loaded_recipes << ",\"captures\":" << captures
+                    << ",\"unchanged_captures\":" << unchanged_captures << ",\"canonical_updates\":" << canonical_updates << ",\"duplicate_entries\":" << duplicate_entries
+                    << ",\"capture_wall_ns\":" << capture_wall_ns << ",\"canonical_wall_ns\":" << canonical_wall_ns
+                    << ",\"dedup_wall_ns\":" << dedup_wall_ns << ",\"enqueue_wall_ns\":" << enqueue_wall_ns
                     << ",\"failed\":" << failed << ",\"observed_draws\":" << calls << ",\"observer_wall_ns\":" << elapsed_ns
                     << ",\"worker_frames\":" << m.frames << ",\"worker_frame_bytes\":" << m.bytes
                     << ",\"worker_encoding_ns\":" << m.encoding_ns << ",\"worker_io_ns\":" << m.io_ns
@@ -175,11 +223,15 @@ public:
 private:
     std::filesystem::path path;
     Common::ThreadWorker & writer;
-    std::set<Entry> entries;
+    std::unordered_set<Entry, VideoCommon::ShaderProfile::Journal::EntryHash> entries;
+    Entry pending_entry{};
     std::array<u32, 104> last_prefix{};
     GuestPipelineState guest{};
-    Engine * channel{};
+    FixedPipelineState projected{};
+    const void* channel{};
     u64 revision{}, captures{}, calls{}, elapsed_ns{}, loaded_recipes{};
+    u64 unchanged_captures{}, canonical_updates{}, duplicate_entries{};
+    u64 capture_wall_ns{}, canonical_wall_ns{}, dedup_wall_ns{}, enqueue_wall_ns{};
     Engine::Regs::PrimitiveTopology last_topology{};
     Engine::EngineHint last_hint{};
     bool failed{};
