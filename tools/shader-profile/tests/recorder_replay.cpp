@@ -13,6 +13,8 @@ int main(int argc,char** argv)try {
             for(size_t i=0;i<2400;++i){
                 // Repeated transitions, a hidden vertex layout, prefix-only
                 // changes and channel switches must all retain their recipes.
+                const auto old_attribute=regs->vertex_attrib_format[0].offset.Value();
+                const auto old_point=regs->point_size;
                 regs->vertex_attrib_format[0].offset.Assign((i/3)%4*16);
                 regs->point_size=float((i/7)%3+1);
                 if(i%2)dirty->InvalidateShaderProfile();
@@ -25,8 +27,9 @@ int main(int argc,char** argv)try {
                 expected.insert(entry);
                 // A real changed register updates the revision, even on draws
                 // whose resulting host key hides the changed attribute layout.
-                dirty->MarkShaderProfileRegister(offsetof(Maxwell,point_size)/4);
-                dirty->MarkShaderProfileRegister(offsetof(Maxwell,vertex_attrib_format)/4);
+                if(regs->point_size!=old_point)dirty->MarkShaderProfileRegister(offsetof(Maxwell,point_size)/4);
+                if(regs->vertex_attrib_format[0].offset.Value()!=old_attribute)
+                    dirty->MarkShaderProfileRegister(offsetof(Maxwell,vertex_attrib_format)/4);
                 const void* channel=i%13?static_cast<void*>(regs.get()):static_cast<void*>(dirty.get());
                 recorder.ObserveState(*dirty,*regs,topology,hint,channel,key,features);
                 if(i%60==0)recorder.Flush();

@@ -41,14 +41,10 @@ u64 Get(std::string_view bytes, size_t offset, size_t size)
 }
 std::string Digest(std::string_view bytes)
 {
-    SHA256 hash;
-    hash.init();
-    hash.update(reinterpret_cast<const unsigned char *>(bytes.data()), static_cast<unsigned int>(bytes.size()));
-    std::string out(32, '\0');
-    hash.final(reinterpret_cast<unsigned char *>(out.data()));
-    return out;
+    const auto digest = ShaderProfile::ResourceDigest(bytes);
+    return {reinterpret_cast<const char*>(digest.data()), digest.size()};
 }
-struct ContextIndex { std::set<std::string> ids; size_t valid_bytes{}; };
+struct ContextIndex { std::set<std::string> ids; size_t valid_bytes{}; std::filesystem::file_time_type modified{}; };
 std::filesystem::path ContextPath(const std::filesystem::path& path, std::string_view context) {
     Check(ShaderProfile::ValidContext(context));
     auto result=path; result += ".context-" + std::string(context); return result;
@@ -57,6 +53,7 @@ ContextIndex ParseContext(const std::filesystem::path& path, std::string_view co
     ContextIndex index;
     if (!std::filesystem::exists(path)) return index;
     const auto size=std::filesystem::file_size(path);
+    index.modified=std::filesystem::last_write_time(path);
     Check(size>=8 && size<=8+65536ULL*64);
     std::ifstream in(path,std::ios::binary);
     std::string header(8,'\0'); Check(bool(in.read(header.data(),8)) && header=="NXCTX001");
@@ -75,7 +72,8 @@ void AppendContext(const std::filesystem::path& cache, std::string_view context,
     static std::filesystem::path active;
     static ContextIndex index;
     const auto size=std::filesystem::exists(path)?std::filesystem::file_size(path):0;
-    if(active!=path || index.valid_bytes!=size) { index=ParseContext(path,context); active=path; }
+    const auto modified=size ? std::filesystem::last_write_time(path) : std::filesystem::file_time_type{};
+    if(active!=path || index.valid_bytes!=size || index.modified!=modified) { index=ParseContext(path,context); active=path; }
     if(index.valid_bytes && index.valid_bytes!=size) std::filesystem::resize_file(path,index.valid_bytes);
     if(index.ids.contains(id)) return;
     Check(index.ids.size()<65536);
@@ -86,6 +84,7 @@ void AppendContext(const std::filesystem::path& cache, std::string_view context,
         out.write(frame.data(),frame.size());out.flush();out.close();Check(bool(out));
         index.valid_bytes=(index.valid_bytes?index.valid_bytes:8)+64;
         index.ids.insert(id);
+        index.modified=std::filesystem::last_write_time(path);
     } catch(...) { active.clear();index={};throw; }
 }
 struct Index
@@ -210,7 +209,11 @@ void Append(const std::filesystem::path & path, u32 shader_abi, const Record & r
     {
         Index index;
         size_t disk_size{};
+        std::filesystem::file_time_type modified{};
         u32 abi{};
+        // Weak ownership distinguishes reused addresses without retaining shader
+        // bytes after an import. Memoization never trusts a mutable flat buffer.
+        std::map<std::weak_ptr<const std::string>,std::string,std::owner_less<>> shared_code_ids;
     };
     static std::filesystem::path writer_path;
     static Writer writer;
@@ -223,9 +226,11 @@ void Append(const std::filesystem::path & path, u32 shader_abi, const Record & r
         writer_path = path;
     }
     const auto size = std::filesystem::exists(path) ? std::filesystem::file_size(path) : 0;
-    if (!writer.disk_size || writer.disk_size != size || writer.abi != shader_abi)
+    const auto modified = size ? std::filesystem::last_write_time(path) : std::filesystem::file_time_type{};
+    if (!writer.disk_size || writer.disk_size != size || writer.modified != modified || writer.abi != shader_abi)
     {
         writer.index = Parse(path, shader_abi, false);
+        writer.shared_code_ids.clear();
         writer.abi = shader_abi;
         if (writer.index.valid_bytes && writer.index.valid_bytes != size)
             std::filesystem::resize_file(path, writer.index.valid_bytes);
@@ -254,8 +259,16 @@ void Append(const std::filesystem::path & path, u32 shader_abi, const Record & r
             Check(env.size() >= EnvHeader);
             const auto code_size = static_cast<size_t>(Get(env.substr(0,8), 0, 8));
             Check(code_size && code_size % 8 == 0 && code_size <= 1024 * 1024 && code_size <= env.size() - EnvHeader);
-            const auto code = env.substr(EnvHeader, code_size);
-            const auto code_id = frame(1, code, writer.index.code);
+            const auto program=env.ProgramStorage();
+            Check(!program || program->size()==code_size);
+            const std::weak_ptr<const std::string> owner(program);
+            const auto known=program ? writer.shared_code_ids.find(owner) : writer.shared_code_ids.end();
+            const auto code_id = known!=writer.shared_code_ids.end() ? known->second :
+                frame(1, env.substr(EnvHeader, code_size), writer.index.code);
+            if(program && known==writer.shared_code_ids.end()) {
+                if(writer.shared_code_ids.size()>=16384)writer.shared_code_ids.clear();
+                writer.shared_code_ids.emplace(owner,code_id);
+            }
             // Include additions immediately in a temporary index to deduplicate within this record too.
             if (!writer.index.code.contains(code_id))
             {
@@ -283,6 +296,7 @@ void Append(const std::filesystem::path & path, u32 shader_abi, const Record & r
         writer.index.pipelines.insert(pipeline_id);
         writer.index.valid_bytes += pending.size();
         writer.disk_size = writer.index.valid_bytes;
+        writer.modified = std::filesystem::last_write_time(path);
         if (!context.empty()) AppendContext(path,context,pipeline_id);
         if(record_id)*record_id=pipeline_id;
     }

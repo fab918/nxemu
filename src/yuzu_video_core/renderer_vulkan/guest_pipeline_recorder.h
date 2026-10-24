@@ -87,6 +87,23 @@ public:
                       const void* source, const GraphicsPipelineCacheKey& key,
                       const DynamicFeatures& features) noexcept
     {
+        // Keep the frequent unchanged draw path small enough to inline. The
+        // complete measured observer remains available when diagnostics are on.
+        if (!timing) {
+            if (failed) return;
+            if (channel == source && dirty.shader_profile_changes == 0 &&
+                dirty.shader_profile_registers[offsetof(Engine::Regs, alpha_test_enabled) / 4] != 0 &&
+                topology == last_topology && hint == last_hint &&
+                std::memcmp(last_prefix.data(), &key, sizeof(last_prefix)) == 0) return;
+        }
+        ObserveChangedState(dirty,regs,topology,hint,source,key,features);
+    }
+private:
+    void ObserveChangedState(Engine::DirtyState& dirty, const Engine::Regs& regs,
+                      Engine::Regs::PrimitiveTopology topology, Engine::EngineHint hint,
+                      const void* source, const GraphicsPipelineCacheKey& key,
+                      const DynamicFeatures& features) noexcept
+    {
         static_assert(offsetof(GraphicsPipelineCacheKey, state) == 104 * sizeof(u32));
         struct Sample
         {
@@ -124,6 +141,8 @@ public:
                 (features.has_vertex_stride_workaround ? 64U : 0U);
             {
                 if (untracked) GuestPipelineState::Track(dirty);
+                const auto* previous_state=current_state;
+                const Entry* previous_entry=previous_state ? previous_state->entry : nullptr;
                 const auto cached = [&] {
                     StageSample measured(timing, input_lookup_wall_ns);
                     return input_cache.Find(regs, dirty.shader_profile_changes, full_capture,
@@ -134,16 +153,25 @@ public:
                     input_trace.push_back(input_cache.DiagnosticKey());
                 if (timing) { ++capture_candidates; cached_state_hits += cached.hit; }
                 if (!cached.hit) {
-                    const auto captured = [&] {
-                        StageSample measured(timing, capture_wall_ns);
-                        return GuestPipelineState::Capture(regs, topology, hint);
-                    }();
-                    ++captures;
-                    StageSample measured(timing, canonical_wall_ns);
-                    captured.WriteWords(std::span<u32, GuestPipelineState::WordCount>(candidate_entry.data()+1, GuestPipelineState::WordCount));
-                    candidate_entry[0] = feature_bits;
-                    current_state->projected = captured.Project(features);
-                    if (timing) ++canonical_updates;
+                    // Prefix changes select another program combination without
+                    // changing canonical register inputs. Find leaves projected
+                    // data intact until this caller replaces it, even on eviction.
+                    if (!changed && prefix_changed && previous_entry && (*previous_entry)[0]==feature_bits) {
+                        current_state->projected=previous_state->projected;
+                        candidate_entry=*previous_entry;
+                        ++prefix_capture_reuses;
+                    } else {
+                        const auto captured = [&] {
+                            StageSample measured(timing, capture_wall_ns);
+                            return GuestPipelineState::Capture(regs, topology, hint);
+                        }();
+                        ++captures;
+                        StageSample measured(timing, canonical_wall_ns);
+                        captured.WriteWords(std::span<u32, GuestPipelineState::WordCount>(candidate_entry.data()+1, GuestPipelineState::WordCount));
+                        candidate_entry[0] = feature_bits;
+                        current_state->projected = captured.Project(features);
+                        if (timing) ++canonical_updates;
+                    }
                 }
                 channel = source;
                 dirty.shader_profile_changes = 0;
@@ -185,6 +213,7 @@ public:
             LOG_ERROR(Render_Vulkan, "Automatic guest recipe recorder stopped: {}", e.what());
         }
     }
+public:
     // Called on the GPU thread at frame boundaries and before shutdown drain.
     // Existing independently checked journal frames retain their exact layout.
     void Flush() noexcept {
@@ -247,6 +276,7 @@ public:
                 std::ofstream out(report_path, std::ios::binary | std::ios::trunc);
                 out << "{\"schema\":3,\"observer_timing_enabled\":true,\"observer_scope\":\"Observe only; excludes register revision tracking\",\"unique_recipes\":" << entries.size()
                     << ",\"loaded_recipes\":" << loaded_recipes << ",\"new_recipes\":" << entries.size()-loaded_recipes << ",\"captures\":" << captures
+                    << ",\"prefix_capture_reuses\":" << prefix_capture_reuses
                     << ",\"capture_candidates\":" << capture_candidates << ",\"cached_state_hits\":" << cached_state_hits << ",\"cached_recipe_hits\":" << cached_recipe_hits << ",\"input_lookup_wall_ns\":" << input_lookup_wall_ns << ",\"canonical_updates\":" << canonical_updates << ",\"duplicate_entries\":" << duplicate_entries
                     << ",\"capture_wall_ns\":" << capture_wall_ns << ",\"canonical_wall_ns\":" << canonical_wall_ns
                     << ",\"dedup_wall_ns\":" << dedup_wall_ns << ",\"enqueue_wall_ns\":" << enqueue_wall_ns
@@ -282,6 +312,7 @@ private:
     std::array<u32, 104> last_prefix{};
     const void* channel{};
     u64 captures{}, calls{}, elapsed_ns{}, loaded_recipes{};
+    u64 prefix_capture_reuses{};
     u64 canonical_updates{}, duplicate_entries{}, capture_candidates{}, cached_state_hits{}, cached_recipe_hits{};
     u64 input_lookup_wall_ns{};
     u64 capture_wall_ns{}, canonical_wall_ns{}, dedup_wall_ns{}, enqueue_wall_ns{};

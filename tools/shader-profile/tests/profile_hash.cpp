@@ -25,6 +25,12 @@ int main() {
     for(size_t size:{0U,1U,7U,55U,56U,63U,64U,65U,127U,128U,129U,4096U,1048576U}) {
         std::string data(size,'\0');
         for(auto& value:data) value=static_cast<char>(random());
-        if(ResourceSha256(data)!=sha256(data)) throw std::runtime_error("platform SHA-256 mismatch");
+        const auto raw=VideoCommon::ShaderProfile::ResourceDigest(data);
+        const auto hex=ResourceSha256(data);
+        constexpr char digits[]="0123456789abcdef";
+        for(size_t i=0;i<raw.size();++i)
+            if(hex[i*2]!=digits[raw[i]>>4] || hex[i*2+1]!=digits[raw[i]&15])
+                throw std::runtime_error("Raw SHA-256 digest mismatch");
+        if(hex!=sha256(data)) throw std::runtime_error("platform SHA-256 mismatch");
     }
 }

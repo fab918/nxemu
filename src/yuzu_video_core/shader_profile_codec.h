@@ -3,7 +3,8 @@
 #include <string>
 #include <string_view>
 namespace VideoCommon::ShaderProfile {
-// Encoding envelope only: schema/recipes remain v2 and plain JSON remains readable.
+// Bounded compression envelope; the runtime separately requires NXSHBIN4.
+// Unpack also accepts raw bytes for offline diagnostic tools.
 std::string Pack(std::string_view json, int level = 3);
 std::string Unpack(std::string_view bytes);
 } // namespace VideoCommon::ShaderProfile

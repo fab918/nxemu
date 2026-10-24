@@ -192,8 +192,9 @@ std::string Bytes(const std::filesystem::path & root, const std::string & name, 
     if (timings) timings->Add(Timing::Counter::ResourceReadBytes, size);
     return bytes;
 }
-std::string Environment(const Env & env, const Program & program, const std::string & code, Timing::Metrics * timings)
+SharedShaderBytes Environment(const Env & env, std::shared_ptr<const std::string> program, Timing::Metrics * timings)
 {
+    const std::string_view code=*program;
     Check(env.fields[6] <= 6 && env.fields[2] == env.fields[3] && env.fields[4] >= env.fields[3] && u64{env.fields[4]} - env.fields[3] + 8 == code.size(), "Compact environment bounds");
     Writer out;
     out.Fixed(code.size(), 8);
@@ -201,7 +202,6 @@ std::string Environment(const Env & env, const Program & program, const std::str
         out.Fixed(m.size(), 8);
     for (auto n : env.fields)
         out.Fixed(n, 4);
-    out.bytes += code;
     for (size_t i = 0; i < 4; ++i)
         for (const auto & [key, value] : env.maps[i])
         {
@@ -222,7 +222,7 @@ std::string Environment(const Env & env, const Program & program, const std::str
             for (auto n : env.passthrough)
                 out.Fixed(n, 4);
     }
-    return out.bytes;
+    return SharedShaderBytes::FromMetadata(std::move(out.bytes),std::move(program));
 }
 } // namespace
 
@@ -258,7 +258,11 @@ std::string PackCompact(const JsonValue & profile)
     };
     std::vector<Ref> programs;
     auto shader_names = profile["shaders"].GetMemberNames();
-    std::sort(shader_names.begin(), shader_names.end(), [&](const auto & a, const auto & b) { return std::pair(Canonical(profile["shaders"][a]["references"]), a) < std::pair(Canonical(profile["shaders"][b]["references"]), b); });
+    std::map<std::string,std::string> locator_keys;
+    for (const auto& name : shader_names) locator_keys.emplace(name,Canonical(profile["shaders"][name]["references"]));
+    std::sort(shader_names.begin(), shader_names.end(), [&](const auto & a, const auto & b) {
+        return std::tie(locator_keys.at(a),a) < std::tie(locator_keys.at(b),b);
+    });
     for (const auto & h : shader_names)
     {
         const auto & shader = profile["shaders"][h];
@@ -454,7 +458,7 @@ std::string PackCompact(const JsonValue & profile)
         }
     }
     Check(out.bytes.size() <= 32 * 1024 * 1024, "Compact profile size limit");
-    return Pack(out.bytes);
+    return Pack(out.bytes,3);
 }
 
 static std::vector<Recipe> ReadCompactImpl(std::string_view payload, const std::filesystem::path & root, u64 title_id, size_t * unresolved_count, Timing::Metrics * timings, const ResourceProgress & progress, bool metadata_only, ImportReport* report = nullptr, std::string_view target_context = {}, const std::set<std::string>* existing_recipes = nullptr, const std::map<std::string,std::shared_ptr<const std::string>>* existing_programs = nullptr)
@@ -700,6 +704,19 @@ static std::vector<Recipe> ReadCompactImpl(std::string_view payload, const std::
     }
     // Identity contains semantic compilation inputs only, never table indices,
     // physical locators, compression, labels or the community revision's digest.
+    std::vector<std::string> environment_identities;
+    environment_identities.reserve(envs.size());
+    for (const auto& env : envs) {
+        Writer identity;
+        const auto words = [&](const auto& values) { for (auto value : values) identity.Fixed(value,4); };
+        identity.Hash(programs[env.program].hash); words(env.fields);
+        for (auto map : env.maps) {
+            std::sort(map.begin(),map.end()); identity.Var(map.size());
+            for (const auto& [key,value] : map) { identity.Fixed(key,8); identity.Fixed(value,4); }
+        }
+        words(env.workgroup); identity.Fixed(env.shared,4); words(env.passthrough); identity.Text(env.header);
+        environment_identities.push_back(std::move(identity.bytes));
+    }
     for (auto& p : pending) {
         Writer identity;
         identity.Text("nxshader-recipe-1"); identity.Text(p.recipe.source_context);
@@ -709,15 +726,7 @@ static std::vector<Recipe> ReadCompactImpl(std::string_view payload, const std::
         for (const auto& sizes : p.recipe.cbuf_sizes) words(sizes);
         words(p.recipe.texture_pool); identity.Fixed(p.recipe.shared_memory_size,4);
         words(p.recipe.workgroup_size); words(p.recipe.compute_cbuf_sizes); identity.Fixed(p.recipe.texture_table_size,4);
-        for (auto id : p.ids) {
-            const auto& env = envs[id];
-            identity.Hash(programs[env.program].hash); words(env.fields);
-            for (auto map : env.maps) {
-                std::sort(map.begin(),map.end()); identity.Var(map.size());
-                for (const auto& [key,value] : map) { identity.Fixed(key,8); identity.Fixed(value,4); }
-            }
-            words(env.workgroup); identity.Fixed(env.shared,4); words(env.passthrough); identity.Text(env.header);
-        }
+        for (auto id : p.ids) identity.bytes += environment_identities[id];
         p.recipe.identity = ResourceSha256(identity.bytes);
     }
     Check(in.pos == payload.size(), "Trailing compact bytes");
@@ -762,24 +771,39 @@ static std::vector<Recipe> ReadCompactImpl(std::string_view payload, const std::
     // verify every requested program/resource. No guessed shader is accepted.
     std::map<std::string,std::string> aliases;
     if (!source_files.empty() && !groups.empty()) {
-        std::vector<std::filesystem::path> candidates;
+        std::set<std::string> needed_files;
+        for (const auto& [rid,requests] : groups) {
+            const auto& resource=resources[rid];
+            if (resource.kind<3) needed_files.insert(resource.file);
+            for (const auto& span : resource.spans) needed_files.insert(span.file);
+        }
+        std::map<u64,std::vector<std::string>> candidates;
         size_t entries{};
         for (const auto& entry : std::filesystem::directory_iterator(root)) {
             Check(++entries <= 4096, "Local resource directory limit");
-            if (entry.is_regular_file()) candidates.push_back(entry.path());
+            std::error_code error;
+            if (!entry.is_regular_file(error) || error) continue;
+            const auto size=entry.file_size(error);
+            if (error) continue;
+            const auto name=entry.path().filename().u8string();
+            candidates[size].emplace_back(reinterpret_cast<const char*>(name.data()),name.size());
         }
-        std::sort(candidates.begin(), candidates.end());
+        for (auto& [size,names] : candidates) std::sort(names.begin(),names.end());
+        std::map<std::string,std::string> fingerprints;
         for (const auto& source : source_files) {
+            if (!needed_files.contains(source.name)) continue;
             Check(!progress || progress(0,groups.size()), "Shader profile operation cancelled");
-            for (const auto& candidate : candidates) {
-                if (std::filesystem::file_size(candidate) != source.size) continue;
-                const auto name = candidate.filename().u8string();
-                const std::string utf8(reinterpret_cast<const char*>(name.data()), name.size());
+            auto names=candidates[source.size];
+            // Prefer the original logical name; a same-size, same-prefix file
+            // elsewhere in the directory must not hide the exact local copy.
+            const auto named=std::find(names.begin(),names.end(),source.name);
+            if(named!=names.end()) std::rotate(names.begin(),named,named+1);
+            for (const auto& name : names) {
                 try {
-                    if (Hash(Bytes(root, utf8, 0, std::min<u64>(source.size,4096), timings), timings) == source.header) {
-                        aliases[source.name] = utf8;
-                        break;
-                    }
+                    auto found=fingerprints.find(name);
+                    if(found==fingerprints.end())found=fingerprints.emplace(name,
+                        Hash(Bytes(root,name,0,std::min<u64>(source.size,4096),timings),timings)).first;
+                    if(found->second==source.header) { aliases[source.name]=name;break; }
                 } catch (const std::runtime_error&) { /* Never follow an escaping link. */ }
             }
         }
@@ -800,14 +824,31 @@ static std::vector<Recipe> ReadCompactImpl(std::string_view payload, const std::
             else incompatible = true;
         };
         if (resource.kind == 0) {
-            for (auto id : requests) {
-                try {
-                    const auto& p = programs[id];
-                    auto code = Bytes(root, resource.file, p.offset, p.size, timings);
-                    Check(Hash(code, timings) == p.hash, "Compact program fingerprint mismatch");
-                    codes[id] = std::make_shared<const std::string>(std::move(code));
-                } catch (const std::runtime_error& error) { unavailable(error); }
-            }
+            try {
+                // Resolve and open a raw container once, then validate each
+                // requested range independently so a truncated tail cannot
+                // discard otherwise useful programs from the same file.
+                const auto path=Local(root,resource.file);
+                const auto length=std::filesystem::file_size(path);
+                std::ifstream input(path,std::ios::binary);
+                Check(bool(input),"Cannot open compact resource");
+                for (auto id : requests) {
+                    try {
+                        const auto& p=programs[id];
+                        Check(p.offset<=length && p.size<=length-p.offset,"Compact resource range");
+                        std::string code(static_cast<size_t>(p.size),'\0');
+                        {
+                            Timing::Timer io(timings,Timing::Phase::ResourceIO);
+                            input.clear(); input.seekg(static_cast<std::streamoff>(p.offset));
+                            input.read(code.data(),code.size());
+                            Check(bool(input),"Cannot read compact resource");
+                            if(timings)timings->Add(Timing::Counter::ResourceReadBytes,p.size);
+                        }
+                        Check(Hash(code,timings)==p.hash,"Compact program fingerprint mismatch");
+                        codes[id]=std::make_shared<const std::string>(std::move(code));
+                    } catch (const std::runtime_error& error) { unavailable(error); }
+                }
+            } catch (const std::runtime_error& error) { unavailable(error); }
         } else {
             try {
                 size_t prefix{};
@@ -844,8 +885,7 @@ static std::vector<Recipe> ReadCompactImpl(std::string_view payload, const std::
     {
         const auto& env = envs[id];
         if (!codes[env.program]) continue;
-        const auto serialized = Environment(env, programs[env.program], *codes[env.program], timings);
-        assembled[id] = SharedShaderBytes::FromEnvironment(serialized,codes[env.program]);
+        assembled[id] = Environment(env, codes[env.program], timings);
         env_budget += assembled[id].MetadataBytes();
         Check(env_budget <= 256 * 1024 * 1024, "Compact environment budget");
     }
@@ -853,6 +893,7 @@ static std::vector<Recipe> ReadCompactImpl(std::string_view payload, const std::
     Timing::Timer recipe_timer(timings, Timing::Phase::RecipeAssembly);
     std::vector<Recipe> result;
     result.reserve(pending.size());
+    std::set<std::pair<u32,u64>> verified_program_hashes;
     for (auto& p : pending) {
         if (!compatible_context(p.recipe) || (existing_recipes && existing_recipes->contains(p.recipe.identity))) continue;
         bool available = true;
@@ -861,7 +902,8 @@ static std::vector<Recipe> ReadCompactImpl(std::string_view payload, const std::
             const auto id = p.ids.at(env_index++);
             const auto& code = codes[envs[id].program];
             if (!code) available = false;
-            else Check(MatchesProgramHash(*code, hash), "Recipe program hash mismatch");
+            else if (verified_program_hashes.emplace(envs[id].program,hash).second)
+                Check(MatchesProgramHash(*code, hash), "Recipe program hash mismatch");
         }
         Check(env_index == p.ids.size(), "Recipe program count mismatch");
         if (!available) { ++outcome.skipped; continue; }

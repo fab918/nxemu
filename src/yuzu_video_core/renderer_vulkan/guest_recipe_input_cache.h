@@ -57,10 +57,10 @@ public:
         for(size_t i=0;i<=Groups;++i) {
             auto& group=storage->groups[i];
             group.current.resize(i==Groups?104:group.methods.size());
-            // The measured course needs more prefix/vertex inputs, not larger
-            // copies of every low-cardinality register group.
-            const bool many_inputs=i==Groups || (1U<<i)==GuestPipelineState::VertexInput;
-            const size_t slots=many_inputs?1024:256;
+            // Shader combinations need more ways to survive revisits than the
+            // low-cardinality register groups. Keep all policies bounded; a
+            // collision/eviction still falls back to exact canonical capture.
+            const size_t slots=i==Groups?4096:(1U<<i)==GuestPipelineState::VertexInput?1024:256;
             group.slots.resize(slots);
             group.next.resize(slots/Ways);
             group.values.resize(group.current.size()*slots);
@@ -110,6 +110,9 @@ public:
             if(state.valid && state.entry && state.key==key)return {&state,true};
         }
         auto& state=storage->states[begin+storage->next[set]++%Ways];
+        // Preserve projected until the caller supplies the replacement. This
+        // permits reusing the previous projection for a prefix-only miss, even
+        // when the replacement happens to evict that same State slot.
         state.valid=true;state.key=key;state.entry=nullptr;
         return {&state,false};
     }

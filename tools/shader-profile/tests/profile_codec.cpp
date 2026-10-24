@@ -34,16 +34,17 @@ int main(int argc,char** argv) try {
     const std::string command=argv[1];const auto input=read(argv[2]);
     if(command=="pack" && (argc==4 || argc==5))write(argv[3],Pack(input,argc==5?std::stoi(argv[4]):3));
     else if(command=="unpack" && argc==4)write(argv[3],Unpack(input));
-    else if(command=="bench" && argc==3) {
+    else if((command=="bench" || command=="bench-payload") && argc==3) {
+        const bool binary=command=="bench-payload";
         const auto parse=[](const std::string& text){JsonValue value;if(!JsonReader().Parse(text.data(),text.data()+text.size(),value))throw std::runtime_error("JSON parse failed");};
-        const auto plain_parse=median([&]{parse(input);});
+        const auto plain_parse=binary ? 0.0 : median([&]{parse(input);});
         std::cout<<"{\"raw_bytes\":"<<input.size()<<",\"plain_parse_ms\":"<<plain_parse<<",\"levels\":[";
         bool first=true;
-        for(const int level:{1,3,6,9,12,19}) {
+        for(const int level:{1,3,6}) {
             const auto compressed=Pack(input,level);
             const auto pack_ms=median([&]{auto output=Pack(input,level);if(output!=compressed)throw std::runtime_error("nondeterministic compression");});
             const auto unpack_ms=median([&]{if(Unpack(compressed)!=input)throw std::runtime_error("roundtrip mismatch");});
-            const auto read_parse_ms=median([&]{parse(Unpack(compressed));});
+            const auto read_parse_ms=binary ? unpack_ms : median([&]{parse(Unpack(compressed));});
             if(!first)std::cout<<',';first=false;
             std::cout<<"{\"level\":"<<level<<",\"bytes\":"<<compressed.size()<<",\"pack_ms\":"<<pack_ms
                      <<",\"unpack_ms\":"<<unpack_ms<<",\"decode_and_parse_ms\":"<<read_parse_ms<<'}';

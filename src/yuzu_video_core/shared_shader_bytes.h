@@ -14,6 +14,11 @@ class SharedShaderBytes {
 public:
     SharedShaderBytes() : parts(std::make_shared<const Parts>()) {}
     SharedShaderBytes(std::string bytes) : parts(std::make_shared<const Parts>(Parts{std::move(bytes),{}})) {}
+    // Header followed by query metadata, with the program retained separately.
+    static SharedShaderBytes FromMetadata(std::string metadata, std::shared_ptr<const std::string> program) {
+        if (metadata.size()<68 || !program) throw std::runtime_error("Invalid shared shader metadata");
+        return Split(std::move(metadata),std::move(program));
+    }
     static SharedShaderBytes FromStore(std::string_view metadata, std::shared_ptr<const std::string> program) {
         if (metadata.size()<100 || !program) throw std::runtime_error("Invalid shared shader environment");
         return Split(std::string(metadata.substr(0,68))+std::string(metadata.substr(100)),std::move(program));

@@ -145,3 +145,7 @@ et la taille du profil. Retourner seulement le `.nxshader`, les versions base/up
 et les logs de mesure. Tester ensuite ce nouveau fichier sur Windows à cache local
 vide, même scénario, puis le sens inverse. La compilation et l'interface Mac/Linux,
 le nouvel aller-retour Mac → Windows et les FPS/stutters comparatifs restent à valider.
+
+## Validation synthétique du 24 octobre 2026
+
+Voir [les tests, mesures et limites](SYNTHETIC_2026_10_24.md). Zstd reste au niveau 3.

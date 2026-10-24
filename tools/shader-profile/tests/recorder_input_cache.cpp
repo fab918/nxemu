@@ -18,6 +18,6 @@ int main()try {
         if(result.hit)Check(result.state->entry && *result.state->entry==expected);
         else {retained.push_back(expected);result.state->entry=&retained.back();}
     }
-    Check(cache.StorageBytes()<4*1024*1024);
+    Check(cache.StorageBytes()<6*1024*1024);
     std::cout<<"PASS: forced collisions, exact recipe identities, bounded eviction; bytes="<<cache.StorageBytes()<<'\n';
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

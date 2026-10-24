@@ -213,3 +213,29 @@ endif()
 add_executable(recorder-cache-trace recorder_cache_trace.cpp
     "${NXEMU_ROOT}/src/yuzu_common/cityhash.cpp")
 target_link_libraries(recorder-cache-trace PRIVATE profile-storage)
+
+add_executable(synthetic-robustness synthetic_robustness.cpp
+    "${NXEMU_ROOT}/src/yuzu_video_core/renderer_vulkan/fixed_pipeline_state.cpp"
+    "${NXEMU_ROOT}/src/yuzu_video_core/surface.cpp")
+target_compile_definitions(synthetic-robustness PRIVATE FMT_HEADER_ONLY)
+target_link_libraries(synthetic-robustness PRIVATE profile-storage Threads::Threads)
+add_test(NAME synthetic-robustness COMMAND synthetic-robustness)
+set_tests_properties(synthetic-robustness PROPERTIES TIMEOUT 120)
+
+# Optional: benchmark the actual compiler archives from a completed app build.
+set(NXSHADER_APP_BUILD "" CACHE PATH "Completed app build for the CPU shader compiler benchmark")
+if(NXSHADER_APP_BUILD)
+    add_executable(shader-compile-benchmark shader_compile_benchmark.cpp)
+    target_link_libraries(shader-compile-benchmark PRIVATE profile-storage
+        "${NXSHADER_APP_BUILD}/src/yuzu_shader_recompiler/${CMAKE_STATIC_LIBRARY_PREFIX}shader_recompiler${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        "${NXSHADER_APP_BUILD}/external/sirit/src/${CMAKE_STATIC_LIBRARY_PREFIX}sirit${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        "${NXSHADER_APP_BUILD}/external/fmt/${CMAKE_STATIC_LIBRARY_PREFIX}fmt${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        "${NXSHADER_APP_BUILD}/src/yuzu_common/${CMAKE_STATIC_LIBRARY_PREFIX}yuzu_common${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        "${NXSHADER_APP_BUILD}/src/common/${CMAKE_STATIC_LIBRARY_PREFIX}common${CMAKE_STATIC_LIBRARY_SUFFIX}")
+endif()
+
+add_executable(register-tracking-benchmark register_tracking_benchmark.cpp
+    "${NXEMU_ROOT}/src/yuzu_video_core/renderer_vulkan/fixed_pipeline_state.cpp"
+    "${NXEMU_ROOT}/src/yuzu_video_core/surface.cpp")
+target_link_libraries(register-tracking-benchmark PRIVATE profile-storage Threads::Threads)
+target_compile_definitions(register-tracking-benchmark PRIVATE FMT_HEADER_ONLY)

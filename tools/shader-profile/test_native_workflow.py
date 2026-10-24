@@ -309,3 +309,45 @@ class NativeWorkflowTests(unittest.TestCase):
             self.assertEqual(packed.returncode,0,packed.stderr)
             self.assertNotEqual(self.read(target,'bad-v3-'+str(index)).returncode,0)
             self.assertFalse((self.root/('bad-v3-'+str(index)+'.nxc')).exists())
+
+    def test_truncated_raw_container_preserves_independent_program(self):
+        profile=self.mixed_profile()
+        for shader in profile['shaders'].values():
+            ref=shader['references'][0]
+            if ref['file']=='update.dat':ref.update(file='game.dat',offset=8)
+        _,packed=self.pack(profile,'truncated-container')
+        result=self.read(packed,'truncated-independent')
+        self.assertEqual(result.returncode,0,result.stderr)
+        report=json.loads(result.stdout)
+        self.assertEqual(report['recipes'],1)
+        self.assertEqual(report['skipped'],1)
+        self.assertEqual(report['incompatible_resources'],1)
+
+    def test_named_container_is_preferred_over_same_header_decoy(self):
+        profile=copy.deepcopy(self.profile)
+        prefix=b'P'*4096
+        (self.root/'game.dat').write_bytes(prefix+b'12345678')
+        (self.root/'aaa-decoy.dat').write_bytes(prefix+b'87654321')
+        next(iter(profile['shaders'].values()))['references'][0]['offset']=4096
+        profile['source_files']=[dict(name='game.dat',size=4104,header=hashlib.sha256(prefix).hexdigest())]
+        _,packed=self.pack(profile,'named-container')
+        result=self.read(packed,'named-preferred')
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(json.loads(result.stdout)['recipes'],1)
+
+    def test_unused_source_fingerprints_are_not_read(self):
+        profile=self.mixed_profile()
+        contexts=['a'*64,'b'*64]
+        for recipe,context in zip(profile['recipes'],contexts):recipe['source_context']=context
+        (self.root/'update.dat').write_bytes(b'ABCDEFGH')
+        profile['source_files']=[dict(name=name,size=8,header=hashlib.sha256(code).hexdigest())
+            for name,code in [('game.dat',b'12345678'),('update.dat',b'ABCDEFGH')]]
+        _,packed=self.pack(profile,'unused-source')
+        env=dict(os.environ,NXEMU_NXSHADER_TIMING='1')
+        result=subprocess.run([self.reader,str(packed),str(self.root),profile['title_id'],
+            str(self.root/'context-only.nxc'),'67','--context='+contexts[0]],capture_output=True,env=env)
+        self.assertEqual(result.returncode,0,result.stderr)
+        report=json.loads(result.stdout)
+        self.assertEqual(report['recipes'],1)
+        self.assertEqual(report['incompatible_contexts'],1)
+        self.assertEqual(report['timings']['counts']['resource_read_bytes'],16)

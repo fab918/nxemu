@@ -69,7 +69,7 @@ private:
 #endif
 } // namespace HashDetail
 
-inline std::string ResourceSha256(std::string_view bytes) {
+inline std::array<unsigned char,SHA256::DIGEST_SIZE> ResourceDigest(std::string_view bytes) {
     std::array<unsigned char,SHA256::DIGEST_SIZE> digest{};
 #ifdef __APPLE__
     const bool accelerated=bytes.size()<=(std::numeric_limits<CC_LONG>::max)() &&
@@ -84,6 +84,10 @@ inline std::string ResourceSha256(std::string_view bytes) {
                         static_cast<unsigned int>(bytes.size()));
         fallback.final(digest.data());
     }
+    return digest;
+}
+inline std::string ResourceSha256(std::string_view bytes) {
+    const auto digest=ResourceDigest(bytes);
     constexpr char hex[]="0123456789abcdef";
     std::string out(64,'\0');
     for(size_t i=0;i<digest.size();++i) {

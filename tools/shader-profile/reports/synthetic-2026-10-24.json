@@ -1,0 +1,2441 @@
+{
+  "date": "2026-10-24",
+  "machine": "Apple M4 Pro, macOS arm64, AppleClang 21, Release",
+  "baseline_commit": "344f7fc8",
+  "production_zstd_level": 3,
+  "benchmark_zstd_levels": [
+    1,
+    3,
+    6
+  ],
+  "tests": {
+    "native": 12,
+    "python": 73,
+    "asan_ubsan": 5,
+    "spirv_compilations": 366,
+    "spirv_val_modules": 6,
+    "leak_detection": "Unsupported by this Apple ASan runtime; disabled. ASan and UBSan enabled."
+  },
+  "equivalent_payload_profile_cache_and_recipe_fingerprints": true,
+  "robustness": {
+    "payload_truncations": 398,
+    "envelope_mutations": 158,
+    "payload_mutations": 3000,
+    "rejected_mutations": 1151,
+    "compute_variants": 256,
+    "random_appends": 1200,
+    "verified_combinations": 239,
+    "cache_truncations": 398,
+    "cache_data_corruptions": 287,
+    "concurrent_appends": 800
+  },
+  "before": {
+    "seed": 918,
+    "repeats": 3,
+    "note": "Synthetic CPU/storage tests; process times include tool startup and verification. No GPU compilation.",
+    "workloads": [
+      {
+        "name": "shared-code",
+        "programs": 1,
+        "recipes": 2048,
+        "code_size": 65536,
+        "metadata_bytes": 1446882,
+        "nxshader_bytes": 14890,
+        "payload_bytes": 119001,
+        "payload_sha256": "91e14f2d7370d021c8ffd47ba0ded2892e31ff26f6c9ba99351db2b9cab0e6c8",
+        "cache_bytes": 692277,
+        "nxshader_sha256": "275f01fa5fa7aaf01fde078047c903f99554488a9da9e05ea4a1b47f0797cfa9",
+        "cache_sha256": "8a8170aba92871b0e535ba211f7c62bf0c9caebab5ab9156d8f6e1c4684f97d2",
+        "recipe_ids_sha256": "a42688a281a0e31a524c3b0a02a1b9bd375af7705ff702eba4508597f616e23c",
+        "export_process_median_ms": 23.938582999999987,
+        "import_process_median_ms": 401.899667,
+        "import_timings": {
+          "schema": 1,
+          "phases": {
+            "profile_io": {
+              "ms": 0.02575,
+              "calls": 1,
+              "completed": 1
+            },
+            "profile_decompression": {
+              "ms": 0.063375,
+              "calls": 1,
+              "completed": 1
+            },
+            "json_parse": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "schema_and_locators": {
+              "ms": 3.84142,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_total": {
+              "ms": 0.118167,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_io": {
+              "ms": 0.098333,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_decompression": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "resource_verification": {
+              "ms": 0.01925,
+              "calls": 1,
+              "completed": 1
+            },
+            "environment_assembly": {
+              "ms": 9.67846,
+              "calls": 1,
+              "completed": 1
+            },
+            "recipe_assembly": {
+              "ms": 5.50079,
+              "calls": 1,
+              "completed": 1
+            },
+            "reader_total": {
+              "ms": 19.3318,
+              "calls": 1,
+              "completed": 1
+            },
+            "guest_projection": {
+              "ms": 0.582823,
+              "calls": 2048,
+              "completed": 2048
+            },
+            "environment_deserialization": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "cache_append": {
+              "ms": 373.954,
+              "calls": 2048,
+              "completed": 2048
+            },
+            "existing_cache_load": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "warmup_wait": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "startup_wall": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "compiler_wall": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "guest_translation": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "spirv_emission": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "shader_module_creation": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "native_graphics": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "native_compute": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            }
+          },
+          "counts": {
+            "profile_bytes": 14890,
+            "json_bytes": 0,
+            "resource_read_bytes": 65536,
+            "resource_decoded_bytes": 0,
+            "resource_groups": 1,
+            "programs": 1,
+            "environments": 2048,
+            "recipes": 2048,
+            "hle_aliases": 0,
+            "pipeline_requests": 0,
+            "pipeline_requests_completed": 0,
+            "stop_requested": 0
+          }
+        },
+        "reuse_process_ms": 8.374874999999893,
+        "reuse_resource_bytes": 0,
+        "compression": [
+          {
+            "level": 1,
+            "bytes": 14946,
+            "pack_ms": 0.0833955,
+            "unpack_ms": 0.042396,
+            "decode_and_parse_ms": 0.042396
+          },
+          {
+            "level": 3,
+            "bytes": 14890,
+            "pack_ms": 0.0843335,
+            "unpack_ms": 0.0430205,
+            "decode_and_parse_ms": 0.0430205
+          },
+          {
+            "level": 6,
+            "bytes": 13528,
+            "pack_ms": 0.402833,
+            "unpack_ms": 0.0457495,
+            "decode_and_parse_ms": 0.0457495
+          }
+        ]
+      },
+      {
+        "name": "mixed-variants",
+        "programs": 32,
+        "recipes": 2048,
+        "code_size": 16384,
+        "metadata_bytes": 1443529,
+        "nxshader_bytes": 12443,
+        "payload_bytes": 115618,
+        "payload_sha256": "d255622ed8c02f363f7b92bbb3761ea9c5ff33a5cfc8b8d4980245aa301000eb",
+        "cache_bytes": 1152176,
+        "nxshader_sha256": "3705397b9a68158379021d40848831ec9d6f21d45043597ca5b3b3755239d7c3",
+        "cache_sha256": "90a76e68ef0f193648bdf97f0800f09cdd73c4ffd8851030226798d24835dabd",
+        "recipe_ids_sha256": "9738cf62e5c52e9f9bcc7f98d2c8c28c5963fca4e14cc550f946e73e9baf9d11",
+        "export_process_median_ms": 29.638374999999996,
+        "import_process_median_ms": 159.5718749999997,
+        "import_timings": {
+          "schema": 1,
+          "phases": {
+            "profile_io": {
+              "ms": 0.025875,
+              "calls": 1,
+              "completed": 1
+            },
+            "profile_decompression": {
+              "ms": 0.061792,
+              "calls": 1,
+              "completed": 1
+            },
+            "json_parse": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "schema_and_locators": {
+              "ms": 3.86508,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_total": {
+              "ms": 1.30221,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_io": {
+              "ms": 1.12254,
+              "calls": 32,
+              "completed": 32
+            },
+            "resource_decompression": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "resource_verification": {
+              "ms": 0.176751,
+              "calls": 32,
+              "completed": 32
+            },
+            "environment_assembly": {
+              "ms": 1.88813,
+              "calls": 1,
+              "completed": 1
+            },
+            "recipe_assembly": {
+              "ms": 1.4635,
+              "calls": 1,
+              "completed": 1
+            },
+            "reader_total": {
+              "ms": 8.73312,
+              "calls": 1,
+              "completed": 1
+            },
+            "guest_projection": {
+              "ms": 0.549357,
+              "calls": 2048,
+              "completed": 2048
+            },
+            "environment_deserialization": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "cache_append": {
+              "ms": 139.659,
+              "calls": 2048,
+              "completed": 2048
+            },
+            "existing_cache_load": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "warmup_wait": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "startup_wall": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "compiler_wall": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "guest_translation": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "spirv_emission": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "shader_module_creation": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "native_graphics": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "native_compute": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            }
+          },
+          "counts": {
+            "profile_bytes": 12443,
+            "json_bytes": 0,
+            "resource_read_bytes": 524288,
+            "resource_decoded_bytes": 0,
+            "resource_groups": 1,
+            "programs": 32,
+            "environments": 2048,
+            "recipes": 2048,
+            "hle_aliases": 0,
+            "pipeline_requests": 0,
+            "pipeline_requests_completed": 0,
+            "stop_requested": 0
+          }
+        },
+        "reuse_process_ms": 10.09666599999992,
+        "reuse_resource_bytes": 0,
+        "compression": [
+          {
+            "level": 1,
+            "bytes": 12899,
+            "pack_ms": 0.076708,
+            "unpack_ms": 0.041062,
+            "decode_and_parse_ms": 0.041062
+          },
+          {
+            "level": 3,
+            "bytes": 12443,
+            "pack_ms": 0.074917,
+            "unpack_ms": 0.045021,
+            "decode_and_parse_ms": 0.045021
+          },
+          {
+            "level": 6,
+            "bytes": 14038,
+            "pack_ms": 0.316896,
+            "unpack_ms": 0.0440835,
+            "decode_and_parse_ms": 0.0440835
+          }
+        ]
+      },
+      {
+        "name": "unique-programs",
+        "programs": 512,
+        "recipes": 512,
+        "code_size": 4096,
+        "metadata_bytes": 439932,
+        "nxshader_bytes": 24923,
+        "payload_bytes": 47680,
+        "payload_sha256": "12c532d2afbf4f6bca8083d69b5c230361aa0ff760f0ca5ab9bd2d7f1d50ae86",
+        "cache_bytes": 2272784,
+        "nxshader_sha256": "a2e467ae8b6e21159b3e0a65c3af97fb28582c2ec519c766c21fb74f23a805e3",
+        "cache_sha256": "d0a4e10cc74fcea3162028c7930f27cc4147b589230148f5dc51ba9cdb4983b0",
+        "recipe_ids_sha256": "bc540ee683808b37db238e342c53020f638746680a43d290d0ccd96468bb0bf9",
+        "export_process_median_ms": 19.05725000000036,
+        "import_process_median_ms": 54.09391699999988,
+        "import_timings": {
+          "schema": 1,
+          "phases": {
+            "profile_io": {
+              "ms": 0.031792,
+              "calls": 1,
+              "completed": 1
+            },
+            "profile_decompression": {
+              "ms": 0.0265,
+              "calls": 1,
+              "completed": 1
+            },
+            "json_parse": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "schema_and_locators": {
+              "ms": 1.13213,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_total": {
+              "ms": 14.2084,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_io": {
+              "ms": 13.4105,
+              "calls": 512,
+              "completed": 512
+            },
+            "resource_decompression": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "resource_verification": {
+              "ms": 0.746169,
+              "calls": 512,
+              "completed": 512
+            },
+            "environment_assembly": {
+              "ms": 0.277375,
+              "calls": 1,
+              "completed": 1
+            },
+            "recipe_assembly": {
+              "ms": 0.121666,
+              "calls": 1,
+              "completed": 1
+            },
+            "reader_total": {
+              "ms": 15.8816,
+              "calls": 1,
+              "completed": 1
+            },
+            "guest_projection": {
+              "ms": 0.127207,
+              "calls": 512,
+              "completed": 512
+            },
+            "environment_deserialization": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "cache_append": {
+              "ms": 26.5115,
+              "calls": 512,
+              "completed": 512
+            },
+            "existing_cache_load": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "warmup_wait": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "startup_wall": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "compiler_wall": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "guest_translation": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "spirv_emission": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "shader_module_creation": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "native_graphics": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "native_compute": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            }
+          },
+          "counts": {
+            "profile_bytes": 24923,
+            "json_bytes": 0,
+            "resource_read_bytes": 2097152,
+            "resource_decoded_bytes": 0,
+            "resource_groups": 1,
+            "programs": 512,
+            "environments": 512,
+            "recipes": 512,
+            "hle_aliases": 0,
+            "pipeline_requests": 0,
+            "pipeline_requests_completed": 0,
+            "stop_requested": 0
+          }
+        },
+        "reuse_process_ms": 5.364707999999663,
+        "reuse_resource_bytes": 0,
+        "compression": [
+          {
+            "level": 1,
+            "bytes": 25212,
+            "pack_ms": 0.0457705,
+            "unpack_ms": 0.0257915,
+            "decode_and_parse_ms": 0.0257915
+          },
+          {
+            "level": 3,
+            "bytes": 24923,
+            "pack_ms": 0.069667,
+            "unpack_ms": 0.0121875,
+            "decode_and_parse_ms": 0.0121875
+          },
+          {
+            "level": 6,
+            "bytes": 24910,
+            "pack_ms": 0.209313,
+            "unpack_ms": 0.013208,
+            "decode_and_parse_ms": 0.013208
+          }
+        ]
+      },
+      {
+        "name": "large-profile",
+        "programs": 4096,
+        "recipes": 4096,
+        "code_size": 128,
+        "metadata_bytes": 3503042,
+        "nxshader_bytes": 192299,
+        "payload_bytes": 376772,
+        "payload_sha256": "ef2270d46e3a9952a8702ef932950bfd027a5e27b572854bcaaa965629c83d5e",
+        "cache_bytes": 1929232,
+        "nxshader_sha256": "801c9bbfdba7c3aef864ef2a6827f346a8b406326509ef5e5310a45cd806c1a5",
+        "cache_sha256": "b022741ed817e6b364e01561d23359a6b2349f7a39d9f2cf87562532f54db051",
+        "recipe_ids_sha256": "3c77708286040e9cf1d07d371ccbe681236a93415e98cf2c06b9c63afbe8d664",
+        "export_process_median_ms": 152.23575,
+        "import_process_median_ms": 267.98466700000034,
+        "import_timings": {
+          "schema": 1,
+          "phases": {
+            "profile_io": {
+              "ms": 0.081583,
+              "calls": 1,
+              "completed": 1
+            },
+            "profile_decompression": {
+              "ms": 0.167625,
+              "calls": 1,
+              "completed": 1
+            },
+            "json_parse": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "schema_and_locators": {
+              "ms": 8.37387,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_total": {
+              "ms": 109.396,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_io": {
+              "ms": 107.801,
+              "calls": 4096,
+              "completed": 4096
+            },
+            "resource_decompression": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "resource_verification": {
+              "ms": 1.20994,
+              "calls": 4096,
+              "completed": 4096
+            },
+            "environment_assembly": {
+              "ms": 1.37512,
+              "calls": 1,
+              "completed": 1
+            },
+            "recipe_assembly": {
+              "ms": 0.277,
+              "calls": 1,
+              "completed": 1
+            },
+            "reader_total": {
+              "ms": 120.317,
+              "calls": 1,
+              "completed": 1
+            },
+            "guest_projection": {
+              "ms": 1.14227,
+              "calls": 4096,
+              "completed": 4096
+            },
+            "environment_deserialization": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "cache_append": {
+              "ms": 125.74,
+              "calls": 4096,
+              "completed": 4096
+            },
+            "existing_cache_load": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "warmup_wait": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "startup_wall": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "compiler_wall": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "guest_translation": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "spirv_emission": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "shader_module_creation": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "native_graphics": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "native_compute": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            }
+          },
+          "counts": {
+            "profile_bytes": 192299,
+            "json_bytes": 0,
+            "resource_read_bytes": 524288,
+            "resource_decoded_bytes": 0,
+            "resource_groups": 1,
+            "programs": 4096,
+            "environments": 4096,
+            "recipes": 4096,
+            "hle_aliases": 0,
+            "pipeline_requests": 0,
+            "pipeline_requests_completed": 0,
+            "stop_requested": 0
+          }
+        },
+        "reuse_process_ms": 18.902125000000325,
+        "reuse_resource_bytes": 0,
+        "compression": [
+          {
+            "level": 1,
+            "bytes": 202753,
+            "pack_ms": 0.261521,
+            "unpack_ms": 0.189646,
+            "decode_and_parse_ms": 0.189646
+          },
+          {
+            "level": 3,
+            "bytes": 192299,
+            "pack_ms": 0.592771,
+            "unpack_ms": 0.123062,
+            "decode_and_parse_ms": 0.123062
+          },
+          {
+            "level": 6,
+            "bytes": 192383,
+            "pack_ms": 1.66219,
+            "unpack_ms": 0.121895,
+            "decode_and_parse_ms": 0.121895
+          }
+        ]
+      }
+    ],
+    "local_cache": [
+      {
+        "mib": 16,
+        "generated": {
+          "records": 64,
+          "file_bytes": 16798416,
+          "seconds": 0.06136,
+          "peak_resident_bytes": 4603904
+        },
+        "read_seconds_median": 0.0416848,
+        "read_peak_resident_bytes": 20480000,
+        "file_sha256": "b97291508a011a56712d4edad960943f70bdef60bd8bc1e76ff17ebe8135f4c0"
+      },
+      {
+        "mib": 64,
+        "generated": {
+          "records": 256,
+          "file_bytes": 67193616,
+          "seconds": 0.243084,
+          "peak_resident_bytes": 6209536
+        },
+        "read_seconds_median": 0.166186,
+        "read_peak_resident_bytes": 74465280,
+        "file_sha256": "039f6e994ebb086e47b6affdce5adc429faf5b5f45acd2d744385020e220a4cc"
+      }
+    ]
+  },
+  "after": {
+    "seed": 918,
+    "repeats": 3,
+    "note": "Synthetic CPU/storage tests; process times include tool startup and verification. No GPU compilation.",
+    "workloads": [
+      {
+        "name": "shared-code",
+        "programs": 1,
+        "recipes": 2048,
+        "code_size": 65536,
+        "metadata_bytes": 1446882,
+        "nxshader_bytes": 14890,
+        "payload_bytes": 119001,
+        "payload_sha256": "91e14f2d7370d021c8ffd47ba0ded2892e31ff26f6c9ba99351db2b9cab0e6c8",
+        "cache_bytes": 692277,
+        "nxshader_sha256": "275f01fa5fa7aaf01fde078047c903f99554488a9da9e05ea4a1b47f0797cfa9",
+        "cache_sha256": "8a8170aba92871b0e535ba211f7c62bf0c9caebab5ab9156d8f6e1c4684f97d2",
+        "recipe_ids_sha256": "a42688a281a0e31a524c3b0a02a1b9bd375af7705ff702eba4508597f616e23c",
+        "export_process_median_ms": 24.289832999999998,
+        "import_process_median_ms": 63.15112500000003,
+        "import_timings": {
+          "schema": 1,
+          "phases": {
+            "profile_io": {
+              "ms": 0.030208,
+              "calls": 1,
+              "completed": 1
+            },
+            "profile_decompression": {
+              "ms": 0.072334,
+              "calls": 1,
+              "completed": 1
+            },
+            "json_parse": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "schema_and_locators": {
+              "ms": 3.85833,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_total": {
+              "ms": 0.125125,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_io": {
+              "ms": 0.017417,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_decompression": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "resource_verification": {
+              "ms": 0.022125,
+              "calls": 1,
+              "completed": 1
+            },
+            "environment_assembly": {
+              "ms": 0.510375,
+              "calls": 1,
+              "completed": 1
+            },
+            "recipe_assembly": {
+              "ms": 0.165375,
+              "calls": 1,
+              "completed": 1
+            },
+            "reader_total": {
+              "ms": 4.84837,
+              "calls": 1,
+              "completed": 1
+            },
+            "guest_projection": {
+              "ms": 0.542112,
+              "calls": 2048,
+              "completed": 2048
+            },
+            "environment_deserialization": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "cache_append": {
+              "ms": 49.9323,
+              "calls": 2048,
+              "completed": 2048
+            },
+            "existing_cache_load": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "warmup_wait": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "startup_wall": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "compiler_wall": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "guest_translation": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "spirv_emission": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "shader_module_creation": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "native_graphics": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "native_compute": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            }
+          },
+          "counts": {
+            "profile_bytes": 14890,
+            "json_bytes": 0,
+            "resource_read_bytes": 65536,
+            "resource_decoded_bytes": 0,
+            "resource_groups": 1,
+            "programs": 1,
+            "environments": 2048,
+            "recipes": 2048,
+            "hle_aliases": 0,
+            "pipeline_requests": 0,
+            "pipeline_requests_completed": 0,
+            "stop_requested": 0
+          }
+        },
+        "reuse_process_ms": 9.29733300000002,
+        "reuse_resource_bytes": 0,
+        "compression": [
+          {
+            "level": 1,
+            "bytes": 14946,
+            "pack_ms": 0.0954375,
+            "unpack_ms": 0.048625,
+            "decode_and_parse_ms": 0.048625
+          },
+          {
+            "level": 3,
+            "bytes": 14890,
+            "pack_ms": 0.088396,
+            "unpack_ms": 0.047437,
+            "decode_and_parse_ms": 0.047437
+          },
+          {
+            "level": 6,
+            "bytes": 13528,
+            "pack_ms": 0.378563,
+            "unpack_ms": 0.0561875,
+            "decode_and_parse_ms": 0.0561875
+          }
+        ]
+      },
+      {
+        "name": "mixed-variants",
+        "programs": 32,
+        "recipes": 2048,
+        "code_size": 16384,
+        "metadata_bytes": 1443529,
+        "nxshader_bytes": 12443,
+        "payload_bytes": 115618,
+        "payload_sha256": "d255622ed8c02f363f7b92bbb3761ea9c5ff33a5cfc8b8d4980245aa301000eb",
+        "cache_bytes": 1152176,
+        "nxshader_sha256": "3705397b9a68158379021d40848831ec9d6f21d45043597ca5b3b3755239d7c3",
+        "cache_sha256": "90a76e68ef0f193648bdf97f0800f09cdd73c4ffd8851030226798d24835dabd",
+        "recipe_ids_sha256": "9738cf62e5c52e9f9bcc7f98d2c8c28c5963fca4e14cc550f946e73e9baf9d11",
+        "export_process_median_ms": 32.78487500000005,
+        "import_process_median_ms": 66.55274999999983,
+        "import_timings": {
+          "schema": 1,
+          "phases": {
+            "profile_io": {
+              "ms": 0.026541,
+              "calls": 1,
+              "completed": 1
+            },
+            "profile_decompression": {
+              "ms": 0.060292,
+              "calls": 1,
+              "completed": 1
+            },
+            "json_parse": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "schema_and_locators": {
+              "ms": 3.68604,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_total": {
+              "ms": 0.383084,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_io": {
+              "ms": 0.096793,
+              "calls": 32,
+              "completed": 32
+            },
+            "resource_decompression": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "resource_verification": {
+              "ms": 0.168335,
+              "calls": 32,
+              "completed": 32
+            },
+            "environment_assembly": {
+              "ms": 0.485542,
+              "calls": 1,
+              "completed": 1
+            },
+            "recipe_assembly": {
+              "ms": 0.160541,
+              "calls": 1,
+              "completed": 1
+            },
+            "reader_total": {
+              "ms": 4.89004,
+              "calls": 1,
+              "completed": 1
+            },
+            "guest_projection": {
+              "ms": 0.60119,
+              "calls": 2048,
+              "completed": 2048
+            },
+            "environment_deserialization": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "cache_append": {
+              "ms": 52.8656,
+              "calls": 2048,
+              "completed": 2048
+            },
+            "existing_cache_load": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "warmup_wait": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "startup_wall": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "compiler_wall": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "guest_translation": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "spirv_emission": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "shader_module_creation": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "native_graphics": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "native_compute": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            }
+          },
+          "counts": {
+            "profile_bytes": 12443,
+            "json_bytes": 0,
+            "resource_read_bytes": 524288,
+            "resource_decoded_bytes": 0,
+            "resource_groups": 1,
+            "programs": 32,
+            "environments": 2048,
+            "recipes": 2048,
+            "hle_aliases": 0,
+            "pipeline_requests": 0,
+            "pipeline_requests_completed": 0,
+            "stop_requested": 0
+          }
+        },
+        "reuse_process_ms": 8.86808299999986,
+        "reuse_resource_bytes": 0,
+        "compression": [
+          {
+            "level": 1,
+            "bytes": 12899,
+            "pack_ms": 0.0769585,
+            "unpack_ms": 0.039729,
+            "decode_and_parse_ms": 0.039729
+          },
+          {
+            "level": 3,
+            "bytes": 12443,
+            "pack_ms": 0.075521,
+            "unpack_ms": 0.040646,
+            "decode_and_parse_ms": 0.040646
+          },
+          {
+            "level": 6,
+            "bytes": 14038,
+            "pack_ms": 0.327438,
+            "unpack_ms": 0.0428545,
+            "decode_and_parse_ms": 0.0428545
+          }
+        ]
+      },
+      {
+        "name": "unique-programs",
+        "programs": 512,
+        "recipes": 512,
+        "code_size": 4096,
+        "metadata_bytes": 439932,
+        "nxshader_bytes": 24923,
+        "payload_bytes": 47680,
+        "payload_sha256": "12c532d2afbf4f6bca8083d69b5c230361aa0ff760f0ca5ab9bd2d7f1d50ae86",
+        "cache_bytes": 2272784,
+        "nxshader_sha256": "a2e467ae8b6e21159b3e0a65c3af97fb28582c2ec519c766c21fb74f23a805e3",
+        "cache_sha256": "d0a4e10cc74fcea3162028c7930f27cc4147b589230148f5dc51ba9cdb4983b0",
+        "recipe_ids_sha256": "bc540ee683808b37db238e342c53020f638746680a43d290d0ccd96468bb0bf9",
+        "export_process_median_ms": 12.560915999999978,
+        "import_process_median_ms": 28.499334000000154,
+        "import_timings": {
+          "schema": 1,
+          "phases": {
+            "profile_io": {
+              "ms": 0.027166,
+              "calls": 1,
+              "completed": 1
+            },
+            "profile_decompression": {
+              "ms": 0.022833,
+              "calls": 1,
+              "completed": 1
+            },
+            "json_parse": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "schema_and_locators": {
+              "ms": 0.955375,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_total": {
+              "ms": 1.38329,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_io": {
+              "ms": 0.478976,
+              "calls": 512,
+              "completed": 512
+            },
+            "resource_decompression": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "resource_verification": {
+              "ms": 0.696494,
+              "calls": 512,
+              "completed": 512
+            },
+            "environment_assembly": {
+              "ms": 0.118625,
+              "calls": 1,
+              "completed": 1
+            },
+            "recipe_assembly": {
+              "ms": 0.115542,
+              "calls": 1,
+              "completed": 1
+            },
+            "reader_total": {
+              "ms": 2.7075,
+              "calls": 1,
+              "completed": 1
+            },
+            "guest_projection": {
+              "ms": 0.112886,
+              "calls": 512,
+              "completed": 512
+            },
+            "environment_deserialization": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "cache_append": {
+              "ms": 19.7709,
+              "calls": 512,
+              "completed": 512
+            },
+            "existing_cache_load": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "warmup_wait": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "startup_wall": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "compiler_wall": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "guest_translation": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "spirv_emission": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "shader_module_creation": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "native_graphics": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "native_compute": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            }
+          },
+          "counts": {
+            "profile_bytes": 24923,
+            "json_bytes": 0,
+            "resource_read_bytes": 2097152,
+            "resource_decoded_bytes": 0,
+            "resource_groups": 1,
+            "programs": 512,
+            "environments": 512,
+            "recipes": 512,
+            "hle_aliases": 0,
+            "pipeline_requests": 0,
+            "pipeline_requests_completed": 0,
+            "stop_requested": 0
+          }
+        },
+        "reuse_process_ms": 4.747458999999843,
+        "reuse_resource_bytes": 0,
+        "compression": [
+          {
+            "level": 1,
+            "bytes": 25212,
+            "pack_ms": 0.052396,
+            "unpack_ms": 0.0250415,
+            "decode_and_parse_ms": 0.0250415
+          },
+          {
+            "level": 3,
+            "bytes": 24923,
+            "pack_ms": 0.067209,
+            "unpack_ms": 0.0122085,
+            "decode_and_parse_ms": 0.0122085
+          },
+          {
+            "level": 6,
+            "bytes": 24910,
+            "pack_ms": 0.207937,
+            "unpack_ms": 0.0133125,
+            "decode_and_parse_ms": 0.0133125
+          }
+        ]
+      },
+      {
+        "name": "large-profile",
+        "programs": 4096,
+        "recipes": 4096,
+        "code_size": 128,
+        "metadata_bytes": 3503042,
+        "nxshader_bytes": 192299,
+        "payload_bytes": 376772,
+        "payload_sha256": "ef2270d46e3a9952a8702ef932950bfd027a5e27b572854bcaaa965629c83d5e",
+        "cache_bytes": 1929232,
+        "nxshader_sha256": "801c9bbfdba7c3aef864ef2a6827f346a8b406326509ef5e5310a45cd806c1a5",
+        "cache_sha256": "b022741ed817e6b364e01561d23359a6b2349f7a39d9f2cf87562532f54db051",
+        "recipe_ids_sha256": "3c77708286040e9cf1d07d371ccbe681236a93415e98cf2c06b9c63afbe8d664",
+        "export_process_median_ms": 89.11520799999994,
+        "import_process_median_ms": 137.31766699999957,
+        "import_timings": {
+          "schema": 1,
+          "phases": {
+            "profile_io": {
+              "ms": 0.055208,
+              "calls": 1,
+              "completed": 1
+            },
+            "profile_decompression": {
+              "ms": 0.134041,
+              "calls": 1,
+              "completed": 1
+            },
+            "json_parse": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "schema_and_locators": {
+              "ms": 7.82904,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_total": {
+              "ms": 5.66296,
+              "calls": 1,
+              "completed": 1
+            },
+            "resource_io": {
+              "ms": 4.25815,
+              "calls": 4096,
+              "completed": 4096
+            },
+            "resource_decompression": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "resource_verification": {
+              "ms": 0.986252,
+              "calls": 4096,
+              "completed": 4096
+            },
+            "environment_assembly": {
+              "ms": 0.878292,
+              "calls": 1,
+              "completed": 1
+            },
+            "recipe_assembly": {
+              "ms": 0.489667,
+              "calls": 1,
+              "completed": 1
+            },
+            "reader_total": {
+              "ms": 15.6862,
+              "calls": 1,
+              "completed": 1
+            },
+            "guest_projection": {
+              "ms": 1.01089,
+              "calls": 4096,
+              "completed": 4096
+            },
+            "environment_deserialization": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "cache_append": {
+              "ms": 104.912,
+              "calls": 4096,
+              "completed": 4096
+            },
+            "existing_cache_load": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "warmup_wait": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "startup_wall": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "compiler_wall": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "guest_translation": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "spirv_emission": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "shader_module_creation": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "native_graphics": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            },
+            "native_compute": {
+              "ms": 0,
+              "calls": 0,
+              "completed": 0
+            }
+          },
+          "counts": {
+            "profile_bytes": 192299,
+            "json_bytes": 0,
+            "resource_read_bytes": 524288,
+            "resource_decoded_bytes": 0,
+            "resource_groups": 1,
+            "programs": 4096,
+            "environments": 4096,
+            "recipes": 4096,
+            "hle_aliases": 0,
+            "pipeline_requests": 0,
+            "pipeline_requests_completed": 0,
+            "stop_requested": 0
+          }
+        },
+        "reuse_process_ms": 15.745541000000252,
+        "reuse_resource_bytes": 0,
+        "compression": [
+          {
+            "level": 1,
+            "bytes": 202753,
+            "pack_ms": 0.262875,
+            "unpack_ms": 0.187854,
+            "decode_and_parse_ms": 0.187854
+          },
+          {
+            "level": 3,
+            "bytes": 192299,
+            "pack_ms": 0.582291,
+            "unpack_ms": 0.121812,
+            "decode_and_parse_ms": 0.121812
+          },
+          {
+            "level": 6,
+            "bytes": 192383,
+            "pack_ms": 1.61046,
+            "unpack_ms": 0.12175,
+            "decode_and_parse_ms": 0.12175
+          }
+        ]
+      }
+    ],
+    "local_cache": [
+      {
+        "mib": 16,
+        "generated": {
+          "records": 64,
+          "file_bytes": 16798416,
+          "seconds": 0.0230509,
+          "peak_resident_bytes": 4653056
+        },
+        "read_seconds_median": 0.0112418,
+        "read_peak_resident_bytes": 19873792,
+        "file_sha256": "b97291508a011a56712d4edad960943f70bdef60bd8bc1e76ff17ebe8135f4c0"
+      },
+      {
+        "mib": 64,
+        "generated": {
+          "records": 256,
+          "file_bytes": 67193616,
+          "seconds": 0.095458,
+          "peak_resident_bytes": 3309568
+        },
+        "read_seconds_median": 0.0337161,
+        "read_peak_resident_bytes": 73809920,
+        "file_sha256": "039f6e994ebb086e47b6affdce5adc429faf5b5f45acd2d744385020e220a4cc"
+      }
+    ]
+  },
+  "recorder": {
+    "narrow": {
+      "before": {
+        "scope": "ObserveState_plus_enabled_register_tracking_vs_no_tracking_CPU_only",
+        "per_draw_clocks": false,
+        "scenarios": [
+          {
+            "workload": "unchanged",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 1.26586,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0004375
+          },
+          {
+            "workload": "unchanged",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 1.16653,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0003125
+          },
+          {
+            "workload": "unchanged",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 10.7317,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.001062
+          },
+          {
+            "workload": "mostly_unchanged",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.642625,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0003745
+          },
+          {
+            "workload": "mostly_unchanged",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.729448,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000229
+          },
+          {
+            "workload": "mostly_unchanged",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 10.392,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0007505
+          },
+          {
+            "workload": "known_transitions",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.767417,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000375
+          },
+          {
+            "workload": "known_transitions",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.990615,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000479
+          },
+          {
+            "workload": "known_transitions",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 66.6825,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0012085
+          },
+          {
+            "workload": "prefix_only",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.618594,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0002085
+          },
+          {
+            "workload": "prefix_only",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.744156,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.00025
+          },
+          {
+            "workload": "prefix_only",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 65.2447,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.001167
+          },
+          {
+            "workload": "untracked_writes",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.659417,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0004375
+          },
+          {
+            "workload": "untracked_writes",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.797406,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0003125
+          },
+          {
+            "workload": "untracked_writes",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 10.8288,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000958
+          },
+          {
+            "workload": "discovery",
+            "tracking": false,
+            "recorder": false,
+            "observations": 512,
+            "known_working_set": 64,
+            "median_ns_per_observation": 2.19727,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000271
+          },
+          {
+            "workload": "discovery",
+            "tracking": true,
+            "recorder": false,
+            "observations": 512,
+            "known_working_set": 64,
+            "median_ns_per_observation": 1.87109,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000229
+          },
+          {
+            "workload": "discovery",
+            "tracking": true,
+            "recorder": true,
+            "observations": 512,
+            "known_working_set": 64,
+            "median_ns_per_observation": 548.096,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 562,
+            "median_worker_drain_ms": 2.54027
+          }
+        ],
+        "recipe_sets_verified": true,
+        "checksum": 183018639360
+      },
+      "after": {
+        "scope": "ObserveState_plus_enabled_register_tracking_vs_no_tracking_CPU_only",
+        "per_draw_clocks": false,
+        "scenarios": [
+          {
+            "workload": "unchanged",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.910302,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0001665
+          },
+          {
+            "workload": "unchanged",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.897385,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0002295
+          },
+          {
+            "workload": "unchanged",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 8.91507,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000667
+          },
+          {
+            "workload": "mostly_unchanged",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.923302,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000125
+          },
+          {
+            "workload": "mostly_unchanged",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.94825,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0002085
+          },
+          {
+            "workload": "mostly_unchanged",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 9.04784,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.001604
+          },
+          {
+            "workload": "known_transitions",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 1.19599,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000125
+          },
+          {
+            "workload": "known_transitions",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.984583,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.00025
+          },
+          {
+            "workload": "known_transitions",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 65,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0006045
+          },
+          {
+            "workload": "prefix_only",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.906365,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0002705
+          },
+          {
+            "workload": "prefix_only",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.941062,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0002295
+          },
+          {
+            "workload": "prefix_only",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 64.5151,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000917
+          },
+          {
+            "workload": "untracked_writes",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.841063,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0001875
+          },
+          {
+            "workload": "untracked_writes",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 0.738094,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0002085
+          },
+          {
+            "workload": "untracked_writes",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 64,
+            "median_ns_per_observation": 9.2074,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000354
+          },
+          {
+            "workload": "discovery",
+            "tracking": false,
+            "recorder": false,
+            "observations": 512,
+            "known_working_set": 64,
+            "median_ns_per_observation": 2.36035,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000208
+          },
+          {
+            "workload": "discovery",
+            "tracking": true,
+            "recorder": false,
+            "observations": 512,
+            "known_working_set": 64,
+            "median_ns_per_observation": 2.15723,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000334
+          },
+          {
+            "workload": "discovery",
+            "tracking": true,
+            "recorder": true,
+            "observations": 512,
+            "known_working_set": 64,
+            "median_ns_per_observation": 447.021,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 562,
+            "median_worker_drain_ms": 2.40931
+          }
+        ],
+        "recipe_sets_verified": true,
+        "checksum": 183018639360
+      }
+    },
+    "wide": {
+      "before": {
+        "scope": "ObserveState_plus_enabled_register_tracking_vs_no_tracking_CPU_only",
+        "per_draw_clocks": false,
+        "scenarios": [
+          {
+            "workload": "unchanged",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.581542,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0003125
+          },
+          {
+            "workload": "unchanged",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.8185,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000375
+          },
+          {
+            "workload": "unchanged",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 10.5071,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0010005
+          },
+          {
+            "workload": "mostly_unchanged",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.668792,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000354
+          },
+          {
+            "workload": "mostly_unchanged",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.967458,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000375
+          },
+          {
+            "workload": "mostly_unchanged",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 10.6584,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0013125
+          },
+          {
+            "workload": "known_transitions",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.742979,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0002085
+          },
+          {
+            "workload": "known_transitions",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 1.18832,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0003335
+          },
+          {
+            "workload": "known_transitions",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 76.3868,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0009585
+          },
+          {
+            "workload": "prefix_only",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.606844,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0002085
+          },
+          {
+            "workload": "prefix_only",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.732948,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000125
+          },
+          {
+            "workload": "prefix_only",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 156.887,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000896
+          },
+          {
+            "workload": "untracked_writes",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.695396,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000125
+          },
+          {
+            "workload": "untracked_writes",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.800739,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000125
+          },
+          {
+            "workload": "untracked_writes",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 10.1769,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0009375
+          },
+          {
+            "workload": "discovery",
+            "tracking": false,
+            "recorder": false,
+            "observations": 512,
+            "known_working_set": 512,
+            "median_ns_per_observation": 2.19727,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0002085
+          },
+          {
+            "workload": "discovery",
+            "tracking": true,
+            "recorder": false,
+            "observations": 512,
+            "known_working_set": 512,
+            "median_ns_per_observation": 1.95312,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000166
+          },
+          {
+            "workload": "discovery",
+            "tracking": true,
+            "recorder": true,
+            "observations": 512,
+            "known_working_set": 512,
+            "median_ns_per_observation": 478.76,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 562,
+            "median_worker_drain_ms": 2.55821
+          }
+        ],
+        "recipe_sets_verified": true,
+        "checksum": 182389493760
+      },
+      "after": {
+        "scope": "ObserveState_plus_enabled_register_tracking_vs_no_tracking_CPU_only",
+        "per_draw_clocks": false,
+        "scenarios": [
+          {
+            "workload": "unchanged",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.700344,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000208
+          },
+          {
+            "workload": "unchanged",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.734354,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000333
+          },
+          {
+            "workload": "unchanged",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 8.94839,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000813
+          },
+          {
+            "workload": "mostly_unchanged",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 1.24279,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0009375
+          },
+          {
+            "workload": "mostly_unchanged",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 1.01723,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000625
+          },
+          {
+            "workload": "mostly_unchanged",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 9.27335,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0007915
+          },
+          {
+            "workload": "known_transitions",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.964896,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000375
+          },
+          {
+            "workload": "known_transitions",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.991448,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0017295
+          },
+          {
+            "workload": "known_transitions",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 77.5954,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0027915
+          },
+          {
+            "workload": "prefix_only",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.950396,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000125
+          },
+          {
+            "workload": "prefix_only",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.973438,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.0001455
+          },
+          {
+            "workload": "prefix_only",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 91.2219,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.001042
+          },
+          {
+            "workload": "untracked_writes",
+            "tracking": false,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.740271,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000125
+          },
+          {
+            "workload": "untracked_writes",
+            "tracking": true,
+            "recorder": false,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 0.786844,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000125
+          },
+          {
+            "workload": "untracked_writes",
+            "tracking": true,
+            "recorder": true,
+            "observations": 2000000,
+            "known_working_set": 512,
+            "median_ns_per_observation": 9.04067,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.000292
+          },
+          {
+            "workload": "discovery",
+            "tracking": false,
+            "recorder": false,
+            "observations": 512,
+            "known_working_set": 512,
+            "median_ns_per_observation": 2.03516,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.00025
+          },
+          {
+            "workload": "discovery",
+            "tracking": true,
+            "recorder": false,
+            "observations": 512,
+            "known_working_set": 512,
+            "median_ns_per_observation": 2.0752,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 0,
+            "median_worker_drain_ms": 0.00025
+          },
+          {
+            "workload": "discovery",
+            "tracking": true,
+            "recorder": true,
+            "observations": 512,
+            "known_working_set": 512,
+            "median_ns_per_observation": 467.896,
+            "median_cycles_per_observation": 0,
+            "median_main_thread_allocations": 562,
+            "median_worker_drain_ms": 2.59223
+          }
+        ],
+        "recipe_sets_verified": true,
+        "checksum": 182389493760
+      }
+    }
+  },
+  "register_tracking": {
+    "scope": "changed_register_writes_with_or_without_production_marker",
+    "scenarios": [
+      {
+        "tracked_percent": 0,
+        "tracking": false,
+        "writes": 2000000,
+        "median_ns_per_write": 1.13167
+      },
+      {
+        "tracked_percent": 0,
+        "tracking": true,
+        "writes": 2000000,
+        "median_ns_per_write": 1.04031
+      },
+      {
+        "tracked_percent": 10,
+        "tracking": false,
+        "writes": 2000000,
+        "median_ns_per_write": 0.746438
+      },
+      {
+        "tracked_percent": 10,
+        "tracking": true,
+        "writes": 2000000,
+        "median_ns_per_write": 0.86526
+      },
+      {
+        "tracked_percent": 100,
+        "tracking": false,
+        "writes": 2000000,
+        "median_ns_per_write": 0.615354
+      },
+      {
+        "tracked_percent": 100,
+        "tracking": true,
+        "writes": 2000000,
+        "median_ns_per_write": 0.77475
+      }
+    ],
+    "all_masks_verified": true,
+    "checksum": 83965630
+  },
+  "compiler": {
+    "scope": "real_CFG_translate_optimize_SPIRV_CPU_only_no_driver",
+    "samples": [
+      {
+        "nop_instructions": 0,
+        "workgroup_width": 1,
+        "successful_compilations": 61,
+        "spirv_words": 210,
+        "translation_median_us": 1.75,
+        "emission_median_us": 6.5,
+        "total_median_us": 8.291
+      },
+      {
+        "nop_instructions": 0,
+        "workgroup_width": 64,
+        "successful_compilations": 61,
+        "spirv_words": 210,
+        "translation_median_us": 0.875,
+        "emission_median_us": 3.417,
+        "total_median_us": 4.292
+      },
+      {
+        "nop_instructions": 32,
+        "workgroup_width": 1,
+        "successful_compilations": 61,
+        "spirv_words": 210,
+        "translation_median_us": 1.084,
+        "emission_median_us": 3.417,
+        "total_median_us": 4.5
+      },
+      {
+        "nop_instructions": 32,
+        "workgroup_width": 64,
+        "successful_compilations": 61,
+        "spirv_words": 210,
+        "translation_median_us": 1.042,
+        "emission_median_us": 3.375,
+        "total_median_us": 4.458
+      },
+      {
+        "nop_instructions": 1024,
+        "workgroup_width": 1,
+        "successful_compilations": 61,
+        "spirv_words": 210,
+        "translation_median_us": 6,
+        "emission_median_us": 3,
+        "total_median_us": 9
+      },
+      {
+        "nop_instructions": 1024,
+        "workgroup_width": 64,
+        "successful_compilations": 61,
+        "spirv_words": 210,
+        "translation_median_us": 5.959,
+        "emission_median_us": 3.041,
+        "total_median_us": 9.042
+      }
+    ]
+  },
+  "recorder_memo_bytes": {
+    "before": 3416620,
+    "after": 4744492
+  },
+  "limitations": [
+    "Synthetic CPU/storage benchmarks; no game FPS or Vulkan driver compilation measurements.",
+    "Compiler corpus contains hand-authored NOP/EXIT programs, not complex game shaders.",
+    "Recorder discovery allocates for new unique recipes and batched worker jobs; known recipes allocate zero.",
+    "Greater prefix capacity trades 1327872 additional bytes per recorder for fewer recaptures.",
+    "Renamed-container resolution still uses verified physical locators, not a complete loader VFS."
+  ]
+}
