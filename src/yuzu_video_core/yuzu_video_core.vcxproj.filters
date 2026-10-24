@@ -19,6 +19,7 @@
     <ClInclude Include="shader_profile_identity.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="shader_profile_file_stamp.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="shader_profile_context.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="shader_profile_reuse.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="shared_shader_bytes.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="shader_profile_validation.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="renderer_vulkan\startup_pipeline_variants.h"><Filter>Header Files\renderer_vulkan</Filter></ClInclude>

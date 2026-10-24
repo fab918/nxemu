@@ -193,33 +193,21 @@ Index Parse(const std::filesystem::path & path, u32 abi, bool records, const Rea
     }
     return index;
 }
-} // namespace
-std::vector<Record> Read(const std::filesystem::path & path, u32 shader_abi, const ReadLimits& limits,
-                         std::set<std::string>* record_ids)
+std::mutex writer_mutex;
+struct Writer
 {
-    auto parsed=Parse(path, shader_abi, true, limits);
-    if(record_ids)*record_ids=std::move(parsed.pipelines);
-    return std::move(parsed.records);
-}
-void Append(const std::filesystem::path & path, u32 shader_abi, const Record & record,
-            std::string* record_id, std::string_view context)
-{
-    static std::mutex mutex;
-    struct Writer
-    {
-        Index index;
-        size_t disk_size{};
-        std::filesystem::file_time_type modified{};
-        u32 abi{};
-        // Weak ownership distinguishes reused addresses without retaining shader
-        // bytes after an import. Memoization never trusts a mutable flat buffer.
-        std::map<std::weak_ptr<const std::string>,std::string,std::owner_less<>> shared_code_ids;
-    };
-    static std::filesystem::path writer_path;
-    static Writer writer;
-    std::scoped_lock lock(mutex);
-    Check(!record.environments.empty() && record.environments.size() <= 6 &&
-          !record.key.empty() && record.key.size() <= 65536);
+    Index index;
+    size_t disk_size{};
+    std::filesystem::file_time_type modified{};
+    u32 abi{};
+    // Weak ownership distinguishes reused addresses without retaining shader
+    // bytes after an import. Memoization never trusts a mutable flat buffer.
+    std::map<std::weak_ptr<const std::string>,std::string,std::owner_less<>> shared_code_ids;
+};
+std::filesystem::path writer_path;
+Writer writer;
+
+void SyncWriter(const std::filesystem::path& path,u32 shader_abi) {
     if (writer_path != path)
     {
         writer = Writer{};
@@ -235,6 +223,24 @@ void Append(const std::filesystem::path & path, u32 shader_abi, const Record & r
         if (writer.index.valid_bytes && writer.index.valid_bytes != size)
             std::filesystem::resize_file(path, writer.index.valid_bytes);
     }
+    writer.disk_size=writer.index.valid_bytes;
+    writer.modified=writer.disk_size?std::filesystem::last_write_time(path):std::filesystem::file_time_type{};
+}
+} // namespace
+std::vector<Record> Read(const std::filesystem::path & path, u32 shader_abi, const ReadLimits& limits,
+                         std::set<std::string>* record_ids)
+{
+    auto parsed=Parse(path, shader_abi, true, limits);
+    if(record_ids)*record_ids=std::move(parsed.pipelines);
+    return std::move(parsed.records);
+}
+void Append(const std::filesystem::path & path, u32 shader_abi, const Record & record,
+            std::string* record_id, std::string_view context)
+{
+    std::scoped_lock lock(writer_mutex);
+    Check(!record.environments.empty() && record.environments.size() <= 6 &&
+          !record.key.empty() && record.key.size() <= 65536);
+    SyncWriter(path,shader_abi);
     try
     {
         std::string pending;
@@ -306,6 +312,16 @@ void Append(const std::filesystem::path & path, u32 shader_abi, const Record & r
         writer_path.clear();
         throw;
     }
+}
+
+bool AssociateContext(const std::filesystem::path& path,u32 shader_abi,
+                      const std::string& record_id,std::string_view context) {
+    std::scoped_lock lock(writer_mutex);
+    Check(record_id.size()==32 && ShaderProfile::ValidContext(context));
+    SyncWriter(path,shader_abi);
+    if(!writer.index.pipelines.contains(record_id))return false;
+    AppendContext(path,context,record_id);
+    return true;
 }
 
 std::set<std::string> ReadContext(const std::filesystem::path& path, std::string_view context) {

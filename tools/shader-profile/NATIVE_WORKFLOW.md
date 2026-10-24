@@ -134,9 +134,13 @@ par empreinte ; les conteneurs réorganisés ne sont pas encore résolus par le 
 Les contenus trop grands ou encodages non pris en charge
 doivent être signalés ; un export partiel n'augmente pas magiquement sa couverture.
 
-La capture et le préchauffage sont séparés par contexte base/update. Les recettes
-d’un autre contexte ne sont pas appliquées. Les programmes identiques peuvent
-être réutilisés après vérification de leur empreinte, sans relire le jeu.
+La capture reste séparée par contexte base/update. Les recettes du profil sélectionné
+provenant d’une autre version sont préparées comme candidats inactifs. À leur
+première utilisation, le code et les dépendances de compilation doivent être
+identiques au jeu chargé. Un candidat validé rejoint le cache normal et son
+record est associé au contexte courant sans dupliquer le code. Un candidat
+incompatible est écarté ; les shaders nouveaux ou modifiés suivent la compilation
+et la capture normales. Voir [la validation des updates](CROSS_VERSION_2026_10_24.md).
 
 Sur Mac : récupérer `feature-nxshad`, reconstruire l'application et les modules,
 jouer puis arrêter normalement, exporter par le menu sans lancer de script.

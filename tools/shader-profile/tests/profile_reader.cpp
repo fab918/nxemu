@@ -42,13 +42,14 @@ int main(int argc,char** argv) try {
     Timing::Metrics measurements;
     const char* option=std::getenv("NXEMU_NXSHADER_TIMING");
     auto* timings=option && *option && std::string_view(option)!="0" ? &measurements : nullptr;
-    bool cancel{}; std::string_view context;
+    bool cancel{},cross_version{}; std::string_view context;
     std::set<std::string> existing;
     std::map<std::string,std::shared_ptr<const std::string>> programs;
     for(int i=6;i<argc;++i) {
         const std::string_view option=argv[i];
         if(option=="--cancel")cancel=true;
         else if(option=="--runtime"){}
+        else if(option=="--cross-version")cross_version=true;
         else if(option.starts_with("--program-cache=")) {
             for(const auto& record:VideoCommon::CacheStore::Read(std::string(option.substr(16)),20))
                 for(const auto& env:record.environments)if(env.ProgramIdentity())
@@ -65,8 +66,8 @@ int main(int argc,char** argv) try {
     }
     VideoCommon::ShaderProfile::ImportReport report;
     const VideoCommon::ShaderProfile::ResourceProgress progress=[&](size_t,size_t){return !cancel;};
-    const auto recipes=metadata ? VideoCommon::ShaderProfile::ReadCompact(payload,argv[2],std::stoull(argv[3],nullptr,16),nullptr,timings,progress,&report,context,&existing,&programs) :
-        VideoCommon::ShaderProfile::Read(argv[1],argv[2],std::stoull(argv[3],nullptr,16),nullptr,timings,progress,&report,context,&existing,&programs);
+    const auto recipes=metadata ? VideoCommon::ShaderProfile::ReadCompact(payload,argv[2],std::stoull(argv[3],nullptr,16),nullptr,timings,progress,&report,context,&existing,&programs,cross_version) :
+        VideoCommon::ShaderProfile::Read(argv[1],argv[2],std::stoull(argv[3],nullptr,16),nullptr,timings,progress,&report,context,&existing,&programs,cross_version);
     size_t graphics{},compute{};
     for(const auto& r:recipes) {
         Timing::Timer projection_timer(timings,Timing::Phase::GuestProjection);
@@ -86,11 +87,11 @@ int main(int argc,char** argv) try {
             record.key.append(reinterpret_cast<const char*>(&state),sizeof(state));
         }
         projection_timer.Stop();
-        Timing::Measure(timings,Timing::Phase::CacheAppend,[&] { VideoCommon::CacheStore::Append(argv[4],20,record); });
+        Timing::Measure(timings,Timing::Phase::CacheAppend,[&] { VideoCommon::CacheStore::Append(argv[4],20,record,nullptr,r.requires_validation?r.source_context:context); });
     }
     const auto read=VideoCommon::CacheStore::Read(argv[4],20);
     std::cout<<"{\"recipes\":"<<recipes.size()<<",\"graphics\":"<<graphics<<",\"compute\":"<<compute
-             <<",\"reused\":"<<report.reused<<",\"skipped\":"<<report.skipped<<",\"incompatible_contexts\":"<<report.incompatible_contexts<<",\"missing_resources\":"<<report.missing_resources<<",\"incompatible_resources\":"<<report.incompatible_resources
+             <<",\"candidates\":"<<report.candidates<<",\"reused\":"<<report.reused<<",\"skipped\":"<<report.skipped<<",\"incompatible_contexts\":"<<report.incompatible_contexts<<",\"missing_resources\":"<<report.missing_resources<<",\"incompatible_resources\":"<<report.incompatible_resources
              <<",\"unique_local_records\":"<<read.size()<<",\"cache_bytes\":"<<(std::filesystem::exists(argv[4])?std::filesystem::file_size(argv[4]):0);
     std::cout<<",\"recipe_ids\":[";
     bool comma{};

@@ -351,3 +351,49 @@ class NativeWorkflowTests(unittest.TestCase):
         self.assertEqual(report['recipes'],1)
         self.assertEqual(report['incompatible_contexts'],1)
         self.assertEqual(report['timings']['counts']['resource_read_bytes'],16)
+
+    def test_foreign_version_is_staged_without_target_context_association(self):
+        profile=copy.deepcopy(self.profile);source='a'*64;target='b'*64
+        profile['source_context']=source
+        _,packed=self.pack(profile,'foreign-version')
+        output=self.root/'candidate.nxc'
+        result=subprocess.run([self.reader,str(packed),str(self.root),profile['title_id'],
+            str(output),'67','--context='+target,'--cross-version'],capture_output=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        report=json.loads(result.stdout)
+        self.assertEqual(report['recipes'],1);self.assertEqual(report['candidates'],1)
+        self.assertTrue(Path(str(output)+'.context-'+source).exists())
+        self.assertFalse(Path(str(output)+'.context-'+target).exists())
+
+    def test_cross_version_mode_keeps_exact_and_foreign_recipes_distinct(self):
+        profile=self.mixed_profile();profile['source_context']='a'*64
+        profile['recipes'][1]['source_context']='b'*64
+        (self.root/'update.dat').write_bytes(b'ABCDEFGH')
+        _,packed=self.pack(profile,'cross-merged')
+        output=self.root/'cross-merged.nxc'
+        result=subprocess.run([self.reader,str(packed),str(self.root),profile['title_id'],
+            str(output),'67','--context='+'b'*64,'--cross-version'],capture_output=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        report=json.loads(result.stdout)
+        self.assertEqual(report['recipes'],2);self.assertEqual(report['candidates'],1)
+        for context in ('a'*64,'b'*64):
+            # Header + exactly one checked record, never both target-associated.
+            self.assertEqual(Path(str(output)+'.context-'+context).stat().st_size,72)
+
+    def test_changed_foreign_resource_does_not_drop_unchanged_program(self):
+        profile=self.mixed_profile();profile['source_context']='a'*64
+        (self.root/'update.dat').write_bytes(b'ABCDEFGI')
+        _,packed=self.pack(profile,'cross-partial')
+        result=subprocess.run([self.reader,str(packed),str(self.root),profile['title_id'],
+            str(self.root/'cross-partial.nxc'),'67','--context='+'b'*64,'--cross-version'],capture_output=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        report=json.loads(result.stdout)
+        self.assertEqual(report['recipes'],1);self.assertEqual(report['candidates'],1)
+        self.assertEqual(report['skipped'],1)
+
+    def test_cross_version_never_guesses_unknown_provenance(self):
+        _,packed=self.pack(self.profile,'unknown-source')
+        result=subprocess.run([self.reader,str(packed),str(self.root),self.profile['title_id'],
+            str(self.root/'unknown-source.nxc'),'67','--context='+'b'*64,'--cross-version'],capture_output=True)
+        self.assertNotEqual(result.returncode,0)
+        self.assertFalse((self.root/'unknown-source.nxc').exists())

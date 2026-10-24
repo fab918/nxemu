@@ -48,6 +48,7 @@
     <ClInclude Include="shader_profile_identity.h" />
     <ClInclude Include="shader_profile_file_stamp.h" />
     <ClInclude Include="shader_profile_context.h" />
+    <ClInclude Include="shader_profile_reuse.h" />
     <ClInclude Include="shared_shader_bytes.h" />
     <ClInclude Include="shader_profile_validation.h" />
     <ClInclude Include="renderer_vulkan\startup_pipeline_variants.h" />

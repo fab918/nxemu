@@ -20,6 +20,7 @@
 #include "yuzu_shader_recompiler/environment.h"
 #include "yuzu_video_core/engines/maxwell_3d.h"
 #include "yuzu_video_core/snapshot_memory_budget.h"
+#include "yuzu_video_core/shader_profile_reuse.h"
 
 namespace Tegra {
 class Memorymanager;
@@ -59,6 +60,10 @@ public:
     void SetCachedCode(std::shared_ptr<const std::vector<u64>> code_, size_t size_bytes);
 
     std::shared_ptr<const std::vector<u64>> ShareCachedCode(size_t size_bytes);
+
+    void SetQueryRecording(bool enabled) noexcept { recording_queries=enabled; }
+
+    [[nodiscard]] const std::shared_ptr<const std::vector<u64>>& CachedProgram() const noexcept { return shared_code; }
 
     [[nodiscard]] size_t CachedSizeWords() const noexcept;
 
@@ -123,6 +128,7 @@ protected:
     bool has_unbound_instructions = false;
     bool has_hle_engine_state = false;
     bool frozen = false;
+    bool recording_queries = true;
 };
 
 class GraphicsEnvironment final : public GenericEnvironment {
@@ -249,6 +255,32 @@ public:
                      std::string_view program_fingerprint = {});
     [[nodiscard]] std::shared_ptr<const std::vector<u64>> ProgramStorage() const noexcept { return code; }
 
+    void BeginReuseProof(bool hle) {
+        reuse_hle=hle;reuse_proof_complete=false;reuse_viewport_queried=false;reuse_missing_pool=false;
+        replacement_queries.clear();
+    }
+    // No instruction reads occur after synchronous pipeline preparation.
+    void SealReuseProof(bool relative_safe) noexcept {
+        reuse_relative_safe=relative_safe;reuse_proof_complete=true;code.reset();
+    }
+    [[nodiscard]] const std::string& ProgramDigest() const noexcept { return program_digest; }
+    [[nodiscard]] size_t ProgramBytes() const noexcept { return program_bytes; }
+    [[nodiscard]] bool HasReusableProgramLayout() const noexcept {
+        return program_bytes && read_lowest==start_address && read_highest>=read_lowest &&
+               u64{read_highest}-read_lowest+sizeof(u64)==program_bytes;
+    }
+    [[nodiscard]] bool ReusableAt(u32 target) const noexcept {
+        return reuse_proof_complete && reuse_relative_safe && start_address%32==target%32 &&
+               program_bytes<=UINT32_MAX-target;
+    }
+    [[nodiscard]] size_t ReuseProofBytes() const noexcept { return (replacement_queries.size()+20)*64; }
+    [[nodiscard]] ShaderProfile::DependencyProof ReuseProof() const noexcept {
+        return {stage,start_address,local_memory_size,shared_memory_size,texture_bound,
+            viewport_transform_state,workgroup_size,sph,gp_passthrough_mask,
+            texture_types,texture_pixel_formats,cbuf_values,cbuf_replacements,
+            &replacement_queries,reuse_proof_complete,reuse_hle.value_or(false),reuse_viewport_queried,reuse_missing_pool};
+    }
+
     // A shared host key does not prove that compilation inputs are equivalent.
     [[nodiscard]] bool HasSameCompilationInputs(const FileEnvironment& other) const noexcept;
     [[nodiscard]] size_t CompilationInputBytes() const noexcept;
@@ -286,7 +318,7 @@ public:
                                                                                u32 offset) override;
 
     [[nodiscard]] bool HasHLEMacroState() const override {
-        return cbuf_replacements.size() != 0;
+        return reuse_hle.value_or(!cbuf_replacements.empty());
     }
 
     void Dump(u64 pipeline_hash, u64 shader_hash) override;
@@ -294,7 +326,11 @@ public:
 private:
     FileEnvironment(const FileEnvironment&) = default;
     std::shared_ptr<const std::vector<u64>> code;
-    std::string compilation_identity;
+    std::string compilation_identity,program_digest;
+    size_t program_bytes{};
+    std::optional<bool> reuse_hle;
+    bool reuse_proof_complete{},reuse_viewport_queried{},reuse_relative_safe{},reuse_missing_pool{};
+    std::unordered_map<u64,std::optional<Shader::ReplaceConstant>> replacement_queries;
     std::unordered_map<u32, Shader::TextureType> texture_types;
     std::unordered_map<u32, Shader::TexturePixelFormat> texture_pixel_formats;
     std::unordered_map<u64, u32> cbuf_values;

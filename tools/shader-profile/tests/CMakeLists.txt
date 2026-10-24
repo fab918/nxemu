@@ -239,3 +239,7 @@ add_executable(register-tracking-benchmark register_tracking_benchmark.cpp
     "${NXEMU_ROOT}/src/yuzu_video_core/surface.cpp")
 target_link_libraries(register-tracking-benchmark PRIVATE profile-storage Threads::Threads)
 target_compile_definitions(register-tracking-benchmark PRIVATE FMT_HEADER_ONLY)
+
+add_executable(cross-version-reuse cross_version_reuse.cpp)
+target_link_libraries(cross-version-reuse PRIVATE profile-storage)
+add_test(NAME cross-version-reuse COMMAND cross-version-reuse)

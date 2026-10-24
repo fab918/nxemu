@@ -424,7 +424,7 @@ u32 GraphicsEnvironment::ReadCbufSize(u32 cbuf_index) {
         : (maxwell3d->state.shader_stages[stage_index].const_buffers[cbuf_index].enabled
                ? maxwell3d->state.shader_stages[stage_index].const_buffers[cbuf_index].size : 0);
     // Reserved offset outside the guest address space; keeps cache layout unchanged.
-    cbuf_values.emplace(MakeCbufKey(cbuf_index, UINT32_MAX), size);
+    if (recording_queries) cbuf_values.emplace(MakeCbufKey(cbuf_index, UINT32_MAX), size);
     return size;
 }
 
@@ -620,15 +620,15 @@ u32 GraphicsEnvironment::ReadCbufValue(u32 cbuf_index, u32 cbuf_offset) {
             value = gpu_memory->Read<u32>(cbuf.address + cbuf_offset);
         }
     }
-    cbuf_values.emplace(MakeCbufKey(cbuf_index, cbuf_offset), value);
+    if (recording_queries) cbuf_values.emplace(MakeCbufKey(cbuf_index, cbuf_offset), value);
     return value;
 }
 
 std::optional<Shader::TexturePoolInfo> GraphicsEnvironment::ReadTexturePoolInfo() {
     const Shader::TexturePoolInfo pool{snapshot ? snapshot->texture_pool
                                               : GraphicsTexturePoolInfo(maxwell3d->regs)};
-    cbuf_values.emplace(POOL_TEXTURES_KEY, pool.num_textures);
-    cbuf_values.emplace(POOL_SAMPLERS_KEY,
+    if (recording_queries) cbuf_values.emplace(POOL_TEXTURES_KEY, pool.num_textures);
+    if (recording_queries) cbuf_values.emplace(POOL_SAMPLERS_KEY,
                         pool.num_samplers | (pool.linked_samplers ? POOL_LINKED_SAMPLERS_BIT : 0U));
     return pool;
 }
@@ -644,7 +644,7 @@ std::optional<Shader::ReplaceConstant> GraphicsEnvironment::GetReplaceConstBuffe
         if (it == snapshot->cbuf_replacements.end()) {
             return std::nullopt;
         }
-        cbuf_replacements.emplace(key, it->second);
+        if (recording_queries) cbuf_replacements.emplace(key, it->second);
         return it->second;
     }
     auto it = maxwell3d->replace_table.find(key);
@@ -663,7 +663,7 @@ std::optional<Shader::ReplaceConstant> GraphicsEnvironment::GetReplaceConstBuffe
             UNREACHABLE();
         }
     }(it->second);
-    cbuf_replacements.emplace(key, converted_value);
+    if (recording_queries) cbuf_replacements.emplace(key, converted_value);
     return converted_value;
 }
 
@@ -674,7 +674,7 @@ Shader::TextureType GraphicsEnvironment::ReadTextureType(u32 handle) {
                           maxwell3d->regs.sampler_binding == Maxwell::SamplerBinding::ViaHeaderBinding,
                           handle);
     const Shader::TextureType result{ConvertTextureType(entry)};
-    texture_types.emplace(handle, result);
+    if (recording_queries) texture_types.emplace(handle, result);
     return result;
 }
 
@@ -685,7 +685,7 @@ Shader::TexturePixelFormat GraphicsEnvironment::ReadTexturePixelFormat(u32 handl
                           maxwell3d->regs.sampler_binding == Maxwell::SamplerBinding::ViaHeaderBinding,
                           handle);
     const Shader::TexturePixelFormat result(ConvertTexturePixelFormat(entry));
-    texture_pixel_formats.emplace(handle, result);
+    if (recording_queries) texture_pixel_formats.emplace(handle, result);
     return result;
 }
 
@@ -718,18 +718,20 @@ u32 ComputeEnvironment::ReadCbufSize(u32 cbuf_index) {
     const auto& qmd{kepler_compute->launch_description};
     const bool enabled = ((qmd.const_buffer_enable_mask.Value() >> cbuf_index) & 1) != 0;
     const u32 size = enabled ? qmd.const_buffer_config[cbuf_index].size.Value() : 0;
-    cbuf_values.emplace(MakeCbufKey(cbuf_index, UINT32_MAX), size);
+    if (recording_queries) cbuf_values.emplace(MakeCbufKey(cbuf_index, UINT32_MAX), size);
     return size;
 }
 
 u32 ComputeEnvironment::ReadTextureTableSize() {
     const u32 size = std::min(kepler_compute->regs.tic.limit + 1U, 1U << 20);
-    cbuf_values.emplace(MakeCbufKey(UINT32_MAX, UINT32_MAX), size);
+    if (recording_queries) cbuf_values.emplace(MakeCbufKey(UINT32_MAX, UINT32_MAX), size);
     return size;
 }
 
 u32 FileEnvironment::ReadTextureTableSize() {
-    const auto it = cbuf_values.find(MakeCbufKey(UINT32_MAX, UINT32_MAX));
+    const auto key=MakeCbufKey(UINT32_MAX, UINT32_MAX);
+    if(reuse_hle.has_value())return cbuf_values.try_emplace(key,0).first->second;
+    const auto it = cbuf_values.find(key);
     return it != cbuf_values.end() ? it->second : 0;
 }
 
@@ -737,6 +739,7 @@ std::optional<Shader::TexturePoolInfo> FileEnvironment::ReadTexturePoolInfo() {
     const auto textures = cbuf_values.find(POOL_TEXTURES_KEY);
     const auto samplers = cbuf_values.find(POOL_SAMPLERS_KEY);
     if (textures == cbuf_values.end() || samplers == cbuf_values.end()) {
+        if(reuse_hle.has_value())reuse_missing_pool=true;
         return std::nullopt;
     }
     return Shader::TexturePoolInfo{
@@ -754,7 +757,7 @@ u32 ComputeEnvironment::ReadCbufValue(u32 cbuf_index, u32 cbuf_offset) {
     if (cbuf_offset < cbuf.size) {
         value = gpu_memory->Read<u32>(cbuf.Address() + cbuf_offset);
     }
-    cbuf_values.emplace(MakeCbufKey(cbuf_index, cbuf_offset), value);
+    if (recording_queries) cbuf_values.emplace(MakeCbufKey(cbuf_index, cbuf_offset), value);
     return value;
 }
 
@@ -763,7 +766,7 @@ Shader::TextureType ComputeEnvironment::ReadTextureType(u32 handle) {
     const auto& qmd{kepler_compute->launch_description};
     auto entry = ReadTextureInfo(regs.tic.Address(), regs.tic.limit, qmd.linked_tsc != 0, handle);
     const Shader::TextureType result{ConvertTextureType(entry)};
-    texture_types.emplace(handle, result);
+    if (recording_queries) texture_types.emplace(handle, result);
     return result;
 }
 
@@ -772,7 +775,7 @@ Shader::TexturePixelFormat ComputeEnvironment::ReadTexturePixelFormat(u32 handle
     const auto& qmd{kepler_compute->launch_description};
     auto entry = ReadTextureInfo(regs.tic.Address(), regs.tic.limit, qmd.linked_tsc != 0, handle);
     const Shader::TexturePixelFormat result(ConvertTexturePixelFormat(entry));
-    texture_pixel_formats.emplace(handle, result);
+    if (recording_queries) texture_pixel_formats.emplace(handle, result);
     return result;
 }
 
@@ -894,7 +897,9 @@ void FileEnvironment::Deserialize(std::istream& file, std::shared_ptr<const std:
     // iteration order and unrelated pipelines appended to the local cache.
     std::string identity;
     const auto put = [&](u64 n) { for (size_t i=0;i<8;++i) identity += static_cast<char>(n >> (8*i)); };
-    identity += program_fingerprint.empty() ? ShaderProfile::ResourceSha256({reinterpret_cast<const char*>(code->data()), SharedCodeBytes()}) : std::string(program_fingerprint);
+    program_bytes=SharedCodeBytes();
+    program_digest=program_fingerprint.empty() ? ShaderProfile::ResourceSha256({reinterpret_cast<const char*>(code->data()), program_bytes}) : std::string(program_fingerprint);
+    identity += program_digest;
     for (u64 n : {u64(stage), u64(start_address), u64(read_lowest), u64(read_highest),
         u64(initial_offset), u64(local_memory_size), u64(shared_memory_size), u64(texture_bound), u64(viewport_transform_state)}) put(n);
     const auto map = [&](const auto& values) {
@@ -945,14 +950,20 @@ size_t FileEnvironment::CompilationInputBytes() const noexcept {
 }
 
 u64 FileEnvironment::ReadInstruction(u32 address) {
-    if (address < read_lowest || address > read_highest) {
+    if (!code || address < read_lowest || address > read_highest) {
         throw Shader::LogicError("Out of bounds address {}", address);
     }
     return (*code)[(address - read_lowest) / sizeof(u64)];
 }
 
 u32 FileEnvironment::ReadCbufSize(u32 cbuf_index) {
-    const auto it = cbuf_values.find(MakeCbufKey(cbuf_index, UINT32_MAX));
+    const auto key=MakeCbufKey(cbuf_index, UINT32_MAX);
+    if(reuse_hle.has_value()) {
+        if(cbuf_index>=(stage==Shader::Stage::Compute?8U:18U))
+            throw Shader::LogicError("Cross-version cbuf proof index out of range");
+        return cbuf_values.try_emplace(key,0).first->second;
+    }
+    const auto it = cbuf_values.find(key);
     return it != cbuf_values.end() ? it->second : 0;
 }
 
@@ -986,6 +997,7 @@ bool FileEnvironment::IsTexturePixelFormatInteger(u32 handle) {
 }
 
 u32 FileEnvironment::ReadViewportTransformState() {
+    if(reuse_hle.has_value())reuse_viewport_queried=true;
     return viewport_transform_state;
 }
 
@@ -1007,12 +1019,16 @@ std::array<u32, 3> FileEnvironment::WorkgroupSize() const {
 
 std::optional<Shader::ReplaceConstant> FileEnvironment::GetReplaceConstBuffer(u32 bank,
                                                                               u32 offset) {
-    const u64 key = (static_cast<u64>(bank) << 32) | static_cast<u64>(offset);
-    auto it = cbuf_replacements.find(key);
-    if (it == cbuf_replacements.end()) {
-        return std::nullopt;
+    const u64 key=(u64{bank}<<32)|offset;
+    const auto found=cbuf_replacements.find(key);
+    const std::optional<Shader::ReplaceConstant> result=found==cbuf_replacements.end()?
+        std::nullopt:std::optional{found->second};
+    if(reuse_hle.value_or(false)) {
+        if(replacement_queries.size()>=4096 && !replacement_queries.contains(key))
+            throw Shader::LogicError("Cross-version replacement proof budget exceeded");
+        replacement_queries.try_emplace(key,result);
     }
-    return it->second;
+    return result;
 }
 
 void SerializePipeline(std::span<const char> key, std::span<const GenericEnvironment* const> envs,

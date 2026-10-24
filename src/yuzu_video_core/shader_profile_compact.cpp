@@ -461,7 +461,7 @@ std::string PackCompact(const JsonValue & profile)
     return Pack(out.bytes,3);
 }
 
-static std::vector<Recipe> ReadCompactImpl(std::string_view payload, const std::filesystem::path & root, u64 title_id, size_t * unresolved_count, Timing::Metrics * timings, const ResourceProgress & progress, bool metadata_only, ImportReport* report = nullptr, std::string_view target_context = {}, const std::set<std::string>* existing_recipes = nullptr, const std::map<std::string,std::shared_ptr<const std::string>>* existing_programs = nullptr)
+static std::vector<Recipe> ReadCompactImpl(std::string_view payload, const std::filesystem::path & root, u64 title_id, size_t * unresolved_count, Timing::Metrics * timings, const ResourceProgress & progress, bool metadata_only, ImportReport* report = nullptr, std::string_view target_context = {}, const std::set<std::string>* existing_recipes = nullptr, const std::map<std::string,std::shared_ptr<const std::string>>* existing_programs = nullptr, bool allow_cross_version = false)
 {
     Timing::Timer schema_timer(timings, Timing::Phase::SchemaAndLocators);
     Reader in{payload};
@@ -743,7 +743,8 @@ static std::vector<Recipe> ReadCompactImpl(std::string_view payload, const std::
     // contain recipes from multiple updates without forcing irrelevant reads.
     std::set<size_t> needed_programs;
     const auto compatible_context = [&](const Recipe& recipe) {
-        return target_context.empty() ? recipe.source_context.empty() : recipe.source_context == target_context;
+        return target_context.empty() ? recipe.source_context.empty() :
+            recipe.source_context==target_context || (allow_cross_version && ValidContext(target_context) && ValidContext(recipe.source_context));
     };
     for (const auto& p : pending) {
         if (!compatible_context(p.recipe)) { ++outcome.skipped; ++outcome.incompatible_contexts; continue; }
@@ -912,6 +913,8 @@ static std::vector<Recipe> ReadCompactImpl(std::string_view payload, const std::
             Check(total_environment_bytes <= 256 * 1024 * 1024, "Compact recipe memory budget");
             p.recipe.environments.push_back(assembled[id]);
         }
+        p.recipe.requires_validation=p.recipe.source_context!=target_context;
+        outcome.candidates+=p.recipe.requires_validation;
         result.push_back(std::move(p.recipe));
     }
     outcome.accepted = result.size();
@@ -927,8 +930,8 @@ static std::vector<Recipe> ReadCompactImpl(std::string_view payload, const std::
     return result;
 }
 std::vector<Recipe> ReadCompact(std::string_view payload,const std::filesystem::path& root,u64 title_id,
-    size_t* unresolved_count,Timing::Metrics* timings,const ResourceProgress& progress, ImportReport* report, std::string_view target_context, const std::set<std::string>* existing_recipes, const std::map<std::string,std::shared_ptr<const std::string>>* existing_programs) {
-    return ReadCompactImpl(payload,root,title_id,unresolved_count,timings,progress,false,report,target_context,existing_recipes,existing_programs);
+    size_t* unresolved_count,Timing::Metrics* timings,const ResourceProgress& progress, ImportReport* report, std::string_view target_context, const std::set<std::string>* existing_recipes, const std::map<std::string,std::shared_ptr<const std::string>>* existing_programs, bool allow_cross_version) {
+    return ReadCompactImpl(payload,root,title_id,unresolved_count,timings,progress,false,report,target_context,existing_recipes,existing_programs,allow_cross_version);
 }
 ProfileInspection InspectCompact(std::string_view payload,u64 title_id) {
     ProfileInspection result;

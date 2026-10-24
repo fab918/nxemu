@@ -33,6 +33,7 @@
 #include "yuzu_video_core/renderer_vulkan/vk_graphics_pipeline.h"
 #include "yuzu_video_core/renderer_vulkan/vk_texture_cache.h"
 #include "yuzu_video_core/shader_cache.h"
+#include "yuzu_video_core/pipeline_cache_store.h"
 
 namespace Core {
 class System;
@@ -146,6 +147,23 @@ private:
         NativePipelineBuildQueue::Handle request;
     };
 
+    struct ForeignGraphics {
+        GraphicsPipelineCacheKey key;
+        std::vector<VideoCommon::FileEnvironment> environments;
+        std::string record_id;
+        std::shared_ptr<GraphicsPipeline> pipeline;
+    };
+    struct ForeignCompute {
+        ComputePipelineCacheKey key;
+        VideoCommon::FileEnvironment environment;
+        std::string record_id;
+        std::unique_ptr<ComputePipeline> pipeline;
+    };
+    bool TryReuseGraphics();
+    ComputePipeline* TryReuseCompute(ComputePipelineCacheKey& key,const ShaderInfo* shader);
+    void AssociateForeignRecord(std::string record_id);
+    static ComputePipelineCacheKey WithoutSizes(ComputePipelineCacheKey key);
+
     bool ShouldWaitForAsyncPipeline() const noexcept;
     bool QueueGraphicsPipeline(const GraphicsPipelineCacheKey& key);
     void FinishGraphicsPipeline(const GraphicsPipelineCacheKey& key);
@@ -222,6 +240,11 @@ private:
     std::unique_ptr<VideoCommon::ShaderProfile::Runtime::Report> runtime_report;
     VideoCommon::ShaderProfile::Runtime::QuarantinedKeys<GraphicsPipelineCacheKey> quarantined_graphics;
     VideoCommon::ShaderProfile::Runtime::QuarantinedKeys<ComputePipelineCacheKey> quarantined_compute;
+    std::unordered_map<GraphicsPipelineCacheKey,std::vector<std::shared_ptr<ForeignGraphics>>> foreign_graphics;
+    std::unordered_map<ComputePipelineCacheKey,std::vector<std::shared_ptr<ForeignCompute>>> foreign_compute;
+    VideoCommon::ShaderProfile::ProgramEquivalence program_equivalence;
+    u64 cross_version_accepted{},cross_version_rejected{};
+
     ShaderPools main_pools;
 
     Shader::Profile profile;

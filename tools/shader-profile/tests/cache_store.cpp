@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 #include "yuzu_video_core/pipeline_cache_store.h"
 #include "yuzu_video_core/shader_profile_import_status.h"
 #include "yuzu_video_core/shader_profile_context.h"
@@ -25,6 +26,25 @@ int main(int argc,char** argv) try {
     CacheStore::Append(path,20,second,nullptr,context_b);
     require(CacheStore::ReadContext(path,context_a)==std::set<std::string>{first_id});
     require(CacheStore::ReadContext(path,context_b)==std::set<std::string>{second_id});
+    const auto store_bytes=std::filesystem::file_size(path);
+    require(!CacheStore::AssociateContext(path,20,std::string(32,'?'),context_a));
+    require(CacheStore::AssociateContext(path,20,first_id,context_b));
+    auto promoted_path=path;promoted_path+=".context-"+context_b;
+    const auto promoted_size=std::filesystem::file_size(promoted_path);
+    for(unsigned i=0;i<100;++i)require(CacheStore::AssociateContext(path,20,first_id,context_b));
+    require(std::filesystem::file_size(promoted_path)==promoted_size);
+    require(std::filesystem::file_size(path)==store_bytes);
+    require(CacheStore::ReadContext(path,context_b)==std::set<std::string>({first_id,second_id}));
+    std::vector<std::thread> writers;
+    for(unsigned i=0;i<8;++i)writers.emplace_back([&] {
+        for(unsigned j=0;j<50;++j) {
+            if(!CacheStore::AssociateContext(path,20,first_id,context_b))std::terminate();
+            CacheStore::Append(path,20,second);
+        }
+    });
+    for(auto& writer:writers)writer.join();
+    require(std::filesystem::file_size(path)==store_bytes);
+    require(std::filesystem::file_size(promoted_path)==promoted_size);
     auto context_path=path;context_path+=".context-"+context_a;
     {std::ofstream tail(context_path,std::ios::binary|std::ios::app);tail<<"torn";}
     require(CacheStore::ReadContext(path,context_a).size()==1);
@@ -55,6 +75,8 @@ int main(int argc,char** argv) try {
     // A cleanly truncated cache remains valid and nonempty, but is not complete.
     std::filesystem::resize_file(path,size);
     require(CacheStore::Read(path,20,{},&present_ids).size()==1);
+    require(!CacheStore::AssociateContext(path,20,second_id,context_a));
+    require(CacheStore::AssociateContext(path,20,first_id,context_a));
     require(!ShaderProfile::IntegratedRecordsPresent(receipt,"identity","selected",present_ids));
     CacheStore::Append(path,20,second);
     CacheStore::Read(path,20,{},&present_ids);

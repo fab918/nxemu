@@ -15,7 +15,7 @@ namespace VideoCommon::ShaderProfile {
 namespace Timing { struct Metrics; }
 using ResourceProgress = std::function<bool(size_t,size_t)>;
 struct Recipe {
-    bool compute{};
+    bool compute{}, requires_validation{};
     std::string source_context, identity;
     std::vector<u32> guest_words;
     std::array<u64,6> shader_hashes{};
@@ -28,7 +28,7 @@ struct Recipe {
     std::vector<SharedShaderBytes> environments;
 };
 struct ImportReport {
-    size_t accepted{}, reused{}, skipped{}, missing_resources{}, incompatible_resources{}, incompatible_contexts{};
+    size_t candidates{}, accepted{}, reused{}, skipped{}, missing_resources{}, incompatible_resources{}, incompatible_contexts{};
     std::vector<std::string> reused_ids;
 };
 struct ProfileInspection { size_t graphics{},compute{},unresolved{},bytes{}; };
@@ -39,5 +39,5 @@ std::vector<Recipe> Read(const std::filesystem::path& path,
                          const std::filesystem::path& game_root, u64 title_id,
                          size_t* unresolved_count = nullptr, Timing::Metrics* timings = nullptr,
                          const ResourceProgress& progress = {}, ImportReport* report = nullptr, std::string_view target_context = {}, const std::set<std::string>* existing_recipes = nullptr,
-                         const std::map<std::string,std::shared_ptr<const std::string>>* existing_programs = nullptr);
+                         const std::map<std::string,std::shared_ptr<const std::string>>* existing_programs = nullptr, bool allow_cross_version = false);
 } // namespace VideoCommon::ShaderProfile

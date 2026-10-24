@@ -661,6 +661,7 @@ void PipelineCache::WaitForBuilds() {
 }
 
 PipelineCache::~PipelineCache() {
+    LOG_INFO(Render_Vulkan,"Cross-version recipes: validated={} rejected={}",cross_version_accepted,cross_version_rejected);
     WaitForBuilds();
     if (guest_recipe_probe) guest_recipe_probe->Flush();
     if(runtime_report && !runtime_report->Flush(quarantined_graphics,quarantined_compute))
@@ -735,6 +736,8 @@ ComputePipeline* PipelineCache::CurrentComputePipeline() {
                                   ? qmd.const_buffer_config[bank].size.Value() : 0;
     }
     if(runtime_report)quarantined_compute.Requested(key);
+    if(const auto found=compute_cache.find(key);found!=compute_cache.end())return found->second.get();
+    if(auto* reused=TryReuseCompute(key,shader))return reused;
     const auto [pair, is_new]{compute_cache.try_emplace(key)};
     auto& pipeline{pair->second};
     if (!is_new) {
@@ -805,8 +808,8 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
 
     // Earlier records included sizes for every bound bank, even when the shader never
     // queried them. Normalize and deduplicate them without discarding the existing shader cache.
-    struct GraphicsInput { GraphicsPipelineCacheKey key; std::vector<FileEnvironment> envs; };
-    struct ComputeInput { ComputePipelineCacheKey key; FileEnvironment env; };
+    struct GraphicsInput { GraphicsPipelineCacheKey key; std::vector<FileEnvironment> envs; bool candidate{}; std::string record_id; };
+    struct ComputeInput { ComputePipelineCacheKey key; FileEnvironment env; bool candidate{}; std::string record_id; };
     std::vector<GraphicsInput> graphics_inputs;
     std::vector<ComputeInput> compute_inputs;
     size_t buffered_input_bytes{};
@@ -818,12 +821,12 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             throw std::runtime_error("Startup shader input memory budget exceeded");
         buffered_input_bytes += bytes;
     };
-    const auto load_compute{[&](std::istream& file, FileEnvironment env) {
+    const auto load_compute{[&](std::istream& file, FileEnvironment env, bool candidate=false, std::string record_id={}) {
         ComputePipelineCacheKey key{};
         file.read(reinterpret_cast<char*>(&key), sizeof(key));
-        cbuf_size_dependencies.Observe(key.unique_hash, env.CbufSizeMask());
+        if(!candidate)cbuf_size_dependencies.Observe(key.unique_hash, env.CbufSizeMask());
         account_input(env);
-        compute_inputs.push_back({key, std::move(env)});
+        compute_inputs.push_back({key, std::move(env), candidate, std::move(record_id)});
         return true;
     }};
     const auto warmup_id=[](char kind, const auto& key, std::string_view inputs) {
@@ -840,34 +843,49 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         }
         return false;
     };
-    const auto queue_compute = [&](const ComputePipelineCacheKey& key, FileEnvironment env) {
+    const auto queue_compute = [&](const ComputePipelineCacheKey& key, FileEnvironment env, bool candidate=false, std::string record_id={}) {
         const auto id=warmup_id('C',key,env.CompilationIdentity());
         if (defer_warmup(id)) return;
-        workers.QueueWork([this, key, id, env_ = std::move(env), &state, &callback]() mutable {
+        workers.QueueWork([this, key, id, candidate, record_id=std::move(record_id), env_ = std::move(env), &state, &callback, &buffered_input_bytes]() mutable {
             Timing::Context timing_context(state.timings.get());
             ShaderPools pools;
+            if(candidate)env_.BeginReuseProof(false);
             auto pipeline{CreateComputePipeline(pools, key, env_, state.statistics.get(), false)};
             // This build is synchronous. A non-null wrapper can still contain
             // a rejected native pipeline; retain it as a retryable failure.
             const bool success = pipeline && !pipeline->HasBuildFailed();
             std::scoped_lock lock{state.mutex};
             if (state.warmup_failures) state.warmup_failures->Complete(id,success);
-            if (success) compute_cache.emplace(key, std::move(pipeline));
-            else ++state.failures;
+            if (success) {
+                if(candidate) {
+                    const auto proof_bytes=env_.ReuseProofBytes();
+                    if(proof_bytes>256*1024*1024ULL-buffered_input_bytes) {
+                        ++state.deferred;++state.built;
+                        if(state.has_loaded)callback(VideoCore::LoadCallbackStage::Build,state.built,state.total);
+                        return;
+                    }
+                    buffered_input_bytes+=proof_bytes;
+                    env_.SealReuseProof(program_equivalence.CanRebase(env_.ProgramStorage(),env_.ShaderStage(),env_.StartAddress(),env_.StartAddress()));
+                    auto value=std::make_shared<ForeignCompute>();value->key=key;
+                    value->environment=std::move(env_);value->record_id=std::move(record_id);value->pipeline=std::move(pipeline);
+                    foreign_compute[WithoutSizes(key)].push_back(std::move(value));
+                } else compute_cache.emplace(key, std::move(pipeline));
+            } else ++state.failures;
             ++state.built;
             if (state.has_loaded) callback(VideoCore::LoadCallbackStage::Build, state.built, state.total);
         });
         ++state.total;
     };
     const auto queue_graphics{[&](const GraphicsPipelineCacheKey& key,
-                                  std::vector<FileEnvironment> envs) {
+                                  std::vector<FileEnvironment> envs, bool candidate=false, std::string record_id={}) {
         std::string inputs;
         for (const auto& env : envs) inputs += env.CompilationIdentity();
         const auto id=warmup_id('G',key,inputs);
         if (defer_warmup(id)) return;
-        workers.QueueWork([this, key, id, envs_ = std::move(envs), &state, &callback]() mutable {
+        workers.QueueWork([this, key, id, candidate, record_id=std::move(record_id), envs_ = std::move(envs), &state, &callback, &buffered_input_bytes]() mutable {
             Timing::Context timing_context(state.timings.get());
             ShaderPools pools;
+            if(candidate)for(auto& env:envs_)env.BeginReuseProof(key.state.app_stage==Tegra::Engines::Maxwell3D::EngineHint::OnHLEMacro);
             boost::container::static_vector<Shader::Environment*, Maxwell::MaxShaderProgram> env_ptrs;
             for (auto& env : envs_) {
                 env_ptrs.push_back(&env);
@@ -878,7 +896,18 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             std::scoped_lock lock{state.mutex};
             if (state.warmup_failures) state.warmup_failures->Complete(id,pipeline && pipeline->IsBuilt());
             if (pipeline && pipeline->IsBuilt()) {
-                graphics_cache.emplace(key, std::move(pipeline));
+                if(candidate) {
+                    size_t proof_bytes{};for(auto& env:envs_){env.SealReuseProof(program_equivalence.CanRebase(env.ProgramStorage(),env.ShaderStage(),env.StartAddress(),env.StartAddress()));proof_bytes+=env.ReuseProofBytes();}
+                    if(proof_bytes>256*1024*1024ULL-buffered_input_bytes) {
+                        ++state.deferred;++state.built;
+                        if(state.has_loaded)callback(VideoCore::LoadCallbackStage::Build,state.built,state.total);
+                        return;
+                    }
+                    buffered_input_bytes+=proof_bytes;
+                    auto value=std::make_shared<ForeignGraphics>();value->key=key;
+                    value->environments=std::move(envs_);value->record_id=std::move(record_id);value->pipeline=std::move(pipeline);
+                    foreign_graphics[WithoutSizes(key)].push_back(std::move(value));
+                } else graphics_cache.emplace(key, std::move(pipeline));
             } else { ++state.failures; }
             ++state.built;
             if (state.has_loaded) {
@@ -895,7 +924,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     };
     std::vector<DeferredPipeline> hle_unreplaced;
     std::unordered_set<GraphicsPipelineCacheKey> plain_keys;
-    const auto load_graphics{[&](std::istream& file, std::vector<FileEnvironment> envs) {
+    const auto load_graphics{[&](std::istream& file, std::vector<FileEnvironment> envs, bool candidate=false, std::string record_id={}) {
         GraphicsPipelineCacheKey key;
         file.read(reinterpret_cast<char*>(&key), sizeof(key));
 
@@ -906,7 +935,8 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                     LOG_ERROR(Render_Vulkan, "Cached graphics shader environment count mismatch");
                     return false;
                 }
-                cbuf_size_dependencies.Observe(hash, envs[env_index++].CbufSizeMask());
+                if(!candidate)cbuf_size_dependencies.Observe(hash, envs[env_index].CbufSizeMask());
+                ++env_index;
             }
         }
         if (env_index != envs.size()) {
@@ -930,7 +960,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             return true;
         }
         for (const auto& env : envs) account_input(env);
-        graphics_inputs.push_back({key, std::move(envs)});
+        graphics_inputs.push_back({key, std::move(envs), candidate, std::move(record_id)});
         return true;
     }};
     // Parse the existing modern store once. Its already-verified frame IDs prove
@@ -1056,7 +1086,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     bool import_records_ready{};
     size_t import_unresolved{},imported_records{};
     VideoCommon::ShaderProfile::ImportReport import_report;
-    std::set<std::string> imported_record_ids;
+    std::set<std::string> imported_record_ids,newly_loaded_ids;
     if (!import_path.empty()) {
         try {
             const char* path=import_path.c_str();const char* root=import_root.c_str();
@@ -1072,7 +1102,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             }
             const auto recipes = VideoCommon::ShaderProfile::Read(
                 std::filesystem::u8path(path), std::filesystem::u8path(root), title_id, &unresolved_count,
-                state.timings.get(),[&](size_t,size_t){return !stop_loading.stop_requested();}, &import_report, capture_context, &existing_recipes, &available_programs);
+                state.timings.get(),[&](size_t,size_t){return !stop_loading.stop_requested();}, &import_report, capture_context, &existing_recipes, &available_programs, true);
             // Validate every guest projection before queueing work or appending local records.
             for (const auto& recipe : recipes) {
                 Timing::Timer projection_timer(state.timings.get(), Timing::Phase::GuestProjection);
@@ -1087,6 +1117,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             const auto publish_integration=[&](bool complete) {
                 JsonValue receipt;
                 receipt["schema"]=1U;receipt["complete"]=complete;receipt["stamp"]=integration_stamp;receipt["selection"]=selection_request;
+                receipt["guarded_candidates"]=static_cast<u32>(import_report.candidates);
                 receipt["skipped_recipes"]=static_cast<u32>(import_report.skipped);
                 receipt["missing_resources"]=static_cast<u32>(import_report.missing_resources);
                 receipt["incompatible_resources"]=static_cast<u32>(import_report.incompatible_resources);
@@ -1121,8 +1152,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                     key.cbuf_sizes = recipe.compute_cbuf_sizes;
                     key.texture_table_size = recipe.texture_table_size;
                     record.key.assign(reinterpret_cast<const char*>(&key), sizeof(key));
-                    std::istringstream stream(record.key, std::ios::binary);
-                    load_compute(stream, std::move(envs.front()));
+
                 } else {
                     const auto guest = GuestPipelineState::FromWords(recipe.guest_words);
                     if (!guest) throw std::runtime_error("Unsupported nxshader guest pipeline state");
@@ -1132,16 +1162,19 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                     key.texture_pool = recipe.texture_pool;
                     key.state = guest->Project(dynamic_features);
                     record.key.assign(reinterpret_cast<const char*>(&key), sizeof(key));
-                    std::istringstream stream(record.key, std::ios::binary);
-                    load_graphics(stream, std::move(envs));
+
                 }
                 projection_timer.Stop();
+                std::string id;
                 Timing::Measure(state.timings.get(), Timing::Phase::CacheAppend, [&] {
-                    std::string id;
-                    VideoCommon::CacheStore::Append(pipeline_cache_filename, CACHE_VERSION, record, &id, capture_context);
+                    VideoCommon::CacheStore::Append(pipeline_cache_filename, CACHE_VERSION, record, &id, recipe.requires_validation?recipe.source_context:capture_context);
+                    newly_loaded_ids.insert(id);
                     recipe_records[recipe.identity]=id;
-                    imported_record_ids.insert(std::move(id));
+                    imported_record_ids.insert(id);
                 });
+                std::istringstream stream(record.key,std::ios::binary);
+                if(recipe.compute)load_compute(stream,std::move(envs.front()),recipe.requires_validation,id);
+                else load_graphics(stream,std::move(envs),recipe.requires_validation,id);
                 ++imported;
                 if(imported%128==0)publish_integration(false);
             }
@@ -1158,7 +1191,14 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
             LOG_ERROR(Render_Vulkan, "NXShader import failed: {}", error.what());
         }
     }
-    // Warm only verified records associated with the loaded content identity.
+    // Other-version records from this selected profile remain guarded candidates.
+    std::set<std::string> selected_ids=imported_record_ids;
+    if(!integration_stamp.empty() && integrated["stamp"].asString()==integration_stamp && integrated["record_ids"].isArray())
+        for(const auto& value:std::as_const(integrated)["record_ids"]) {
+            const auto id=VideoCommon::ShaderProfile::LocalRecordBinary(value.asString());
+            if(cached_record_ids.contains(id))selected_ids.insert(id);
+        }
+    // Warm verified current-context records directly; candidates stay separate.
     Timing::Timer existing_cache_timer(state.timings.get(), Timing::Phase::ExistingCacheLoad);
     const auto graphics_before = graphics_inputs.size(), compute_before = compute_inputs.size();
     bool modern_loaded{import_records_ready};
@@ -1166,7 +1206,8 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
         if (cached_store_valid) {
             const auto contextual_ids = capture_context.empty() ? std::set<std::string>{} : VideoCommon::CacheStore::ReadContext(pipeline_cache_filename,capture_context);
             for(const auto& record:cached_records) {
-                if (!contextual_ids.contains(record.id)) continue;
+                const bool candidate=!contextual_ids.contains(record.id);
+                if(candidate && (capture_context.empty() || !selected_ids.contains(record.id) || newly_loaded_ids.contains(record.id)))continue;
                 if(stop_loading.stop_requested())break;
                 std::vector<FileEnvironment> envs;
                 for(const auto& bytes:record.environments) {
@@ -1176,9 +1217,9 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
                 key.exceptions(std::ios::failbit|std::ios::badbit);
                 if(envs.front().ShaderStage()==Shader::Stage::Compute) {
                     if(envs.size()!=1)throw std::runtime_error("Invalid compute cache stage count");
-                    load_compute(key,std::move(envs.front()));
+                    load_compute(key,std::move(envs.front()),candidate,record.id);
                 }
-                else load_graphics(key,std::move(envs));
+                else load_graphics(key,std::move(envs),candidate,record.id);
             }
             cached_records.clear();
             modern_loaded = import_records_ready || graphics_inputs.size() != graphics_before || compute_inputs.size() != compute_before;
@@ -1257,7 +1298,16 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     }
     StartupPipelineVariants<GraphicsPipelineCacheKey, std::vector<FileEnvironment>> graphics_variants;
     StartupPipelineVariants<ComputePipelineCacheKey, FileEnvironment> compute_variants;
+    std::unordered_set<std::string> prepared_candidates;
+    std::unordered_set<ComputePipelineCacheKey> ready_compute;
+    std::unordered_set<GraphicsPipelineCacheKey> ready_graphics;
+    for(const auto& input:compute_inputs)if(!input.candidate)ready_compute.insert(WithoutSizes(input.key));
+    for(const auto& input:graphics_inputs)if(!input.candidate)ready_graphics.insert(WithoutSizes(input.key));
     for (auto& input : compute_inputs) {
+        if(input.candidate) {
+            if(!ready_compute.contains(WithoutSizes(input.key)) && prepared_candidates.insert(input.record_id).second)queue_compute(input.key,std::move(input.env),true,std::move(input.record_id));
+            continue;
+        }
         CbufSizeDependencies::Normalize(input.key.cbuf_sizes, cbuf_size_dependencies.Mask(input.key.unique_hash));
         compute_variants.Observe(input.key, std::move(input.env), [](const auto& a, const auto& b) {
             return a.HasSameCompilationInputs(b);
@@ -1265,6 +1315,10 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     }
     compute_inputs.clear();
     for (auto& input : graphics_inputs) {
+        if(input.candidate) {
+            if(!ready_graphics.contains(WithoutSizes(input.key)) && prepared_candidates.insert(input.record_id).second)queue_graphics(input.key,std::move(input.envs),true,std::move(input.record_id));
+            continue;
+        }
         NormalizeCbufSizes(input.key);
         graphics_variants.Observe(input.key, std::move(input.envs), [&](const auto& a, const auto& b) {
             bool equal=a.size()==b.size();
@@ -1358,6 +1412,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     });
 
     lock.lock();
+    LOG_INFO(Render_Vulkan,"Prepared cross-version candidate keys: graphics={} compute={}",foreign_graphics.size(),foreign_compute.size());
     const size_t completed_requests=state.built,failed_requests=state.failures;
     for (const auto& key : hle_shared_keys) {
         const auto it{graphics_cache.find(non_hle_twin(key))};
@@ -1388,7 +1443,7 @@ void PipelineCache::LoadDiskResources(u64 title_id, std::stop_token stop_loading
     if (VideoCommon::ShaderProfile::CanPublishImport(import_records_ready,import_stamp,stop_loading.stop_requested(),
         completed_requests,state.total,failed_requests+state.deferred)) {
         JsonValue status(JsonValueType::Object);
-        status["schema"]=2U;status["stamp"]=import_stamp;status["status"]="ready-compatible-subset";
+        status["schema"]=2U;status["stamp"]=import_stamp;status["status"]=(foreign_graphics.empty() && foreign_compute.empty())?"ready-compatible-subset":"ready-pending-update-validation";
         const auto number=[](size_t n){return JsonValue(static_cast<u32>(n));};
         status["records_imported"]=number(imported_records);status["unresolved"]=number(import_unresolved);
         status["ambiguous_graphics"]=number(ambiguous_graphics);status["ambiguous_compute"]=number(ambiguous_compute);
@@ -1601,6 +1656,85 @@ void PipelineCache::FinalizeReadyGraphicsPipelines() {
     }
 }
 
+void PipelineCache::AssociateForeignRecord(std::string record_id) {
+    if(capture_context.empty() || pipeline_cache_filename.empty())return;
+    try {
+        serialization_thread.QueueWork([record_id=std::move(record_id),
+                                        path=pipeline_cache_filename,context=capture_context] {
+            try {VideoCommon::CacheStore::AssociateContext(path,CACHE_VERSION,record_id,context);}
+            catch(const std::exception& error){LOG_WARNING(Render_Vulkan,"Cannot persist validated update recipe: {}",error.what());}
+        });
+    } catch(const std::exception& error){LOG_WARNING(Render_Vulkan,"Cannot queue validated update recipe: {}",error.what());}
+}
+
+ComputePipelineCacheKey PipelineCache::WithoutSizes(ComputePipelineCacheKey key) {
+    key.cbuf_sizes.fill(0);return key;
+}
+
+bool PipelineCache::TryReuseGraphics() {
+    if(foreign_graphics.empty())return false;
+    const auto found=foreign_graphics.find(WithoutSizes(graphics_key));
+    if(found==foreign_graphics.end())return false;
+    GraphicsEnvironments live;
+    GetGraphicsEnvironments(live,graphics_key.unique_hashes);
+    for(const auto candidate:found->second) {
+        bool equivalent=true;size_t index{};
+        try {
+            for(size_t slot=0;slot<graphics_key.unique_hashes.size();++slot)if(graphics_key.unique_hashes[slot]) {
+                const auto& source=candidate->environments.at(index++);
+                auto& target=live.envs[slot];
+                target.SetQueryRecording(false);
+                if(!source.HasReusableProgramLayout() || !program_equivalence.MatchDigest(source.ProgramDigest(),source.ProgramBytes(),target.CachedProgram()) ||
+                   !source.ReuseProof().Matches(target,source.StartAddress()!=target.StartAddress() &&
+                       source.ReusableAt(target.StartAddress()))) {equivalent=false;break;}
+            }
+            equivalent=equivalent && index==candidate->environments.size();
+        } catch(const std::exception&) {equivalent=false;}
+        if(!equivalent){++cross_version_rejected;continue;}
+        const auto original=graphics_key;index=0;
+        for(auto hash:graphics_key.unique_hashes)if(hash)
+            cbuf_size_dependencies.Observe(hash,candidate->environments[index++].CbufSizeMask());
+        NormalizeCbufSizes(graphics_key);
+        candidate->pipeline->SetSharedKey(graphics_key);
+        graphics_cache[graphics_key]=candidate->pipeline;
+        graphics_cache[original]=candidate->pipeline;
+        AssociateForeignRecord(candidate->record_id);
+        ++cross_version_accepted;
+        foreign_graphics.erase(found);
+        return true;
+    }
+    // The ordinary compiler records the actual target dependencies and content
+    // association. Failed candidates never enter the active pipeline cache.
+    foreign_graphics.erase(found);
+    return false;
+}
+
+ComputePipeline* PipelineCache::TryReuseCompute(ComputePipelineCacheKey& key,const ShaderInfo* shader) {
+    if(foreign_compute.empty())return nullptr;
+    const auto found=foreign_compute.find(WithoutSizes(key));
+    if(found==foreign_compute.end())return nullptr;
+    const auto& qmd=kepler_compute->launch_description;
+    ComputeEnvironment live{*kepler_compute,*gpu_memory,kepler_compute->regs.code_loc.Address(),qmd.program_start};
+    live.SetCachedCode(shader->code,shader->size_bytes);
+    live.SetQueryRecording(false);
+    for(const auto candidate:found->second) {
+        bool equivalent{};
+        try {
+            equivalent=candidate->environment.HasReusableProgramLayout() && program_equivalence.MatchDigest(candidate->environment.ProgramDigest(),candidate->environment.ProgramBytes(),live.CachedProgram()) &&
+                candidate->environment.ReuseProof().Matches(live,candidate->environment.StartAddress()!=live.StartAddress() &&
+                    candidate->environment.ReusableAt(live.StartAddress()));
+        }catch(const std::exception&){equivalent=false;}
+        if(!equivalent){++cross_version_rejected;continue;}
+        cbuf_size_dependencies.Observe(key.unique_hash,candidate->environment.CbufSizeMask());
+        CbufSizeDependencies::Normalize(key.cbuf_sizes,cbuf_size_dependencies.Mask(key.unique_hash));
+        auto* result=candidate->pipeline.get();
+        compute_cache.emplace(key,std::move(candidate->pipeline));
+        AssociateForeignRecord(candidate->record_id);
+        ++cross_version_accepted;foreign_compute.erase(found);return result;
+    }
+    foreign_compute.erase(found);return nullptr;
+}
+
 GraphicsPipeline* PipelineCache::CurrentGraphicsPipelineSlowPath() {
     if (const auto it = pending_graphics.find(graphics_key); it != pending_graphics.end()) {
         auto job = it->second;
@@ -1667,7 +1801,8 @@ GraphicsPipeline* PipelineCache::CurrentGraphicsPipelineSlowPath() {
         }
     }
     if(runtime_report)quarantined_graphics.Requested(graphics_key);
-    const auto [pair, is_new]{graphics_cache.try_emplace(graphics_key)};
+    auto [pair, is_new]=graphics_cache.try_emplace(graphics_key);
+    if(is_new && TryReuseGraphics()) {pair=graphics_cache.find(graphics_key);is_new=false;}
     auto& pipeline{pair->second};
     if (is_new) {
         // Check a proven replacement-free HLE twin before queuing a plain
@@ -1716,6 +1851,7 @@ GraphicsPipeline* PipelineCache::CurrentGraphicsPipelineSlowPath() {
 }
 
 GraphicsPipelineCacheKey PipelineCache::WithoutSizes(GraphicsPipelineCacheKey key) {
+    key.state.NormalizeInactiveFields();
     for (auto& sizes : key.cbuf_sizes) {
         sizes.fill(0);
     }
