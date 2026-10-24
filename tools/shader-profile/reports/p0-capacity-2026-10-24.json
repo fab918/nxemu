@@ -1,0 +1,863 @@
+{
+  "reference_commit": "f321d33b",
+  "scope": "two-course diagnostics, bounded input-hash simulation and C++ microbenchmark; not FPS proof",
+  "course_counters": {
+    "schema": 3,
+    "observer_timing_enabled": true,
+    "observer_scope": "Observe only; excludes register revision tracking",
+    "unique_recipes": 2084,
+    "loaded_recipes": 2041,
+    "new_recipes": 43,
+    "captures": 2478168,
+    "capture_candidates": 9334225,
+    "cached_state_hits": 6856057,
+    "cached_recipe_hits": 6856057,
+    "input_lookup_wall_ns": 2080442900,
+    "canonical_updates": 2478168,
+    "duplicate_entries": 2478125,
+    "capture_wall_ns": 572940800,
+    "canonical_wall_ns": 591219300,
+    "dedup_wall_ns": 456131200,
+    "enqueue_wall_ns": 12600,
+    "failed": 0,
+    "observed_draws": 23124236,
+    "observer_wall_ns": 4716238400,
+    "observer_mean_ns_per_observation": 203,
+    "capture_mean_ns_per_capture": 231,
+    "memo_storage_bytes": 1232114,
+    "worker_batches": 10,
+    "worker_frames": 43,
+    "worker_frame_bytes": 68628,
+    "worker_encoding_ns": 154100,
+    "worker_io_ns": 1632800,
+    "worker_cpu_ns": 0,
+    "worker_cpu_samples": 10,
+    "worker_cpu_cycles": 8205496,
+    "worker_cycle_samples": 10
+  },
+  "trace": {
+    "sha256": "808461e608bc4151f1b591988d5e0c1efb12a6d759bab6d1cb57aa0eda887240",
+    "observations": 524288,
+    "unique_input_hash_keys": 1119,
+    "simulations": [
+      {
+        "raw_slots": 256,
+        "raw_policy": "uniform",
+        "state_slots": 256,
+        "canonical_captures": 98877,
+        "raw_misses": 26822
+      },
+      {
+        "raw_slots": 512,
+        "raw_policy": "uniform",
+        "state_slots": 1024,
+        "canonical_captures": 3417,
+        "raw_misses": 1857
+      },
+      {
+        "raw_slots": 1024,
+        "raw_policy": "uniform",
+        "state_slots": 2048,
+        "canonical_captures": 1120,
+        "raw_misses": 688
+      },
+      {
+        "raw_slots": 2048,
+        "raw_policy": "uniform",
+        "state_slots": 4096,
+        "canonical_captures": 1120,
+        "raw_misses": 688
+      },
+      {
+        "raw_slots": 0,
+        "raw_policy": "selective",
+        "state_slots": 2048,
+        "canonical_captures": 1120,
+        "raw_misses": 688
+      }
+    ]
+  },
+  "compilations": {
+    "post_warmup_graphics_entries": 16,
+    "reasons": {
+      "new-combination": 4,
+      "new-program": 12
+    },
+    "unique_new_programs": 10,
+    "details": [
+      {
+        "time_s": 29.187298,
+        "key": "d7e7367c39902b9e",
+        "reason": "new-combination",
+        "records": [
+          {
+            "normalized_key_present": false,
+            "missing_programs": [],
+            "all_hashes_present": true
+          }
+        ],
+        "nearest_same_programs": null
+      },
+      {
+        "time_s": 29.199126,
+        "key": "d0d39451b2a2e859",
+        "reason": "new-combination",
+        "records": [
+          {
+            "normalized_key_present": false,
+            "missing_programs": [],
+            "all_hashes_present": true
+          }
+        ],
+        "nearest_same_programs": null
+      },
+      {
+        "time_s": 29.201181,
+        "key": "80a80c7fa1aaac26",
+        "reason": "new-program",
+        "records": [
+          {
+            "normalized_key_present": false,
+            "missing_programs": [
+              {
+                "hash": "6180432132870156660",
+                "bytes": 3040,
+                "code_sha256": "719a6861a3ebfbf7b89cf8ef38c69fe0455e2c9177b3770b1c3ae163838865ad"
+              }
+            ],
+            "all_hashes_present": false
+          }
+        ]
+      },
+      {
+        "time_s": 29.202534,
+        "key": "079b496b46612061",
+        "reason": "new-program",
+        "records": [
+          {
+            "normalized_key_present": false,
+            "missing_programs": [
+              {
+                "hash": "18150102353858717651",
+                "bytes": 3120,
+                "code_sha256": "07ba612122dc279486ec45a22d42af4479d1b6f8137d305ff7feadfcb08781fd"
+              }
+            ],
+            "all_hashes_present": false
+          }
+        ]
+      },
+      {
+        "time_s": 29.213253,
+        "key": "045875210a08729b",
+        "reason": "new-program",
+        "records": [
+          {
+            "normalized_key_present": false,
+            "missing_programs": [
+              {
+                "hash": "12857372096453592504",
+                "bytes": 2992,
+                "code_sha256": "337e188c6479b108508f0c77af9838ef9ec3f114a2525c43a1b419d55d81f091"
+              }
+            ],
+            "all_hashes_present": false
+          }
+        ]
+      },
+      {
+        "time_s": 29.213801,
+        "key": "482fa4cbd18b6673",
+        "reason": "new-program",
+        "records": [
+          {
+            "normalized_key_present": false,
+            "missing_programs": [
+              {
+                "hash": "8127352165962148803",
+                "bytes": 3400,
+                "code_sha256": "602ba5918b56e0c7c09dca5520ca4369c4859b99dbd6fc51a7a1fff1cb2a836d"
+              }
+            ],
+            "all_hashes_present": false
+          }
+        ]
+      },
+      {
+        "time_s": 30.320173,
+        "key": "3ae9c1378bca30a5",
+        "reason": "new-program",
+        "records": [
+          {
+            "normalized_key_present": false,
+            "missing_programs": [
+              {
+                "hash": "6180432132870156660",
+                "bytes": 3040,
+                "code_sha256": "719a6861a3ebfbf7b89cf8ef38c69fe0455e2c9177b3770b1c3ae163838865ad"
+              }
+            ],
+            "all_hashes_present": false
+          }
+        ]
+      },
+      {
+        "time_s": 30.338815,
+        "key": "e5f4e141653667f8",
+        "reason": "new-combination",
+        "records": [
+          {
+            "normalized_key_present": false,
+            "missing_programs": [],
+            "all_hashes_present": true
+          }
+        ],
+        "nearest_same_programs": null
+      },
+      {
+        "time_s": 30.339995,
+        "key": "7a6617be4c22b49c",
+        "reason": "new-combination",
+        "records": [
+          {
+            "normalized_key_present": false,
+            "missing_programs": [],
+            "all_hashes_present": true
+          }
+        ],
+        "nearest_same_programs": null
+      },
+      {
+        "time_s": 30.340439,
+        "key": "b7d0c0cf7e2c5e2d",
+        "reason": "new-program",
+        "records": [
+          {
+            "normalized_key_present": false,
+            "missing_programs": [
+              {
+                "hash": "18150102353858717651",
+                "bytes": 3120,
+                "code_sha256": "07ba612122dc279486ec45a22d42af4479d1b6f8137d305ff7feadfcb08781fd"
+              }
+            ],
+            "all_hashes_present": false
+          }
+        ]
+      },
+      {
+        "time_s": 30.65233,
+        "key": "9a5804e1a7d02aff",
+        "reason": "new-program",
+        "records": [
+          {
+            "normalized_key_present": false,
+            "missing_programs": [
+              {
+                "hash": "12857372096453592504",
+                "bytes": 2992,
+                "code_sha256": "337e188c6479b108508f0c77af9838ef9ec3f114a2525c43a1b419d55d81f091"
+              }
+            ],
+            "all_hashes_present": false
+          }
+        ]
+      },
+      {
+        "time_s": 30.652579,
+        "key": "34288a0264a28dd3",
+        "reason": "new-program",
+        "records": [
+          {
+            "normalized_key_present": false,
+            "missing_programs": [
+              {
+                "hash": "8127352165962148803",
+                "bytes": 3400,
+                "code_sha256": "602ba5918b56e0c7c09dca5520ca4369c4859b99dbd6fc51a7a1fff1cb2a836d"
+              }
+            ],
+            "all_hashes_present": false
+          }
+        ]
+      },
+      {
+        "time_s": 46.961848,
+        "key": "6e0b824d32712f1e",
+        "reason": "new-program",
+        "records": [
+          {
+            "normalized_key_present": false,
+            "missing_programs": [
+              {
+                "hash": "3425277718251923186",
+                "bytes": 2752,
+                "code_sha256": "6a3504989c0668ecd8fbb1912e18fc227e6a15a9573d46d21e45ef9f1e8cedac"
+              }
+            ],
+            "all_hashes_present": false
+          }
+        ]
+      },
+      {
+        "time_s": 70.126656,
+        "key": "7b175647a17e2e86",
+        "reason": "new-program",
+        "records": [
+          {
+            "normalized_key_present": false,
+            "missing_programs": [
+              {
+                "hash": "16560224753050176177",
+                "bytes": 1168,
+                "code_sha256": "1bb6fb3cea69d2660e3663c9cf69384f025f71acbe66b63b24a4ff0887d79eef"
+              },
+              {
+                "hash": "17978749769104040261",
+                "bytes": 432,
+                "code_sha256": "d5c489c1015b9133f70441dd213424cefc924fdd0dccf8cf45ae11f3e140a457"
+              }
+            ],
+            "all_hashes_present": false
+          }
+        ]
+      },
+      {
+        "time_s": 70.129658,
+        "key": "84a2f5d50e15960d",
+        "reason": "new-program",
+        "records": [
+          {
+            "normalized_key_present": false,
+            "missing_programs": [
+              {
+                "hash": "3378651802236468961",
+                "bytes": 1408,
+                "code_sha256": "2c9c14f3396d4fe0d514ee878b96effd77d992ef015b3ab8bfb3e2ec36b4e660"
+              },
+              {
+                "hash": "11704261092527334575",
+                "bytes": 1392,
+                "code_sha256": "23cdc8caf040856ae699f5e0edbed68291d0aec68c72bd70b37bb444ba78015c"
+              }
+            ],
+            "all_hashes_present": false
+          }
+        ]
+      },
+      {
+        "time_s": 95.694038,
+        "key": "5bf1b3e96a340897",
+        "reason": "new-program",
+        "records": [
+          {
+            "normalized_key_present": false,
+            "missing_programs": [
+              {
+                "hash": "15376156766360623589",
+                "bytes": 11952,
+                "code_sha256": "a28dd1389a233e6813e2405fd57b405ec0391e0068f379615342f37976c847b9"
+              }
+            ],
+            "all_hashes_present": false
+          }
+        ]
+      }
+    ]
+  },
+  "benchmarks": [
+    {
+      "wide": false,
+      "trial": 0,
+      "variant": "small-reference",
+      "scenarios": [
+        {
+          "workload": "unchanged",
+          "recorder": false,
+          "observations": 2000000,
+          "known_working_set": 64,
+          "median_ns_per_observation": 1.34832,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "unchanged",
+          "recorder": true,
+          "observations": 2000000,
+          "known_working_set": 64,
+          "median_ns_per_observation": 7.42667,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "known_transitions",
+          "recorder": false,
+          "observations": 2000000,
+          "known_working_set": 64,
+          "median_ns_per_observation": 1.34923,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "known_transitions",
+          "recorder": true,
+          "observations": 2000000,
+          "known_working_set": 64,
+          "median_ns_per_observation": 78.4326,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "discovery",
+          "recorder": false,
+          "observations": 512,
+          "known_working_set": 64,
+          "median_ns_per_observation": 2.05078,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "discovery",
+          "recorder": true,
+          "observations": 512,
+          "known_working_set": 64,
+          "median_ns_per_observation": 1313.48,
+          "median_main_thread_allocations": 569
+        }
+      ]
+    },
+    {
+      "wide": false,
+      "trial": 0,
+      "variant": "capacity-fixed",
+      "scenarios": [
+        {
+          "workload": "unchanged",
+          "recorder": false,
+          "observations": 2000000,
+          "known_working_set": 64,
+          "median_ns_per_observation": 1.34888,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "unchanged",
+          "recorder": true,
+          "observations": 2000000,
+          "known_working_set": 64,
+          "median_ns_per_observation": 7.50502,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "known_transitions",
+          "recorder": false,
+          "observations": 2000000,
+          "known_working_set": 64,
+          "median_ns_per_observation": 1.35465,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "known_transitions",
+          "recorder": true,
+          "observations": 2000000,
+          "known_working_set": 64,
+          "median_ns_per_observation": 74.5806,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "discovery",
+          "recorder": false,
+          "observations": 512,
+          "known_working_set": 64,
+          "median_ns_per_observation": 3.80859,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "discovery",
+          "recorder": true,
+          "observations": 512,
+          "known_working_set": 64,
+          "median_ns_per_observation": 1259.08,
+          "median_main_thread_allocations": 569
+        }
+      ]
+    },
+    {
+      "wide": false,
+      "trial": 1,
+      "variant": "small-reference",
+      "scenarios": [
+        {
+          "workload": "unchanged",
+          "recorder": false,
+          "observations": 2000000,
+          "known_working_set": 64,
+          "median_ns_per_observation": 1.35983,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "unchanged",
+          "recorder": true,
+          "observations": 2000000,
+          "known_working_set": 64,
+          "median_ns_per_observation": 7.39485,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "known_transitions",
+          "recorder": false,
+          "observations": 2000000,
+          "known_working_set": 64,
+          "median_ns_per_observation": 1.3655,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "known_transitions",
+          "recorder": true,
+          "observations": 2000000,
+          "known_working_set": 64,
+          "median_ns_per_observation": 76.61,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "discovery",
+          "recorder": false,
+          "observations": 512,
+          "known_working_set": 64,
+          "median_ns_per_observation": 2.14844,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "discovery",
+          "recorder": true,
+          "observations": 512,
+          "known_working_set": 64,
+          "median_ns_per_observation": 1378.81,
+          "median_main_thread_allocations": 569
+        }
+      ]
+    },
+    {
+      "wide": false,
+      "trial": 1,
+      "variant": "capacity-fixed",
+      "scenarios": [
+        {
+          "workload": "unchanged",
+          "recorder": false,
+          "observations": 2000000,
+          "known_working_set": 64,
+          "median_ns_per_observation": 1.3497,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "unchanged",
+          "recorder": true,
+          "observations": 2000000,
+          "known_working_set": 64,
+          "median_ns_per_observation": 7.52858,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "known_transitions",
+          "recorder": false,
+          "observations": 2000000,
+          "known_working_set": 64,
+          "median_ns_per_observation": 1.35325,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "known_transitions",
+          "recorder": true,
+          "observations": 2000000,
+          "known_working_set": 64,
+          "median_ns_per_observation": 73.5409,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "discovery",
+          "recorder": false,
+          "observations": 512,
+          "known_working_set": 64,
+          "median_ns_per_observation": 2.14844,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "discovery",
+          "recorder": true,
+          "observations": 512,
+          "known_working_set": 64,
+          "median_ns_per_observation": 1301.56,
+          "median_main_thread_allocations": 569
+        }
+      ]
+    },
+    {
+      "wide": true,
+      "trial": 0,
+      "variant": "small-reference",
+      "scenarios": [
+        {
+          "workload": "unchanged",
+          "recorder": false,
+          "observations": 2000000,
+          "known_working_set": 512,
+          "median_ns_per_observation": 1.3623,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "unchanged",
+          "recorder": true,
+          "observations": 2000000,
+          "known_working_set": 512,
+          "median_ns_per_observation": 7.70772,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "known_transitions",
+          "recorder": false,
+          "observations": 2000000,
+          "known_working_set": 512,
+          "median_ns_per_observation": 1.40522,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "known_transitions",
+          "recorder": true,
+          "observations": 2000000,
+          "known_working_set": 512,
+          "median_ns_per_observation": 473.099,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "discovery",
+          "recorder": false,
+          "observations": 512,
+          "known_working_set": 512,
+          "median_ns_per_observation": 2.24609,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "discovery",
+          "recorder": true,
+          "observations": 512,
+          "known_working_set": 512,
+          "median_ns_per_observation": 1246.78,
+          "median_main_thread_allocations": 569
+        }
+      ]
+    },
+    {
+      "wide": true,
+      "trial": 0,
+      "variant": "capacity-fixed",
+      "scenarios": [
+        {
+          "workload": "unchanged",
+          "recorder": false,
+          "observations": 2000000,
+          "known_working_set": 512,
+          "median_ns_per_observation": 1.35065,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "unchanged",
+          "recorder": true,
+          "observations": 2000000,
+          "known_working_set": 512,
+          "median_ns_per_observation": 7.67545,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "known_transitions",
+          "recorder": false,
+          "observations": 2000000,
+          "known_working_set": 512,
+          "median_ns_per_observation": 1.40948,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "known_transitions",
+          "recorder": true,
+          "observations": 2000000,
+          "known_working_set": 512,
+          "median_ns_per_observation": 80.7336,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "discovery",
+          "recorder": false,
+          "observations": 512,
+          "known_working_set": 512,
+          "median_ns_per_observation": 2.05078,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "discovery",
+          "recorder": true,
+          "observations": 512,
+          "known_working_set": 512,
+          "median_ns_per_observation": 1188.77,
+          "median_main_thread_allocations": 569
+        }
+      ]
+    },
+    {
+      "wide": true,
+      "trial": 1,
+      "variant": "small-reference",
+      "scenarios": [
+        {
+          "workload": "unchanged",
+          "recorder": false,
+          "observations": 2000000,
+          "known_working_set": 512,
+          "median_ns_per_observation": 1.35335,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "unchanged",
+          "recorder": true,
+          "observations": 2000000,
+          "known_working_set": 512,
+          "median_ns_per_observation": 7.57357,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "known_transitions",
+          "recorder": false,
+          "observations": 2000000,
+          "known_working_set": 512,
+          "median_ns_per_observation": 1.43432,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "known_transitions",
+          "recorder": true,
+          "observations": 2000000,
+          "known_working_set": 512,
+          "median_ns_per_observation": 475.363,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "discovery",
+          "recorder": false,
+          "observations": 512,
+          "known_working_set": 512,
+          "median_ns_per_observation": 1.66016,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "discovery",
+          "recorder": true,
+          "observations": 512,
+          "known_working_set": 512,
+          "median_ns_per_observation": 1506.74,
+          "median_main_thread_allocations": 569
+        }
+      ]
+    },
+    {
+      "wide": true,
+      "trial": 1,
+      "variant": "capacity-fixed",
+      "scenarios": [
+        {
+          "workload": "unchanged",
+          "recorder": false,
+          "observations": 2000000,
+          "known_working_set": 512,
+          "median_ns_per_observation": 1.34775,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "unchanged",
+          "recorder": true,
+          "observations": 2000000,
+          "known_working_set": 512,
+          "median_ns_per_observation": 7.42357,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "known_transitions",
+          "recorder": false,
+          "observations": 2000000,
+          "known_working_set": 512,
+          "median_ns_per_observation": 1.41263,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "known_transitions",
+          "recorder": true,
+          "observations": 2000000,
+          "known_working_set": 512,
+          "median_ns_per_observation": 83.5701,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "discovery",
+          "recorder": false,
+          "observations": 512,
+          "known_working_set": 512,
+          "median_ns_per_observation": 2.14844,
+          "median_main_thread_allocations": 0
+        },
+        {
+          "workload": "discovery",
+          "recorder": true,
+          "observations": 512,
+          "known_working_set": 512,
+          "median_ns_per_observation": 1322.27,
+          "median_main_thread_allocations": 569
+        }
+      ]
+    }
+  ],
+  "updated_memo_bytes": 3416498,
+  "application_smoke": {
+    "schema": 3,
+    "observer_timing_enabled": true,
+    "observer_scope": "Observe only; excludes register revision tracking",
+    "unique_recipes": 2084,
+    "loaded_recipes": 2084,
+    "new_recipes": 0,
+    "captures": 169,
+    "capture_candidates": 27332,
+    "cached_state_hits": 27163,
+    "cached_recipe_hits": 27163,
+    "input_lookup_wall_ns": 7333200,
+    "canonical_updates": 169,
+    "duplicate_entries": 169,
+    "capture_wall_ns": 78400,
+    "canonical_wall_ns": 66700,
+    "dedup_wall_ns": 75800,
+    "enqueue_wall_ns": 0,
+    "failed": 0,
+    "observed_draws": 52130,
+    "observer_wall_ns": 10376200,
+    "observer_mean_ns_per_observation": 199,
+    "capture_mean_ns_per_capture": 463,
+    "memo_storage_bytes": 3416498,
+    "worker_batches": 0,
+    "worker_frames": 0,
+    "worker_frame_bytes": 0,
+    "worker_encoding_ns": 0,
+    "worker_io_ns": 0,
+    "worker_cpu_ns": 0,
+    "worker_cpu_samples": 0,
+    "worker_cpu_cycles": 0,
+    "worker_cycle_samples": 0
+  },
+  "frozen_reference_headers_match_commit": {
+    "guest_pipeline_recorder.h": true,
+    "guest_recipe_input_cache.h": true
+  },
+  "new_program_verification": {
+    "unique": 10,
+    "same_guest_hash": 0,
+    "same_body": 0,
+    "only_extra_8": 0,
+    "only_removed_8": 0
+  },
+  "validation": {
+    "native_tests_passed": 11,
+    "export_import_regression_tests_passed": 61,
+    "application_build_succeeded": true,
+    "marked_start": true,
+    "marked_stop": false
+  }
+}

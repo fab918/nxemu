@@ -140,8 +140,8 @@ public:
                     }();
                     ++captures;
                     StageSample measured(timing, canonical_wall_ns);
-                    captured.WriteWords(std::span<u32, GuestPipelineState::WordCount>(current_state->entry.data()+1, GuestPipelineState::WordCount));
-                    current_state->entry[0] = feature_bits;
+                    captured.WriteWords(std::span<u32, GuestPipelineState::WordCount>(candidate_entry.data()+1, GuestPipelineState::WordCount));
+                    candidate_entry[0] = feature_bits;
                     current_state->projected = captured.Project(features);
                     if (timing) ++canonical_updates;
                 }
@@ -153,31 +153,29 @@ public:
             if (prefix_changed || full_capture) std::memcpy(last_prefix.data(), &key, sizeof(last_prefix));
             if (current_state->projected != key.state)
                 throw std::runtime_error("Automatic guest recipe projection mismatch");
-            auto& pending_entry = current_state->entry;
-            if (current_state->prefix_known) {
+            if (current_state->entry) {
                 if (timing) ++cached_recipe_hits;
                 return;
             }
             static_assert(GuestPipelineState::WordCount == 278);
-            std::copy(last_prefix.begin(), last_prefix.end(), pending_entry.begin()+279);
-            const bool duplicate = [&] {
+            std::copy(last_prefix.begin(), last_prefix.end(), candidate_entry.begin()+279);
+            const auto duplicate = [&] {
                 StageSample measured(timing, dedup_wall_ns);
-                return entries.contains(pending_entry);
+                return entries.find(candidate_entry);
             }();
-            if (duplicate) { current_state->prefix_known = true; if (timing) ++duplicate_entries; return; }
+            if (duplicate!=entries.end()) { current_state->entry=&*duplicate; if (timing) ++duplicate_entries; return; }
             if (entries.size() >= VideoCommon::ShaderProfile::Journal::MaxEntries)
                 throw std::runtime_error("Automatic guest recipe journal is full");
             {
                 StageSample measured(timing, dedup_wall_ns);
-                entries.insert(pending_entry);
+                current_state->entry=&*entries.insert(candidate_entry).first;
             }
-            current_state->prefix_known = true;
             StageSample measured(timing, enqueue_wall_ns);
             if (writer_failed->load(std::memory_order_relaxed)) {
                 failed = true;
                 return;
             }
-            pending_writes.push_back(pending_entry);
+            pending_writes.push_back(candidate_entry);
             if (pending_writes.size() == BatchEntries) Flush();
         }
         catch (const std::exception & e)
@@ -280,6 +278,7 @@ private:
     std::unordered_set<Entry, VideoCommon::ShaderProfile::Journal::EntryHash> entries;
     GuestRecipeInputCache<> input_cache;
     GuestRecipeInputCache<>::State* current_state{};
+    Entry candidate_entry{};
     std::array<u32, 104> last_prefix{};
     const void* channel{};
     u64 captures{}, calls{}, elapsed_ns{}, loaded_recipes{};

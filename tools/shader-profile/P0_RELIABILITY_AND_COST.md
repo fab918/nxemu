@@ -1,5 +1,9 @@
 # P0 reliability and recorder cost — 2026-10-24
 
+The later two-course diagnosis and capacity correction are documented in
+[P0_CAPTURE_CAPACITY.md](P0_CAPTURE_CAPACITY.md). The 1,232,114-byte memo and
+course figures below describe the first P0 implementation, before that correction.
+
 ## Import and recovery
 
 Resource integration and native warmup now have separate completion records.
@@ -64,7 +68,7 @@ Asynchronous write failure leaves the conservative `.failed` export blocker.
 Automatic clearing of that marker is not implemented because completeness is
 not established by the surviving journal alone.
 
-The current memo occupies 1,232,114 bytes, plus a 49,024-byte pending batch and
+The first P0 memo occupied 1,232,114 bytes, plus a 49,024-byte pending batch and
 the pre-existing bounded journal-entry set. Memo capacity remains a limitation
 for the course workload below; it is not yet a universal zero-cost observer.
 

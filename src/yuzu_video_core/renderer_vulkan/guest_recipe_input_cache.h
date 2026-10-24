@@ -19,23 +19,24 @@ struct GuestInputHash {
 // instructions, guest addresses, persistent identities or renderer keys change.
 template <class Hash = GuestInputHash>
 class GuestRecipeInputCache {
-    static constexpr size_t Groups=7, Sets=64, Ways=4, Slots=Sets*Ways;
+    static constexpr size_t Groups=7, Sets=512, Ways=4, Slots=Sets*Ways;
     using Key=std::array<u64,Groups+3>;
     struct RawSlot { u64 hash{}, id{}; };
     struct Group {
         std::vector<u16> methods;
         std::vector<u32> current, values;
-        std::array<RawSlot,Slots> slots{};
-        std::array<u8,Sets> next{};
+        std::vector<RawSlot> slots;
+        std::vector<u8> next;
     };
 public:
     void EnableDiagnosticKeys() noexcept { diagnostic_keys = true; }
     const Key& DiagnosticKey() const noexcept { return diagnostic_key; }
     struct State {
         Key key{};
-        VideoCommon::ShaderProfile::Journal::Entry entry{};
+        // Non-owning: recorder journal nodes stay stable until recorder teardown.
+        const VideoCommon::ShaderProfile::Journal::Entry* entry{};
         FixedPipelineState projected{};
-        bool valid{}, prefix_known{};
+        bool valid{};
     };
     struct Result { State* state; bool hit; };
 private:
@@ -56,7 +57,13 @@ public:
         for(size_t i=0;i<=Groups;++i) {
             auto& group=storage->groups[i];
             group.current.resize(i==Groups?104:group.methods.size());
-            group.values.resize(group.current.size()*Slots);
+            // The measured course needs more prefix/vertex inputs, not larger
+            // copies of every low-cardinality register group.
+            const bool many_inputs=i==Groups || (1U<<i)==GuestPipelineState::VertexInput;
+            const size_t slots=many_inputs?1024:256;
+            group.slots.resize(slots);
+            group.next.resize(slots/Ways);
+            group.values.resize(group.current.size()*slots);
         }
     }
     Result Find(const Maxwell& regs, u64 changes, bool full,
@@ -75,8 +82,9 @@ public:
                 group.current[word]=regs.reg_array[group.methods[word]];
             const auto hash=Hash{}(group.current.data(),group.current.size()*sizeof(u32));
             if (diagnostic_keys) diagnostic_key[i==Groups?Groups+2:i]=hash;
-            const size_t set=hash%Sets, begin=set*Ways;
-            size_t selected=Slots;
+            const size_t slots=group.slots.size();
+            const size_t set=hash & (group.next.size()-1), begin=set*Ways;
+            size_t selected=slots;
             for(size_t way=0;way<Ways;++way) {
                 const size_t index=begin+way;
                 const auto& slot=group.slots[index];
@@ -85,7 +93,7 @@ public:
                     selected=index;break;
                 }
             }
-            if(selected==Slots) {
+            if(selected==slots) {
                 selected=begin+group.next[set]++%Ways;
                 if(++generation==0)throw std::runtime_error("Guest input cache generation exhausted");
                 group.slots[selected]={hash,generation};
@@ -99,16 +107,17 @@ public:
         const size_t set=Hash{}(key.data(),sizeof(key))%Sets, begin=set*Ways;
         for(size_t way=0;way<Ways;++way) {
             auto& state=storage->states[begin+way];
-            if(state.valid && state.key==key)return {&state,true};
+            if(state.valid && state.entry && state.key==key)return {&state,true};
         }
         auto& state=storage->states[begin+storage->next[set]++%Ways];
-        state.valid=true;state.key=key;state.prefix_known=false;
+        state.valid=true;state.key=key;state.entry=nullptr;
         return {&state,false};
     }
     size_t StorageBytes() const noexcept {
         size_t bytes=sizeof(Storage);
         for(const auto& group:storage->groups)
-            bytes+=group.methods.capacity()*sizeof(u16)+(group.current.capacity()+group.values.capacity())*sizeof(u32);
+            bytes+=group.methods.capacity()*sizeof(u16)+(group.current.capacity()+group.values.capacity())*sizeof(u32)+
+                   group.slots.capacity()*sizeof(RawSlot)+group.next.capacity()*sizeof(u8);
         return bytes;
     }
 private:

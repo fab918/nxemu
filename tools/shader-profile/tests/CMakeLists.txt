@@ -182,6 +182,22 @@ if(MSVC)
 endif()
 add_test(NAME recorder-input-cache COMMAND recorder-input-cache)
 
+# Optional frozen-header baseline, kept outside the source tree. Both binaries
+# compile the same benchmark and differ only in the recorder headers under test.
+set(NXSHADER_RECORDER_REFERENCE_INCLUDE "" CACHE PATH "Frozen recorder headers for A/B microbenchmarks")
+if(NXSHADER_RECORDER_REFERENCE_INCLUDE)
+    add_executable(recorder-hotpath-reference recorder_hotpath.cpp
+        "${NXEMU_ROOT}/src/yuzu_video_core/renderer_vulkan/fixed_pipeline_state.cpp"
+        "${NXEMU_ROOT}/src/yuzu_video_core/surface.cpp"
+        "${NXEMU_ROOT}/src/yuzu_common/cityhash.cpp")
+    target_include_directories(recorder-hotpath-reference BEFORE PRIVATE "${NXSHADER_RECORDER_REFERENCE_INCLUDE}")
+    target_link_libraries(recorder-hotpath-reference PRIVATE profile-storage Threads::Threads)
+    target_compile_definitions(recorder-hotpath-reference PRIVATE FMT_HEADER_ONLY)
+    if(MSVC)
+        target_compile_options(recorder-hotpath-reference PRIVATE /utf-8 /EHsc)
+    endif()
+endif()
+
 if(WIN32)
     add_executable(recorder-session-monitor recorder_session_monitor.cpp)
     target_compile_features(recorder-session-monitor PRIVATE cxx_std_20)
