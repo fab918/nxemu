@@ -196,6 +196,7 @@ xcopy /Y /D "$(SolutionDir)external\sciterui\src\3rd_party\sciter-js-sdk-main\bi
     <ClInclude Include="ui\platform\system_theme.h" />
     <ClInclude Include="ui\host\system_language.h" />
     <ClInclude Include="ui\host\ui_pack.h" />
+    <ClInclude Include="ui\host\renderdoc_capture.h" />
     <ClInclude Include="ui\library\interface_language.h" />
     <ClInclude Include="user_interface\game_list_worker.h" />
     <ClInclude Include="user_interface\hotkey_map.h" />

@@ -3,6 +3,7 @@
 #include "ui/emulation/emulator_session.h"
 #include "ui/host/ui_notification.h"
 #include "ui/host/ui_pack.h"
+#include "ui/host/renderdoc_capture.h"
 #include "ui/host/ui_window.h"
 #include "ui/library/game_library.h"
 #include "ui/library/interface_language.h"
@@ -267,6 +268,13 @@ int RunUiApplication(int argc, char ** argv)
         }
     }
 
+    try {
+        ConfigureRenderDocCapture();
+    } catch (const std::exception & error) {
+        notification.DisplayError(error.what(), "NXEmu GPU capture");
+        SetNotification(nullptr);
+        return 1;
+    }
     int result = 1;
     if (argc > 0 && uiSettings.performVulkanCheck && !probeGraphics(argv[0]))
     {

@@ -27,6 +27,7 @@ add_library(nxemu_ui STATIC
     host/ui_notification.h
     host/ui_pack.cpp
     host/ui_pack.h
+    host/renderdoc_capture.h
     host/ui_renderer.cpp
     host/ui_renderer.h
     host/ui_renderer_effects.cpp

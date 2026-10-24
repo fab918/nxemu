@@ -356,6 +356,9 @@
     <ClInclude Include="ui\host\ui_pack.h">
       <Filter>Header Files\ui\host</Filter>
     </ClInclude>
+    <ClInclude Include="ui\host\renderdoc_capture.h">
+      <Filter>Header Files\ui\host</Filter>
+    </ClInclude>
     <ClInclude Include="ui\library\interface_language.h">
       <Filter>Header Files\ui\library</Filter>
     </ClInclude>
