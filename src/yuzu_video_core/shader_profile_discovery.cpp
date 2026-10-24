@@ -2,6 +2,8 @@
 #include "yuzu_video_core/shader_profile_discovery.h"
 #include "yuzu_video_core/shader_profile_context.h"
 #include <utility>
+#include <algorithm>
+#include <cctype>
 #include "yuzu_video_core/shader_profile_file_stamp.h"
 #include "yuzu_video_core/shader_profile_hash.h"
 #include "yuzu_video_core/shader_profile_resources.h"
@@ -222,27 +224,71 @@ struct File
     std::string name;
     u64 offset, size;
 };
-std::vector<File> Pfs(Store source)
+std::vector<File> PartitionFiles(Store source)
 {
     auto h = source->Read(0, 16);
-    Check(h.substr(0, 4) == "PFS0", "Expected plaintext PFS0 game container");
+    const bool hfs = h.substr(0, 4) == "HFS0";
+    Check(hfs || h.substr(0, 4) == "PFS0", "Expected plaintext PFS0/HFS0 game container");
     const auto count = Get(h, 4, 4), strings = Get(h, 8, 4);
+    const u64 stride = hfs ? 64 : 24;
     Check(count <= 65536 && strings <= 16 * 1024 * 1024, "PFS metadata limit");
-    const auto table = source->Read(16, count * 24 + strings);
-    const auto payload = 16 + count * 24 + strings;
+    const auto table = source->Read(16, count * stride + strings);
+    const auto payload = 16 + count * stride + strings;
     std::vector<File> files;
     for (u64 i = 0; i < count; ++i)
     {
-        const auto off = Get(table, i * 24, 8), size = Get(table, i * 24 + 8, 8), name = Get(table, i * 24 + 16, 4);
+        const auto off = Get(table, i * stride, 8), size = Get(table, i * stride + 8, 8), name = Get(table, i * stride + 16, 4);
         Check(name < strings, "PFS string bounds");
-        const auto begin = static_cast<size_t>(count * 24 + name);
+        const auto begin = static_cast<size_t>(count * stride + name);
         const auto end = table.find('\0', begin);
-        Check(end != std::string::npos && end < count * 24 + strings, "PFS string termination");
+        Check(end != std::string::npos && end < count * stride + strings, "PFS string termination");
         Bounds(payload, off, source->size);
         Bounds(payload + off, size, source->size);
         files.push_back({table.substr(static_cast<size_t>(begin), end - begin), payload + off, size});
     }
     return files;
+}
+std::vector<File> Pfs(Store source)
+{
+    const auto magic = source->Read(0, 4);
+    if (magic == "PFS0" || magic == "HFS0") return PartitionFiles(source);
+    Check(source->size >= 0x200, "Truncated gamecard header");
+    const auto header = source->Read(0x100, 0x100);
+    Check(header.substr(0, 4) == "DXCI" || header.substr(0, 4) == "HEAD", "Unsupported game container");
+    const auto offset = Get(header, 0x30, 8);
+    Bounds(offset, 16, source->size);
+    const auto root = std::make_shared<Slice>(source, offset, source->size - offset);
+    for (const auto & partition : PartitionFiles(root))
+        if (partition.name == "secure")
+        {
+            const auto secure = std::make_shared<Slice>(root, partition.offset, partition.size);
+            auto files = PartitionFiles(secure);
+            for (auto & file : files) file.offset += offset + partition.offset;
+            return files;
+        }
+    throw std::runtime_error("Gamecard secure partition missing");
+}
+std::string ProgramPart(Store source, u64 title)
+{
+    std::string part;
+    for (const auto & nca : Pfs(source))
+    {
+        if (!nca.name.ends_with(".nca") || nca.size < 0xc00) continue;
+        const auto header = source->Read(nca.offset, 0xc00);
+        const auto program_title = Get(header, 0x210, 8);
+        if (header.substr(0x200, 4) != "DNCA" || static_cast<unsigned char>(header[0x205]) != 0 ||
+            (program_title & ~u64{0x800}) != (title & ~u64{0x800}) || Get(header, 0x218, 4) != 0) continue;
+        // Patch NCAs can carry the base title ID. The indirect RomFS table,
+        // rather than a filename/version or title bit alone, distinguishes them.
+        bool patch = (program_title & 0x800) != 0;
+        for (size_t i = 0; i < 4; ++i)
+            if (Get(header, 0x240 + i * 16, 4) != Get(header, 0x244 + i * 16, 4))
+                patch |= Get(header, 0x400 + i * 512 + 0x108, 8) != 0;
+        if (patch != ((title & 0x800) != 0)) continue;
+        Check(part.empty(), "Ambiguous source program content");
+        part = ContentPart(nca.size, header);
+    }
+    return part;
 }
 struct Section
 {
@@ -398,6 +444,54 @@ void ReplaceIndex(const std::filesystem::path & path, const JsonValue & value)
 }
 } // namespace
 
+void ResolveRecordedSources(ExportOptions & options)
+{
+    Check(ValidContext(options.context), "No identified shader capture. Play and stop this version before exporting.");
+    Check(options.title_id && !options.base.empty(), "Missing game identity");
+    const auto base = std::make_shared<Physical>(Local(options.game_root, options.base), options.base);
+    const auto base_part = ProgramPart(base, options.title_id);
+    Check(!base_part.empty(), "Recorded base game is unavailable");
+    options.update.clear();
+    if (ContentContext(options.title_id, base_part, {}) == options.context) return;
+    const auto embedded_update = ProgramPart(base, options.title_id | 0x800);
+    if (!embedded_update.empty() && ContentContext(options.title_id, base_part, embedded_update) == options.context)
+    {
+        options.update = options.base;
+        return;
+    }
+
+    std::vector<std::string> candidates;
+    size_t entries{};
+    for (const auto & entry : std::filesystem::directory_iterator(options.game_root))
+    {
+        Check(++entries <= 65536, "Too many files in game resource directory");
+        if (!entry.is_regular_file()) continue;
+        auto extension = entry.path().extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (extension != ".dnsp" && extension != ".nsp" && extension != ".dxci" && extension != ".xci") continue;
+        const auto filename = entry.path().filename().u8string();
+        candidates.emplace_back(filename.begin(), filename.end());
+    }
+    std::sort(candidates.begin(), candidates.end());
+    for (size_t i = 0; i < candidates.size(); ++i)
+    {
+        if (options.progress) Check(options.progress("identify-content", i, candidates.size()), "Shader profile operation cancelled");
+        try
+        {
+            const auto source = std::make_shared<Physical>(Local(options.game_root, candidates[i]), candidates[i]);
+            const auto part = ProgramPart(source, options.title_id | 0x800);
+            if (!part.empty() && ContentContext(options.title_id, base_part, part) == options.context)
+            {
+                options.update = candidates[i];
+                return;
+            }
+        }
+        catch (const std::exception &) { /* Unrelated/encrypted containers are not export sources. */ }
+    }
+    throw std::runtime_error("The update used for this capture was not found beside the game. Place that update there and export again.");
+}
+
 void Discover(const ExportOptions & options, JsonValue & profile, const std::map<std::string, std::string> & codes, ExportReport & report)
 {
     IndexLock index_lock(options.index);
@@ -406,7 +500,7 @@ void Discover(const ExportOptions & options, JsonValue & profile, const std::map
     identity["title"] = Jnum(options.title_id);
     identity["files"] = Array();
     for (const auto & name : {options.base, options.update})
-        if (!name.empty())
+        if (!name.empty() && !physical.contains(name))
         {
             const auto path = Local(options.game_root, name);
             physical[name] = std::make_shared<Physical>(path, name);
@@ -427,13 +521,7 @@ void Discover(const ExportOptions & options, JsonValue & profile, const std::map
         const std::array<std::string,2> names{options.base,options.update};
         for (size_t role=0;role<2;++role) if (!names[role].empty()) {
             const auto storage=physical.at(names[role]);
-            for (const auto& nca : Pfs(storage)) if (nca.name.ends_with(".nca") && nca.size>=0xc00) {
-                const auto header=storage->Read(nca.offset,0xc00);
-                if (header.substr(0x200,4)!="DNCA" || static_cast<unsigned char>(header[0x205])!=0) continue;
-                if (Get(header,0x210,8)!=(options.title_id | (role?0x800:0)) || Get(header,0x218,4)!=0) continue;
-                Check(parts[role].empty(),"Ambiguous source program content");
-                parts[role]=ContentPart(nca.size,header);
-            }
+            parts[role]=ProgramPart(storage,options.title_id | (role?0x800:0));
             Check(!parts[role].empty(),"Selected source program content missing");
         }
         Check(ContentContext(options.title_id,parts[0],parts[1])==options.context,
@@ -563,7 +651,9 @@ void Discover(const ExportOptions & options, JsonValue & profile, const std::map
             completed.clear();
         }
     }
-    const auto done = [&] {for(const auto& h:profile["shaders"].GetMemberNames())if(profile["shaders"][h]["references"].empty())return false;return true; };
+    u64 found_programs = report.reused;
+    progress("programs", found_programs, codes.size());
+    const auto done = [&] { return found_programs == codes.size(); };
     if (done())
     {
         save();
@@ -588,7 +678,7 @@ void Discover(const ExportOptions & options, JsonValue & profile, const std::map
     }
     std::unique_ptr<PrefixSearch> search;
     if (!prefixes.empty()) search = std::make_unique<PrefixSearch>(prefixes);
-    const auto bind = [&](const std::string & h, size_t pos, JsonValue locator, size_t size) {if(!profile["shaders"][h]["references"].empty())return;locator["offset"]=Jnum(pos);locator["size"]=Jnum(size);profile["shaders"][h]["references"].Append(locator);index["references"][h]=std::move(locator); };
+    const auto bind = [&](const std::string & h, size_t pos, JsonValue locator, size_t size) {if(!profile["shaders"][h]["references"].empty())return;locator["offset"]=Jnum(pos);locator["size"]=Jnum(size);profile["shaders"][h]["references"].Append(locator);index["references"][h]=std::move(locator);progress("programs", ++found_programs, codes.size()); };
     const auto locate = [&](const std::string & data, const JsonValue & locator, u64 base = 0) {
         if (search)
         {
@@ -751,7 +841,7 @@ void Discover(const ExportOptions & options, JsonValue & profile, const std::map
                 {
                     const Section * base = nullptr;
                     for (const auto & candidate : sections[options.base])
-                        if (candidate.type == patch.type && candidate.index == patch.index && candidate.content_index == patch.content_index && (candidate.title & ~u64{0x800}) == (patch.title & ~u64{0x800}))
+                        if (candidate.type == patch.type && candidate.index == patch.index && candidate.content_index == patch.content_index && candidate.title == (patch.title & ~u64{0x800}) && !Get(candidate.header, 0x108, 8))
                         {
                             Check(!base, "Ambiguous BKTR base");
                             base = &candidate;

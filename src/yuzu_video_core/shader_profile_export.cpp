@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "yuzu_video_core/shader_profile_export.h"
 #include "yuzu_video_core/shader_profile_context.h"
+#include "yuzu_video_core/shader_profile_provenance.h"
 #include "yuzu_video_core/pipeline_cache_store.h"
 #include "yuzu_video_core/renderer_vulkan/fixed_pipeline_state.h"
 #include "yuzu_video_core/shader_profile_codec.h"
@@ -517,16 +518,29 @@ void Publish(const std::filesystem::path & output, std::string_view bytes)
         throw;
     }
 }
-ExportReport Export(const ExportOptions & options)
+ExportReport Export(const ExportOptions & requested)
 {
     const auto started = std::chrono::steady_clock::now();
+    auto options = requested;
+    const auto progress = [&](const char * phase, u64 done, u64 total) {
+        Require(!options.progress || options.progress(phase, done, total), "Shader profile operation cancelled");
+    };
+    progress("identify-content", 0, 0);
+    if (options.automatic_sources) {
+        ResolveRecordedSources(options);
+        options.label = RecordedVersionLabel(RecordedProvenance(options.cache.parent_path(), options.context, options.title_id));
+    }
     Require(options.title_id && !options.base.empty(), "Missing game identity");
     Require(!std::filesystem::exists(options.output), "Output already exists");
+    progress("read-cache", 0, 0);
     auto model = ReadCache(options);
     ExportReport report;
     Discover(options, model.profile, model.codes, report);
+    progress("assemble", 0, 0);
     const auto profile = Assemble(model, options, report);
+    progress("compress", 0, 0);
     const auto bytes = PackCompact(profile);
+    progress("write-profile", 0, bytes.size());
     Publish(options.output, bytes);
     report.bytes = bytes.size();
     report.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();

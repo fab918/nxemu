@@ -681,7 +681,7 @@ void MainWindow::Run(Action action)
         const auto game=std::find_if(m_games.begin(),m_games.end(),[&](const GameEntry& item){return item.path==m_menuGame;});
         if(game==m_games.end() || !game->programId)break;
         const auto cache=GameCache::Directory(Common::FS::GetYuzuPath(Common::FS::YuzuPath::ShaderDir),game->programId);
-        m_shaderProfileDialog->Prepare(m_session.Modules().Video(),action==Action::ImportMenuGameShaders,game->path,game->programId,cache,game->title+" "+game->version);
+        m_shaderProfileDialog->Prepare(m_session.Modules().Video(),action==Action::ImportMenuGameShaders,game->path,game->programId,cache,game->title);
         break;
     }
     case Action::StartMenuGame: OpenGame(m_menuGame); break;

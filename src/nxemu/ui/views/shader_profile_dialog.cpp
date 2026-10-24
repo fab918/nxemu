@@ -2,8 +2,12 @@
 #include "shader_profile_dialog.h"
 #include "yuzu_video_core/shader_profile_location.h"
 #include "yuzu_video_core/shader_profile_context.h"
+#include "yuzu_video_core/shader_profile_provenance.h"
+#include "yuzu_video_core/shader_profile_publication.h"
+#include <nxemu-core/notification.h>
 #include <RmlUi/Core.h>
 #include <chrono>
+#include <algorithm>
 #include <common/json.h>
 #include <common/path.h>
 #include <fstream>
@@ -77,19 +81,22 @@ void ShaderProfileDialog::Prepare(IVideo & video, bool importing, std::string ga
     m_recording = Utf8(VideoCommon::ShaderProfile::RecordingPath(m_cache, VideoCommon::ShaderProfile::CurrentContext(m_cache)));
     m_cacheFile = Utf8(std::filesystem::exists(m_cache / "vulkan.nxc") ? m_cache / "vulkan.nxc" : m_cache / "vulkan.bin");
     m_index = Utf8(m_cache / "discovery-index.json");
-    m_update.clear();
-    if (std::filesystem::exists(m_cache / "nxshader-update.txt")) try
-        {
-            m_update = ReadSmall(m_cache / "nxshader-update.txt", 4096);
+    m_autoStart = !m_importing;
+    if (!m_importing) {
+        try {
+            m_label += " — " + VideoCommon::ShaderProfile::RecordedVersionLabel(
+                VideoCommon::ShaderProfile::RecordedProvenance(m_cache, VideoCommon::ShaderProfile::CurrentContext(m_cache), m_title));
+        } catch (const std::exception &) {
+            m_label += " — " + Tr("Recorded version metadata unavailable");
         }
-        catch (...)
-        {
-        }
+    }
     m_cancel = false;
     m_finished = false;
     m_success = false;
     m_result = {};
     m_error.clear();
+    m_phase.clear();
+    m_done = m_total = m_foundPrograms = m_totalPrograms = 0;
     Show();
 }
 void ShaderProfileDialog::OnOpen()
@@ -98,12 +105,15 @@ void ShaderProfileDialog::OnOpen()
     SetText("profile-start", Tr(m_importing ? "Choose profile" : "Export .nxshader"));
     SetText("profile-game", m_label);
     SetText("profile-detail", Tr(m_importing ? "Select a profile. NXEmu verifies it against your local game before prewarming at game startup." : "The profile contains recipes and resource references. Shader instructions stay in your local game."));
-    SetText("profile-update", m_update.empty() ? Tr("No update selected") : m_update);
-    Document()->GetElementById("profile-update-row")->SetProperty("display", m_importing ? "none" : "block");
 }
 bool ShaderProfileDialog::ProfileProgress(const char * phase, uint64_t done, uint64_t total)
 {
     std::scoped_lock lock(m_mutex);
+    if (std::string_view(phase) == "programs") {
+        m_foundPrograms = done;
+        m_totalPrograms = total;
+        return !m_cancel.load();
+    }
     m_phase = phase;
     m_done = done;
     m_total = total;
@@ -124,25 +134,46 @@ void ShaderProfileDialog::Start()
     const auto filter = FileFilter({{Tr("Shader profile"), "*.nxshader"}});
     const auto suggested=VideoCommon::ShaderProfile::ProfileFilename(m_title);
     const bool chosen = m_importing ? FileSelect(m_window.NativeHandle(), m_root.c_str(), filter.c_str(), true, selected) : FileSave(m_window.NativeHandle(), m_root.c_str(), filter.c_str(), suggested.c_str(), selected);
-    if (!chosen) return;
+    if (!chosen)
+    {
+        if (!m_importing) Close();
+        return;
+    }
     m_profile = static_cast<const char *>(selected);
+    m_replaceExisting = !m_importing && std::filesystem::exists(std::filesystem::u8path(m_profile));
+#ifndef __APPLE__
+    // NSSavePanel already confirms replacement on macOS.
+    if (m_replaceExisting && (!g_notify || g_notify->Query(
+            Tr("This file already exists. Replace it with the new shader profile?").c_str(),
+            Tr("Replace shader profile").c_str()) != NotificationResponse::Yes)) {
+        Close();
+        return;
+    }
+#endif
     m_cancel = false;
     m_finished = false;
     m_result = {};
     m_busy = true;
+    m_started = std::chrono::steady_clock::now();
     Document()->GetElementById("profile-start")->SetAttribute("disabled", "");
-    Document()->GetElementById("profile-update-row")->SetAttribute("disabled", "");
+    SetText("profile-status", Tr("Identifying recorded game version"));
     try
     {
         m_thread = std::thread([this] {
             bool success = false;
             std::string failure;
             ShaderProfileResult result{};
+            std::filesystem::path completed_export;
             try
             {
                 std::filesystem::create_directories(m_cache);
                 const auto game = std::filesystem::u8path(m_game);
                 std::string profile = m_profile;
+                if (m_replaceExisting) {
+                    completed_export = std::filesystem::u8path(m_profile);
+                    completed_export += ".export-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".partial";
+                    profile = Utf8(completed_export);
+                }
                 if (m_importing)
                 {
                     const auto snapshot = ReadSmall(std::filesystem::u8path(m_profile), 33 * 1024 * 1024);
@@ -159,14 +190,14 @@ void ShaderProfileDialog::Start()
                 task.recording = m_recording.c_str();
                 task.game_root = m_root.c_str();
                 task.base = base.c_str();
-                task.update = m_update.c_str();
+                task.update = "";
                 task.profile = profile.c_str();
                 task.index = m_index.c_str();
                 task.label = m_label.c_str();
                 char error[1024]{};
                 success = m_video->ProcessShaderProfile(task, *this, result, error, sizeof(error));
                 if (!success) failure = error;
-                if (success && m_importing && m_cancel)
+                if (success && m_cancel)
                 {
                     success = false;
                     failure = "Shader profile operation cancelled";
@@ -188,12 +219,17 @@ void ShaderProfileDialog::Start()
                     selection["root"] = m_root;
                     AtomicWrite(m_cache / "community.json", JsonStyledWriter().write(selection));
                 }
-                if (success && !m_importing) AtomicWrite(m_cache / "nxshader-update.txt", m_update);
+                if (success && m_replaceExisting)
+                    VideoCommon::ShaderProfile::ReplaceCompletedExport(completed_export, std::filesystem::u8path(m_profile));
             }
             catch (const std::exception & error)
             {
                 success = false;
                 failure = error.what();
+            }
+            if (!completed_export.empty()) {
+                std::error_code cleanup_error;
+                std::filesystem::remove(completed_export, cleanup_error);
             }
             {
                 std::scoped_lock lock(m_mutex);
@@ -215,6 +251,12 @@ void ShaderProfileDialog::Start()
 }
 void ShaderProfileDialog::OnUpdate()
 {
+    if (m_autoStart)
+    {
+        m_autoStart = false;
+        Start();
+        return;
+    }
     if (!Busy() && m_thread.joinable()) m_thread.join();
     std::scoped_lock lock(m_mutex);
     if (m_finished)
@@ -228,13 +270,32 @@ void ShaderProfileDialog::OnUpdate()
         SetText("profile-status", Tr(m_success ? "Complete" : "Operation stopped"));
         SetText("profile-start", Tr(m_success && m_importing ? "Start game" : "Close"));
         Document()->GetElementById("profile-start")->RemoveAttribute("disabled");
+        Document()->GetElementById("profile-progress-fill")->SetProperty("width", m_success ? "100%" : "0%");
+        Document()->GetElementById("profile-progress-fill")->SetProperty("margin-left", "0%");
     }
     else if (Busy())
     {
-        const char * status = m_phase == "verify-index" ? "Verifying saved references" : m_phase == "raw"  ? "Searching local game data"
-                                                                                     : m_phase == "verify" ? "Verifying local shaders"
-                                                                                                           : "Searching game resources";
-        SetText("profile-status", Tr(status) + (m_total ? " " + std::to_string(m_done) + " / " + std::to_string(m_total) : ""));
+        const char * status = m_phase == "identify-content" ? "Identifying recorded game version" : m_phase == "read-cache" ? "Reading local shader cache"
+            : m_phase == "assemble" ? "Building shader profile" : m_phase == "compress" ? "Compressing shader profile"
+            : m_phase == "write-profile" ? "Saving shader profile" : m_phase == "verify-index" ? "Verifying saved references"
+            : m_phase == "raw" ? "Searching local game data" : m_phase == "verify" ? "Verifying local shaders" : "Searching game resources";
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - m_started).count();
+        const std::string spinner[] = {" |", " /", " -", " \\"};
+        std::string detail = Tr(status) + spinner[(elapsed / 200) % 4] + "  " + std::to_string(elapsed / 1000) + " s";
+        if (m_phase == "raw") detail += " — " + std::to_string(m_done / (1024 * 1024)) + " / " + std::to_string(m_total / (1024 * 1024)) + " MiB";
+        else if (m_phase == "resources") detail += " — " + Tr("%1 resources examined", {std::to_string(m_done)});
+        else if (m_total) detail += " — " + std::to_string(m_done) + " / " + std::to_string(m_total);
+        if (m_totalPrograms) detail += "<br/>" + Tr("%1 / %2 shader programs located", {std::to_string(m_foundPrograms), std::to_string(m_totalPrograms)});
+        SetText("profile-status", detail);
+        const auto total = m_total;
+        const auto done = m_done;
+        if (!total) {
+            detail += "<br/>" + Tr("This may take several minutes. NXEmu is still working.");
+            SetText("profile-status", detail);
+        }
+        auto * fill = Document()->GetElementById("profile-progress-fill");
+        fill->SetProperty("width", total ? std::to_string(100 * std::min(done, total) / total) + "%" : "25%");
+        fill->SetProperty("margin-left", total ? "0%" : std::to_string((elapsed / 30) % 76) + "%");
     }
 }
 void ShaderProfileDialog::OnCloseRequested()
@@ -266,28 +327,5 @@ void ShaderProfileDialog::OnCommand(const std::string & command)
         else
             Start();
         return;
-    }
-    if (Busy()) return;
-    if (command == "no-update")
-    {
-        m_update.clear();
-        SetText("profile-update", Tr("No update selected"));
-        return;
-    }
-    if (command == "update")
-    {
-        Path selected;
-        const auto filter = FileFilter({{Tr("Game update"), "*.dnsp"}});
-        if (FileSelect(m_window.NativeHandle(), m_root.c_str(), filter.c_str(), true, selected))
-        {
-            const auto path = std::filesystem::u8path(static_cast<const char *>(selected));
-            if (std::filesystem::canonical(path.parent_path()) != std::filesystem::canonical(std::filesystem::u8path(m_root)))
-            {
-                SetText("profile-detail", Tr("This prototype needs the game and its update in the same folder."));
-                return;
-            }
-            m_update = Utf8(path.filename());
-            SetText("profile-update", m_update);
-        }
     }
 }

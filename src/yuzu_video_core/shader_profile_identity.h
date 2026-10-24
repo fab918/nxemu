@@ -4,9 +4,10 @@
 #include "yuzu_common/common_types.h"
 #include "yuzu_video_core/shader_profile_hash.h"
 #include "yuzu_video_core/shader_profile_context.h"
+#include "yuzu_video_core/shader_profile_provenance.h"
 #include <filesystem>
 #include <memory>
-#include <vector>
+#include <algorithm>
 
 namespace VideoCommon::ShaderProfile
 {
@@ -21,41 +22,22 @@ struct ReleaseInterface
 template <class T>
 using InterfacePtr = std::unique_ptr<T, ReleaseInterface<T>>;
 
-// Startup only. Unknown selection is deliberately not cacheable. In particular,
-// the current public loader API cannot identify a selected older update among
-// several installed versions, nor fingerprint arbitrary layered mods reliably.
-inline std::string LoadedContentIdentity(ISystemloader & loader, u64 title,
-                                         [[maybe_unused]] const std::filesystem::path & game)
+struct LoadedContentDescription {
+    std::string context;
+    JsonValue provenance;
+};
+// Startup only. The loader supplies the selected version, including an older
+// installed update. Enabled layered mods remain deliberately unidentified.
+inline LoadedContentDescription DescribeLoadedContent(ISystemloader & loader, u64 title)
 {
     try
     {
-        InterfacePtr<IRomInfo> info(loader.LoadedRomInfo());
-        if (!info) return {};
-        const auto count = info->GetGamePatches(nullptr, 0);
-        if (count > 1024) return {};
-        std::vector<GamePatchInfo> patches(count);
-        if (info->GetGamePatches(patches.data(), count) != count) return {};
-        size_t update_count{};
-        bool update_enabled{};
+        ActiveProgramContent content;
+        const bool identified = loader.GetActiveProgramContent(title, content);
+        InterfacePtr<IFileSysNCA> base(content.base_program), update(content.update_program);
+        if (!identified) return {};
         std::string base_part, update_part;
-        for (const auto & patch : patches)
-        {
-            if (patch.type == GamePatchType::Mod && patch.enabled) return {};
-            if (patch.type == GamePatchType::Update)
-            {
-                ++update_count;
-                update_enabled = patch.enabled;
-
-            }
-        }
-        if (update_count > 1) return {};
-        if (update_count == 0)
-        {
-            InterfacePtr<IFileSysNCA> unknown_update(loader.GetContentProviderEntry(title | 0x800, LoaderContentRecordType::Program));
-            if (unknown_update) return {};
-        }
-        const auto append = [&](IFileSysNCA * raw, std::string& part) {
-            InterfacePtr<IFileSysNCA> nca(raw);
+        const auto append = [&](IFileSysNCA * nca, std::string& part) {
             if (!nca) return false;
             InterfacePtr<IVirtualFile> file(nca->GetBaseFile());
             if (!file || file->GetSize() < 0xc00) return false;
@@ -64,14 +46,21 @@ inline std::string LoadedContentIdentity(ISystemloader & loader, u64 title,
             part = ContentPart(file->GetSize(), header);
             return true;
         };
-        if (!append(loader.GetContentProviderEntry(title, LoaderContentRecordType::Program), base_part)) return {};
-        if (update_enabled && !append(loader.GetContentProviderEntry(title | 0x800, LoaderContentRecordType::Program), update_part)) return {};
-        return ContentContext(title, base_part, update_part);
+        if (!append(base.get(), base_part)) return {};
+        if (content.update_enabled && !append(update.get(), update_part)) return {};
+        const auto provenance = ContentProvenance(title, base_part, update_part,
+            std::string(content.base_version, std::find(content.base_version, content.base_version + sizeof(content.base_version), '\0')),
+            std::string(content.update_version, std::find(content.update_version, content.update_version + sizeof(content.update_version), '\0')),
+            content.update_available, content.update_enabled);
+        return {ContentContext(title, base_part, update_part), provenance};
     }
     catch (...)
     {
         return {};
     }
+}
+inline std::string LoadedContentIdentity(ISystemloader & loader, u64 title, const std::filesystem::path &) {
+    return DescribeLoadedContent(loader, title).context;
 }
 inline std::string ImportIdentity(std::string_view profile_hash, std::string_view content,
                                   u64 title, u32 features, u32 cache_abi)

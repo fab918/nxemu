@@ -94,12 +94,20 @@ class NativeWorkflowTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)['reused'],1)
 
     def test_cancel_checkpoints_without_publishing_or_shader_code(self):
-        result=self.export('cancelled',extra=('--cancel',))
+        result=self.export('cancelled',extra=('--cancel-search',))
         self.assertNotEqual(result.returncode,0)
         self.assertFalse((self.root/'cancelled.nxshader').exists())
         self.assertTrue((self.root/'index.json').exists())
         self.assertNotIn(b'12345678',(self.root/'index.json').read_bytes())
         self.assertEqual(self.export('resumed').returncode,0)
+
+    def test_cancel_before_reading_does_not_publish(self):
+        result=self.export('cancelled-early',extra=('--cancel',))
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn(b'cancelled',result.stderr)
+        self.assertFalse((self.root/'cancelled-early.nxshader').exists())
+        self.assertFalse((self.root/'index.json').exists())
+        self.assertEqual(self.export('retry-after-early-cancel').returncode,0)
 
     def test_import_cancellation_retry_and_repeated_imports(self):
         for fmt,extra in (('json',()),('compact',('--compact',))):

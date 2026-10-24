@@ -19,6 +19,8 @@
     <ClInclude Include="shader_profile_identity.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="shader_profile_file_stamp.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="shader_profile_context.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="shader_profile_provenance.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="shader_profile_publication.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="shader_profile_reuse.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="shared_shader_bytes.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="shader_profile_validation.h"><Filter>Header Files</Filter></ClInclude>

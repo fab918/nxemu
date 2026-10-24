@@ -18,7 +18,7 @@ std::wstring Quote(const std::wstring& value) {
     result.append(slashes*2,L'\\');return result+L'"';
 }
 int wmain(int argc,wchar_t** argv)try {
-    if(argc!=5)throw std::runtime_error("expected PresentMon executable, game PID, output directory, session name");
+    if(argc!=5 && argc!=6)throw std::runtime_error("expected PresentMon executable, game PID, output directory, session name, optional duration");
     const std::filesystem::path directory=argv[3];
     const auto csv=directory/L"presentations.csv",errors=directory/L"presentmon-errors.log";
     SECURITY_ATTRIBUTES security{sizeof(SECURITY_ATTRIBUTES),nullptr,TRUE};
@@ -33,8 +33,13 @@ int wmain(int argc,wchar_t** argv)try {
     File input{CreateFileW(L"NUL",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,&security,OPEN_EXISTING,0,nullptr)};
     if(input.value==INVALID_HANDLE_VALUE)throw std::runtime_error("Cannot open capture input");
     std::wstring command=Quote(argv[1])+L" --process_id "+Quote(argv[2])+
-        L" --session_name "+Quote(argv[4])+L" --stop_existing_session --output_stdout"
-        L" --qpc_time --no_console_stats --no_track_gpu --no_track_input --terminate_on_proc_exit";
+        L" --session_name "+Quote(argv[4])+L" --output_stdout"
+        L" --qpc_time --no_console_stats --no_track_input --terminate_on_proc_exit";
+    if(argc==6) {
+        const auto seconds=std::stoul(argv[5]);
+        if(seconds==0 || seconds>60)throw std::runtime_error("invalid preflight duration");
+        command+=L" --timed "+std::to_wstring(seconds)+L" --terminate_after_timed";
+    }
     STARTUPINFOW start{};start.cb=sizeof(start);start.dwFlags=STARTF_USESTDHANDLES;
     start.hStdOutput=output.value;start.hStdError=error.value;start.hStdInput=input.value;
     PROCESS_INFORMATION process{};

@@ -201,13 +201,17 @@ if(NXSHADER_RECORDER_REFERENCE_INCLUDE)
 endif()
 
 if(WIN32)
+    add_executable(native-present-publisher native_present_publisher.cpp)
+    target_compile_features(native-present-publisher PRIVATE cxx_std_20)
+    target_compile_definitions(native-present-publisher PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     add_executable(presentmon-capture presentmon_capture.cpp)
+    set_target_properties(presentmon-capture PROPERTIES OUTPUT_NAME nxshader-presentmon-capture)
     target_compile_features(presentmon-capture PRIVATE cxx_std_20)
     target_compile_definitions(presentmon-capture PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     add_executable(recorder-session-monitor recorder_session_monitor.cpp)
     target_compile_features(recorder-session-monitor PRIVATE cxx_std_20)
     target_compile_definitions(recorder-session-monitor PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    target_link_libraries(recorder-session-monitor PRIVATE user32 psapi)
+    target_link_libraries(recorder-session-monitor PRIVATE user32 psapi profile-storage)
 endif()
 
 add_executable(recorder-cache-trace recorder_cache_trace.cpp
@@ -239,7 +243,18 @@ add_executable(register-tracking-benchmark register_tracking_benchmark.cpp
     "${NXEMU_ROOT}/src/yuzu_video_core/surface.cpp")
 target_link_libraries(register-tracking-benchmark PRIVATE profile-storage Threads::Threads)
 target_compile_definitions(register-tracking-benchmark PRIVATE FMT_HEADER_ONLY)
-
 add_executable(cross-version-reuse cross_version_reuse.cpp)
 target_link_libraries(cross-version-reuse PRIVATE profile-storage)
 add_test(NAME cross-version-reuse COMMAND cross-version-reuse)
+add_executable(recorded-sources recorded_sources.cpp
+    "${NXEMU_ROOT}/src/yuzu_video_core/renderer_vulkan/fixed_pipeline_state.cpp"
+    "${NXEMU_ROOT}/src/yuzu_video_core/surface.cpp")
+target_link_libraries(recorded-sources PRIVATE profile-storage)
+target_compile_definitions(recorded-sources PRIVATE FMT_HEADER_ONLY)
+add_test(NAME recorded-sources COMMAND recorded-sources "${CMAKE_CURRENT_BINARY_DIR}/recorded-sources-fixture")
+if(MSVC)
+    target_compile_options(cross-version-reuse PRIVATE /utf-8 /EHsc)
+    target_compile_options(recorded-sources PRIVATE /utf-8 /EHsc)
+    target_compile_options(register-tracking-benchmark PRIVATE /utf-8 /EHsc)
+    target_compile_options(synthetic-robustness PRIVATE /utf-8 /EHsc)
+endif()

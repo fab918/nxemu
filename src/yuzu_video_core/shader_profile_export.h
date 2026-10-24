@@ -15,7 +15,7 @@ struct ExportOptions
     std::filesystem::path cache, recording, game_root, output, index;
     std::string base, update, label, context;
     u64 title_id{};
-    bool allow_partial{}, compact{};
+    bool allow_partial{}, compact{}, automatic_sources{};
     Progress progress;
 };
 struct ExportReport

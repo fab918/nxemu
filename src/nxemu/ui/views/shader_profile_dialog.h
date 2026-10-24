@@ -2,6 +2,7 @@
 #pragma once
 #include "dialog.h"
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <mutex>
 #include <nxemu-module-spec/video.h>
@@ -33,14 +34,16 @@ private:
     UiWindow & m_window;
     IVideo * m_video{};
     const std::function<void(const std::string &)> m_startGame;
-    std::string m_game, m_label, m_update, m_profile, m_recording, m_root, m_cacheFile, m_index;
+    std::string m_game, m_label, m_profile, m_recording, m_root, m_cacheFile, m_index;
     std::filesystem::path m_cache;
     uint64_t m_title{};
-    bool m_importing{}, m_finished{}, m_success{};
+    bool m_importing{}, m_finished{}, m_success{}, m_autoStart{}, m_replaceExisting{};
     std::atomic<bool> m_busy{}, m_cancel{};
     std::thread m_thread;
     std::mutex m_mutex;
     std::string m_phase, m_error;
     uint64_t m_done{}, m_total{};
+    uint64_t m_foundPrograms{}, m_totalPrograms{};
+    std::chrono::steady_clock::time_point m_started;
     ShaderProfileResult m_result{};
 };

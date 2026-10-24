@@ -4,6 +4,7 @@
 #include "yuzu_video_core/shader_profile_codec.h"
 #include "yuzu_video_core/shader_profile_compact.h"
 #include "yuzu_video_core/shader_profile_export.h"
+#include "yuzu_video_core/shader_profile_context.h"
 #include <fstream>
 #include <iostream>
 VideoSettings videoSettings{};
@@ -34,7 +35,7 @@ int main(int argc, char **argv) try {
   if (argc != 10 && argc != 11)
     throw std::runtime_error(
         "usage: nxshader-export cache recording game-root base update|- "
-        "title-id output index label [--compact]");
+        "title-id output index label [--compact|--auto]");
   VideoCommon::ShaderProfile::ExportOptions options;
   options.cache = argv[1];
   options.recording = argv[2];
@@ -49,6 +50,13 @@ int main(int argc, char **argv) try {
   if (argc == 11) {
     if (std::string_view(argv[10]) == "--cancel")
       options.progress = [](const char *, u64, u64) { return false; };
+    else if (std::string_view(argv[10]) == "--cancel-search")
+      options.progress = [](const char * phase, u64, u64) { return std::string_view(phase) != "raw" && std::string_view(phase) != "resources"; };
+    else if (std::string_view(argv[10]) == "--auto") {
+      options.context = VideoCommon::ShaderProfile::RecordingContext(options.recording);
+      options.automatic_sources = true;
+      options.compact = true;
+    }
     else if (std::string_view(argv[10]) != "--compact")
       throw std::runtime_error("unknown option");
     else

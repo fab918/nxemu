@@ -5,6 +5,7 @@
 #include "yuzu_video_core/shader_profile_context.h"
 #include "yuzu_video_core/shader_profile.h"
 #include "yuzu_video_core/shader_profile_identity.h"
+#include "yuzu_common/fs/path_util.h"
 #include "yuzu_video_core/renderer_vulkan/fixed_pipeline_state.h"
 #include "video_settings.h"
 #include "yuzu_video_core/capture.h"
@@ -62,6 +63,7 @@ bool VideoManager::ProcessShaderProfile(const ShaderProfileTask & task, IShaderP
         options.title_id = task.title_id;
         options.base = text(task.base);
         options.update = text(task.update);
+        options.automatic_sources = true;
         options.label = text(task.label);
         options.compact = task.compact;
         options.allow_partial = true;
@@ -204,10 +206,20 @@ struct VideoManager::Impl
                 {
                     const u64 program_id = m_modules.OperatingSystem().GetProgramId();
                     try {
+                        const auto content = VideoCommon::ShaderProfile::DescribeLoadedContent(m_modules.Systemloader(), program_id);
+                        if (!content.context.empty()) {
+                            const auto cache = Common::FS::GetYuzuPath(Common::FS::YuzuPath::ShaderDir) / fmt::format("{:016x}", program_id);
+                            try {
+                                VideoCommon::ShaderProfile::SaveProvenance(cache, content.provenance);
+                            } catch (const std::exception & error) {
+                                LOG_WARNING(Render, "Cannot save captured game version: {}", error.what());
+                            }
+                            LOG_INFO(Render, "Shader capture version: {} (context {})",
+                                VideoCommon::ShaderProfile::RecordedVersionLabel(content.provenance), content.context);
+                        }
                         m_gpuCore->Renderer().ReadRasterizer()->LoadDiskResources(
                             program_id, stop_token, notify_disk_cache_progress,
-                            VideoCommon::ShaderProfile::LoadedContentIdentity(m_modules.Systemloader(), program_id,
-                                std::filesystem::u8path(g_settings->GetString(NXCoreSetting::GameFile))),
+                            content.context,
                             g_settings->GetString(NXCoreSetting::GameFile));
                     } catch (const std::exception& exception) {
                         // std::async stores exceptions in its future. If one escapes here,

@@ -20,6 +20,8 @@ add_library(video_core STATIC
     shader_profile_identity.h
     shader_profile_reuse.h
     shader_profile_context.h
+    shader_profile_provenance.h
+    shader_profile_publication.h
     shader_profile_file_stamp.h
     shared_shader_bytes.h
     shader_profile_validation.h

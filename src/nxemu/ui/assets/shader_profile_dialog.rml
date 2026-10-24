@@ -6,9 +6,8 @@
    <div style="padding: 24dp;">
     <div id="profile-game" style="font-size: 18dp; margin-bottom: 16dp;" />
     <div id="profile-detail" style="margin-bottom: 16dp;" />
-    <div id="profile-update-row" style="margin-bottom: 16dp;">
-     <div id="profile-update" style="margin-bottom: 8dp;" />
-     <button data-command="update">Choose update</button><button data-command="no-update">No update</button>
+    <div style="height: 6dp; background-color: #dddddd; margin-bottom: 12dp; overflow: hidden;">
+     <div id="profile-progress-fill" style="height: 6dp; width: 0%; background-color: #1764df;" />
     </div>
     <div id="profile-status" />
    </div>
