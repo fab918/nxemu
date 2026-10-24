@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "yuzu_video_core/shader_profile_discovery.h"
+#include "yuzu_video_core/shader_profile_context.h"
+#include <utility>
+#include "yuzu_video_core/shader_profile_file_stamp.h"
 #include "yuzu_video_core/shader_profile_hash.h"
 #include "yuzu_video_core/shader_profile_resources.h"
 #include "yuzu_video_core/shader_profile_search.h"
@@ -232,7 +235,8 @@ std::vector<File> Pfs(Store source)
     {
         const auto off = Get(table, i * 24, 8), size = Get(table, i * 24 + 8, 8), name = Get(table, i * 24 + 16, 4);
         Check(name < strings, "PFS string bounds");
-        const auto begin = count * 24 + name, end = table.find('\0', static_cast<size_t>(begin));
+        const auto begin = static_cast<size_t>(count * 24 + name);
+        const auto end = table.find('\0', begin);
         Check(end != std::string::npos && end < count * 24 + strings, "PFS string termination");
         Bounds(payload, off, source->size);
         Bounds(payload + off, size, source->size);
@@ -409,14 +413,36 @@ void Discover(const ExportOptions & options, JsonValue & profile, const std::map
             JsonValue f;
             f["name"] = name;
             f["size"] = Jnum(physical[name]->size);
-            f["mtime"] = std::to_string(std::filesystem::last_write_time(path).time_since_epoch().count());
+            f["mtime"] = FileTimestamp(std::filesystem::last_write_time(path));
             f["header"] = ResourceSha256(physical[name]->Read(0, std::min<u64>(physical[name]->size, 4096)));
             identity["files"].Append(std::move(f));
         }
+    profile["source_files"] = Array();
+    for (auto file : std::as_const(identity)["files"]) {
+        file.removeMember("mtime");
+        profile["source_files"].Append(std::move(file));
+    }
+    if (!options.context.empty()) {
+        std::array<std::string,2> parts;
+        const std::array<std::string,2> names{options.base,options.update};
+        for (size_t role=0;role<2;++role) if (!names[role].empty()) {
+            const auto storage=physical.at(names[role]);
+            for (const auto& nca : Pfs(storage)) if (nca.name.ends_with(".nca") && nca.size>=0xc00) {
+                const auto header=storage->Read(nca.offset,0xc00);
+                if (header.substr(0x200,4)!="DNCA" || static_cast<unsigned char>(header[0x205])!=0) continue;
+                if (Get(header,0x210,8)!=(options.title_id | (role?0x800:0)) || Get(header,0x218,4)!=0) continue;
+                Check(parts[role].empty(),"Ambiguous source program content");
+                parts[role]=ContentPart(nca.size,header);
+            }
+            Check(!parts[role].empty(),"Selected source program content missing");
+        }
+        Check(ContentContext(options.title_id,parts[0],parts[1])==options.context,
+            "Selected base/update differs from the recorded game content");
+    }
     JsonValue targets = Array();
     for (const auto & [digest, code] : codes)
         targets.Append(digest);
-    const auto target_hash = ResourceSha256(Canonical(targets) + ":exact-or-proven-tail-1");
+    const auto target_hash = ResourceSha256(Canonical(targets) + ":exact-1");
     JsonValue index;
     index["version"] = 1U;
     index["identity"] = identity;
@@ -504,7 +530,10 @@ void Discover(const ExportOptions & options, JsonValue & profile, const std::map
             for (const auto & h : hashes)
             {
                 const auto & r = index["references"][h];
-                prefix = std::max(prefix, static_cast<size_t>(Num(r["offset"])) + Num(r["size"]));
+                if (r["encoding"].asString() == "raw") continue;
+                const auto offset = Num(r["offset"]), size = Num(r["size"]);
+                Bounds(offset, size, MaxDecodedResource);
+                prefix = std::max(prefix, static_cast<size_t>(offset + size));
             }
             const auto & first = index["references"][hashes.front()];
             const auto decoded = read_reference(first, prefix);
@@ -513,7 +542,7 @@ void Discover(const ExportOptions & options, JsonValue & profile, const std::map
                 const auto & ref = index["references"][h];
                 const auto offset = ref["encoding"].asString() == "raw" ? 0 : Num(ref["offset"]);
                 const auto size = Num(ref["size"]);
-                Check(size == codes.at(h).size() || (ProvenExtraCacheWord(codes.at(h)) && size + 8 == codes.at(h).size()), "Index shader size");
+                Check(size == codes.at(h).size(), "Index shader size");
                 Bounds(offset, size, decoded.size());
                 if (std::string_view(decoded).substr(offset, size) == std::string_view(codes.at(h)).substr(0, size))
                 {
@@ -577,8 +606,6 @@ void Discover(const ExportOptions & options, JsonValue & profile, const std::map
                             const auto & code = codes.at(h);
                             if (code.size() <= data.size() - pos && data.compare(pos, code.size(), code) == 0)
                                 bind(h, pos + base, locator, code.size());
-                            else if (ProvenExtraCacheWord(code) && code.size() - 8 <= data.size() - pos && data.compare(pos, code.size() - 8, code.data(), code.size() - 8) == 0)
-                                bind(h, pos + base, locator, code.size() - 8);
                         }
                 }
             }

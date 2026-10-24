@@ -20,9 +20,10 @@ vidéo passe de 0x0126 à 0x0127, afin de rejeter proprement un ancien module.
 ## Enregistrement automatique
 
 `vulkan.nxc` conserve les programmes, environnements et clés de pipelines locaux.
-`guest-recipes.nxr` est son journal complémentaire de recettes invitées. Les
-anciens `vulkan.bin` restent lisibles. Le journal évite une refonte supplémentaire
-du cache et ne change ni les clés ni les décisions de compilation normales.
+`guest-recipes-<contexte>.nxr` est son journal complémentaire de recettes invitées.
+Le contexte identifie la base et la mise à jour chargées dès la capture. Un index
+`.nxc.context-<contexte>` associe les records vérifiés au même contenu. Les
+programmes identiques restent partagés dans le cache local.
 
 Les écritures de registres pertinents incrémentent une révision. Les adresses de
 buffers et de render targets ne sont pas suivies. Lors d'un draw, la révision,
@@ -71,19 +72,24 @@ un point de reprise sans publier de manifeste incomplet.
 
 ## Format compact
 
-L'enveloppe existante `NXSHADR2` contient une frame Zstd avec checksum et limite
-de décompression. L'ancien payload JSON v2 reste accepté. Le nouvel export utilise
-un payload binaire distinct `NXSHBIN3` : entiers explicites little endian/varints,
+Le format partagé utilise une enveloppe `NXSHADR2` contenant une frame Zstd
+avec checksum et limite de décompression, et un payload unique `NXSHBIN4` :
+entiers explicites little endian/varints,
 tables partagées de ressources, programmes, environnements et états invités,
 état modal et différences creuses, recettes référencées par index.
 
-Le lecteur v3 reconstruit directement les objets C++ : il ne convertit pas le
+Le lecteur reconstruit directement les objets C++ : il ne convertit pas le
 binaire en JSON. Les SHA-256 de programmes, headers et ressources sont conservés.
 Les données locales permettent de reconstituer les headers et instructions ; ils
 ne sont jamais écrits dans le manifeste. Ce format est différent du prototype
 Python `.nxcproto` du patch Mac, qu'il ne prétend pas lire.
 
-## Mesures Windows du 23 octobre 2026
+Les recettes portent leur contexte de contenu. Des empreintes de conteneurs
+permettent de retrouver une copie identique renommée, puis chaque programme est
+revérifié. Les ressources absentes excluent uniquement les recettes dépendantes.
+Les imports successifs réutilisent les recettes et programmes locaux vérifiés.
+
+## Mesures Windows du 23 octobre 2026 (prototype précédent)
 
 Build de validation isolé dans `build/shader-profile-poc/master`, avec les fichiers
 de cette fonctionnalité, sans les modifications locales indépendantes de rendu
@@ -123,14 +129,14 @@ et de contrôleurs. Les tests ne modifient pas les caches de l'installation habi
 La première recherche complète peut encore être longue. Le prototype ne déchiffre
 pas de conteneur, ne recherche pas dans tous les formats de jeux, et ne remplace
 pas encore son adaptateur de ressources par le VFS du loader. Base et update doivent
-se trouver dans le même dossier. Les noms de fichiers référencés doivent correspondre
-à ceux de la copie locale. Les contenus trop grands ou encodages non pris en charge
+se trouver dans le même dossier. Les copies identiques renommées sont résolues
+par empreinte ; les conteneurs réorganisés ne sont pas encore résolus par le VFS.
+Les contenus trop grands ou encodages non pris en charge
 doivent être signalés ; un export partiel n'augmente pas magiquement sa couverture.
 
-Un cache réunissant plusieurs versions peut contenir des programmes absents de la
-base/update sélectionnée ; les compteurs de programmes manquants et de recettes
-non résolues sont affichés. Le hash du contenu distingue les versions de shaders,
-mais une sélection automatique des ressources par content ID reste à faire.
+La capture et le préchauffage sont séparés par contexte base/update. Les recettes
+d’un autre contexte ne sont pas appliquées. Les programmes identiques peuvent
+être réutilisés après vérification de leur empreinte, sans relire le jeu.
 
 Sur Mac : récupérer `feature-nxshad`, reconstruire l'application et les modules,
 jouer puis arrêter normalement, exporter par le menu sans lancer de script.

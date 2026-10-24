@@ -8,7 +8,8 @@
 namespace VideoCommon::ShaderProfile
 {
 // Startup-only failure backoff. The caller scopes this ledger to the GPU,
-// driver, renderer build and verified cache contents. Runtime remains free to
+// driver and renderer build; each key also identifies its verified compilation
+// inputs. Runtime remains free to
 // compile a deferred pipeline normally. Unknown or malformed state fails open.
 class NativeWarmupFailures {
 public:
@@ -76,11 +77,37 @@ inline std::string LocalRecordHex(std::string_view id) {
     for(unsigned char c:id){result+=hex[c>>4];result+=hex[c&15];}
     return result;
 }
+inline std::string LocalRecordBinary(std::string_view hex) {
+    if (hex.size()!=64) return {};
+    std::string binary;
+    const auto nibble=[](char c)->int{return c>='0' && c<='9'?c-'0':c>='a' && c<='f'?c-'a'+10:-1;};
+    for(size_t i=0;i<hex.size();i+=2) {
+        const int a=nibble(hex[i]),b=nibble(hex[i+1]);
+        if(a<0 || b<0)return {};
+        binary+=static_cast<char>((a<<4)|b);
+    }
+    return binary;
+}
+// Revisions reuse only recipes whose exact local records are still verified.
+// The scope excludes the community file digest, but includes game/GPU projection/ABI.
+inline std::map<std::string,std::string> ReusableRecipeRecords(const JsonValue& receipt,
+    std::string_view scope, const std::set<std::string>& present) {
+    std::map<std::string,std::string> result;
+    const auto& records=receipt["recipe_records"];
+    if(scope.empty() || receipt["recipe_scope"].asString()!=scope || !records.isObject() || records.size()>65536)return result;
+    for(const auto& recipe:records.GetMemberNames()) {
+        if(LocalRecordBinary(recipe).empty() || !records[recipe].isString())return {};
+        const auto record=LocalRecordBinary(records[recipe].asString());
+        if(record.empty())return {};
+        if(present.contains(record))result.emplace(recipe,record);
+    }
+    return result;
+}
 inline bool IntegratedRecordsPresent(const JsonValue& receipt, std::string_view stamp,
                                       std::string_view selection, const std::set<std::string>& present) {
     const auto integer=[](const JsonValue& value){return value.Type()==JsonValueType::UnsignedInt ||
         (value.Type()==JsonValueType::Int && value.asInt64()>=0);};
-    if(!receipt.isObject() || !integer(receipt["schema"]) || !integer(receipt["record_count"]) ||
+    if(!receipt["complete"].isBool() || !receipt["complete"].asBool() || !receipt.isObject() || !integer(receipt["schema"]) || !integer(receipt["record_count"]) ||
        receipt["schema"].asUInt64()!=1 || receipt["stamp"].asString()!=stamp ||
        stamp.empty() || (!selection.empty() && receipt["selection"].asString()!=selection))return false;
     const auto& ids=receipt["record_ids"];

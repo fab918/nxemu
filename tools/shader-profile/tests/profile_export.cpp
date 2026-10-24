@@ -12,7 +12,7 @@ LogLevel g_classLevel[static_cast<uint8_t>(LogClass::Count)]{};
 void FmtLogMessageImpl(LogClass, LogLevel, const char *, unsigned, const char *,
                        const char *, const fmt::format_args &) {}
 } // namespace Common::Log
-[[noreturn]] void assert_fail_impl() {
+void assert_fail_impl() {
   throw std::runtime_error("renderer assertion");
 }
 [[noreturn]] void unreachable_impl() {

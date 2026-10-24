@@ -14,6 +14,17 @@ from local_cache import legacy_bytes
 from portable_profile import assemble
 
 
+def native_program_hash(code):
+    import ctypes
+    binary=os.environ.get('NXSHADER_READER')
+    if not binary:return 0xfedcba9876543210
+    directory=Path(binary).parent
+    library=next(directory/name for name in ('yaz0-scan.dll','libyaz0-scan.dylib','libyaz0-scan.so') if (directory/name).is_file())
+    function=ctypes.CDLL(str(library)).nxshader_hash64
+    function.argtypes=[ctypes.c_char_p,ctypes.c_size_t];function.restype=ctypes.c_uint64
+    return function(bytes(code),len(code))
+
+
 class PortableProfileTests(unittest.TestCase):
     def test_export_timings_are_opt_in_and_preserve_results(self):
         from portable_profile import ExportTimings
@@ -59,14 +70,14 @@ class PortableProfileTests(unittest.TestCase):
         env=dict(shader=h,local_memory_size=0,texture_bound=0,guest_start_address=0,guest_read_lowest=0,
             guest_read_highest=0,viewport_transform_state=1,stage=5,texture_types=[],texture_pixel_formats=[],
             cbuf_values=[[0xffffffffffffffff,7]],cbuf_replacements=[],workgroup_size=[1,1,1],shared_memory_size=0)
-        eid=sha(canonical(env));key=struct.pack('<QI3I8I2I',0xfedcba9876543210,0,1,1,1,*([0]*8),0,0)
+        eid=sha(canonical(env));key=struct.pack('<QI3I8I2I',native_program_hash(code),0,1,1,1,*([0]*8),7,0)
         profile=dict(title_id='0100152000022000',content_label='synthetic',
             shaders={h:dict(size=8,references=[dict(encoding='raw',file='game.dat',offset=0,size=8)])},
             environments={eid:env},pipelines=[dict(kind='compute',key_le_hex=key.hex(),environments=[eid])])
         return assemble(profile,[],None,0)[0]
 
     def test_exact_u64_encoding_and_no_host_key(self):
-        p=self.fixture();self.assertEqual(p['recipes'][0]['shader_hash'],str(0xfedcba9876543210))
+        p=self.fixture();p['recipes'][0]['shader_hash']=str(0xfedcba9876543210);self.assertEqual(p['recipes'][0]['shader_hash'],str(0xfedcba9876543210))
         self.assertNotIn('key_le_hex',canonical(p).decode())
         self.assertNotIn('feature_bits',canonical(p).decode())
         for eid,env in p['environments'].items():self.assertEqual(eid,sha(canonical(env)))
@@ -86,8 +97,8 @@ class PortableProfileTests(unittest.TestCase):
             if mutate:mutate(p)
             (root/'game.dat').write_bytes(game);(root/'test.nxshader').write_bytes(canonical(p))
             if compressed:
-                codec=Path(binary).with_name('nxshader-codec'+Path(binary).suffix)
-                subprocess.run([str(codec),'pack',str(root/'test.nxshader'),str(root/'packed.nxshader')],check=True)
+                exporter=Path(binary).with_name('nxshader-export'+Path(binary).suffix)
+                subprocess.run([str(exporter),'--compact',str(root/'test.nxshader'),str(root/'packed.nxshader')],check=True,capture_output=True)
                 payload=(root/'packed.nxshader').read_bytes()
                 if corrupt:payload=payload[:-1]+bytes([payload[-1]^1])
                 (root/'test.nxshader').write_bytes(payload)
@@ -99,7 +110,7 @@ class PortableProfileTests(unittest.TestCase):
         result,data=self.native();self.assertEqual(result.returncode,0,result.stderr)
         records=parse_cache(legacy_bytes(data));self.assertEqual(len(records),1)
         self.assertEqual(records[0][0][0][1],b'12345678')
-        self.assertEqual(struct.unpack_from('<Q',records[0][1])[0],0xfedcba9876543210)
+        self.assertEqual(struct.unpack_from('<Q',records[0][1])[0],native_program_hash(b'12345678'))
 
     def test_native_rejects_wrong_title(self):
         result,data=self.native(title='0100000000000000');self.assertNotEqual(result.returncode,0);self.assertIsNone(data)
@@ -132,6 +143,7 @@ class PortableProfileTests(unittest.TestCase):
                 container_size=len(raw),offset=0,size=8)]
             p['shaders']={digest:entry}
             next(iter(p['environments'].values()))['shader']=digest
+            p['recipes'][0]['shader_hash']=str(native_program_hash(code))
         result,data=self.native(mutate,game=raw);self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(parse_cache(legacy_bytes(data))[0][0][0][1],code)
 
@@ -144,6 +156,7 @@ class PortableProfileTests(unittest.TestCase):
                 container_sha256=sha(raw),segment_sha256=digest)]
             p['shaders']={digest:entry}
             next(iter(p['environments'].values()))['shader']=digest
+            p['recipes'][0]['shader_hash']=str(native_program_hash(code))
         result,data=self.native(mutate,game=raw)
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(parse_cache(legacy_bytes(data))[0][0][0][1],code)
@@ -160,6 +173,7 @@ class PortableProfileTests(unittest.TestCase):
                 resource_size=len(raw),resource_sha256=sha(raw))]
             p['shaders']={digest:entry}
             next(iter(p['environments'].values()))['shader']=digest
+            p['recipes'][0]['shader_hash']=str(native_program_hash(code))
         with patch.dict(os.environ,{'NXEMU_NXSHADER_TIMING':'1'}):
             result,data=self.native(mutate,game=raw)
         self.assertEqual(result.returncode,0,result.stderr)
@@ -178,6 +192,7 @@ class PortableProfileTests(unittest.TestCase):
                 resource_size=len(raw),resource_sha256=sha(raw))]
             p['shaders']={digest:entry}
             next(iter(p['environments'].values()))['shader']=digest
+            p['recipes'][0]['shader_hash']=str(native_program_hash(code))
         result,data=self.native(mutate,game=raw)
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(parse_cache(legacy_bytes(data))[0][0][0][1],code)
@@ -215,6 +230,7 @@ class PortableProfileTests(unittest.TestCase):
                     p['shaders']={digest:entry}
                     env=next(iter(p['environments'].values()))
                     env['shader']=digest;env['guest_read_highest']=len(expected)-8
+                    p['recipes'][0]['shader_hash']=str(native_program_hash(expected))
                 result,data=self.native(mutate,game=bytes(raw))
                 self.assertEqual(result.returncode,0,result.stderr)
                 self.assertEqual(parse_cache(legacy_bytes(data))[0][0][0][1],bytes(expected))

@@ -12,7 +12,7 @@ LogLevel g_classLevel[static_cast<uint8_t>(LogClass::Count)]{};
 void FmtLogMessageImpl(LogClass, LogLevel, const char *, unsigned, const char *,
                        const char *, const fmt::format_args &) {}
 } // namespace Common::Log
-[[noreturn]] void assert_fail_impl() {
+void assert_fail_impl() {
   throw std::runtime_error("renderer assertion");
 }
 [[noreturn]] void unreachable_impl() {
@@ -27,7 +27,8 @@ int AuditGaps(int argc, char **argv) {
   for (int i = 5; i < argc; ++i)
     targets.emplace(argv[i], "");
   for (const auto &r : CacheStore::Read(argv[1], 20))
-    for (const auto &env : r.environments) {
+    for (const auto &shared : r.environments) {
+      const auto env=shared.String();
       const auto code = std::string_view(env).substr(68, Get(env, 0, 8));
       const auto hash = ResourceSha256(code);
       if (targets.contains(hash))

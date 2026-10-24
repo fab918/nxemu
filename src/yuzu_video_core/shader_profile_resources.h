@@ -9,12 +9,6 @@
 #include <string_view>
 
 namespace VideoCommon::ShaderProfile {
-inline bool ProvenExtraCacheWord(std::string_view code) {
-    if(code.size()<96 || code.size()%8) return false;
-    uint64_t terminal{};
-    for(size_t i=0;i<8;++i)terminal|=uint64_t{static_cast<unsigned char>(code[code.size()-16+i])}<<(8*i);
-    return terminal==0xE2400FFFFF87000FULL || terminal==0xE2400FFFFF07000FULL;
-}
 inline constexpr size_t MaxDecodedResource=512*1024*1024;
 inline void ResourceCheck(bool value,const char* reason) {
     if(!value) throw std::runtime_error(reason);

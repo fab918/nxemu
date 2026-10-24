@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "yuzu_video_core/pipeline_cache_store.h"
+#include "yuzu_video_core/shader_profile_file_stamp.h"
+#include "yuzu_video_core/shader_profile_context.h"
 #include "common/sha256.h"
 #include <array>
 #include <chrono>
@@ -46,10 +48,51 @@ std::string Digest(std::string_view bytes)
     hash.final(reinterpret_cast<unsigned char *>(out.data()));
     return out;
 }
+struct ContextIndex { std::set<std::string> ids; size_t valid_bytes{}; };
+std::filesystem::path ContextPath(const std::filesystem::path& path, std::string_view context) {
+    Check(ShaderProfile::ValidContext(context));
+    auto result=path; result += ".context-" + std::string(context); return result;
+}
+ContextIndex ParseContext(const std::filesystem::path& path, std::string_view context) {
+    ContextIndex index;
+    if (!std::filesystem::exists(path)) return index;
+    const auto size=std::filesystem::file_size(path);
+    Check(size>=8 && size<=8+65536ULL*64);
+    std::ifstream in(path,std::ios::binary);
+    std::string header(8,'\0'); Check(bool(in.read(header.data(),8)) && header=="NXCTX001");
+    index.valid_bytes=8;
+    std::string frame(64,'\0');
+    while(in.read(frame.data(),64)) {
+        const auto id=frame.substr(0,32);
+        Check(Digest(std::string(context)+id)==frame.substr(32));
+        index.ids.insert(id); index.valid_bytes+=64;
+    }
+    Check(in.eof());
+    return index;
+}
+void AppendContext(const std::filesystem::path& cache, std::string_view context, const std::string& id) {
+    const auto path=ContextPath(cache,context);
+    static std::filesystem::path active;
+    static ContextIndex index;
+    const auto size=std::filesystem::exists(path)?std::filesystem::file_size(path):0;
+    if(active!=path || index.valid_bytes!=size) { index=ParseContext(path,context); active=path; }
+    if(index.valid_bytes && index.valid_bytes!=size) std::filesystem::resize_file(path,index.valid_bytes);
+    if(index.ids.contains(id)) return;
+    Check(index.ids.size()<65536);
+    try {
+        std::ofstream out(path,std::ios::binary|std::ios::app);
+        if(!index.valid_bytes) out.write("NXCTX001",8);
+        const auto frame=id+Digest(std::string(context)+id);
+        out.write(frame.data(),frame.size());out.flush();out.close();Check(bool(out));
+        index.valid_bytes=(index.valid_bytes?index.valid_bytes:8)+64;
+        index.ids.insert(id);
+    } catch(...) { active.clear();index={};throw; }
+}
 struct Index
 {
     size_t valid_bytes{};
-    std::map<std::string, std::string> code, environments;
+    std::map<std::string, std::shared_ptr<const std::string>> code;
+    std::map<std::string, SharedShaderBytes> environments;
     std::map<std::string, size_t> code_sizes;
     std::set<std::string> pipelines;
     std::vector<Record> records;
@@ -99,7 +142,7 @@ Index Parse(const std::filesystem::path & path, u32 abi, bool records, const Rea
                 Check(data.size() <= limits.index_bytes - table_bytes);
                 table_bytes += data.size();
                 index.code_sizes.emplace(id, data.size());
-                index.code.emplace(id, records ? std::move(data) : std::string{});
+                index.code.emplace(id, records ? std::make_shared<const std::string>(std::move(data)) : nullptr);
             }
         }
         else if (type == 2)
@@ -110,10 +153,10 @@ Index Parse(const std::filesystem::path & path, u32 abi, bool records, const Rea
             Check(Get(data, 0, 8) == index.code_sizes.at(found->first));
             if (!index.environments.contains(id))
             {
-                const auto expanded = index.code_sizes.at(found->first) + data.size() - 32;
+                const auto expanded = data.size() - 32;
                 Check(expanded <= limits.index_bytes - table_bytes);
                 table_bytes += expanded;
-                auto env = records ? data.substr(0, EnvHeader) + found->second + data.substr(EnvHeader + 32) : std::string{};
+                auto env = records ? SharedShaderBytes::FromStore(data,found->second) : SharedShaderBytes{};
                 index.environments.emplace(id, std::move(env));
             }
         }
@@ -131,14 +174,17 @@ Index Parse(const std::filesystem::path & path, u32 abi, bool records, const Rea
                 Check(found != index.environments.end());
                 if (records && fresh)
                 {
-                    Check(found->second.size() <= limits.record_bytes - record_bytes);
-                    record_bytes += found->second.size();
+                    Check(sizeof(SharedShaderBytes) <= limits.record_bytes - record_bytes);
+                    record_bytes += sizeof(SharedShaderBytes);
                     record.environments.push_back(found->second);
                 }
             }
             if (records && fresh)
             {
+                Check(key_size <= limits.record_bytes - record_bytes);
+                record_bytes += key_size;
                 record.key = data.substr(8 + 32 * count);
+                record.id = id;
                 index.records.push_back(std::move(record));
             }
         }
@@ -157,7 +203,7 @@ std::vector<Record> Read(const std::filesystem::path & path, u32 shader_abi, con
     return std::move(parsed.records);
 }
 void Append(const std::filesystem::path & path, u32 shader_abi, const Record & record,
-            std::string* record_id)
+            std::string* record_id, std::string_view context)
 {
     static std::mutex mutex;
     struct Writer
@@ -206,27 +252,28 @@ void Append(const std::filesystem::path & path, u32 shader_abi, const Record & r
         for (const auto & env : record.environments)
         {
             Check(env.size() >= EnvHeader);
-            const auto code_size = static_cast<size_t>(Get(env, 0, 8));
+            const auto code_size = static_cast<size_t>(Get(env.substr(0,8), 0, 8));
             Check(code_size && code_size % 8 == 0 && code_size <= 1024 * 1024 && code_size <= env.size() - EnvHeader);
             const auto code = env.substr(EnvHeader, code_size);
             const auto code_id = frame(1, code, writer.index.code);
             // Include additions immediately in a temporary index to deduplicate within this record too.
             if (!writer.index.code.contains(code_id))
             {
-                writer.index.code.emplace(code_id, std::string{});
+                writer.index.code.emplace(code_id, nullptr);
                 writer.index.code_sizes.emplace(code_id, code_size);
             }
             const auto metadata = env.substr(0, EnvHeader) + code_id + env.substr(EnvHeader + code_size);
             const auto env_id = frame(2, metadata, writer.index.environments);
             if (!writer.index.environments.contains(env_id))
             {
-                writer.index.environments.emplace(env_id, std::string{});
+                writer.index.environments.emplace(env_id, SharedShaderBytes{});
             }
             pipeline += env_id;
         }
         Put(pipeline, record.key.size(), 4);
         pipeline += record.key;
         const auto pipeline_id = frame(3, pipeline, writer.index.pipelines);
+        Check(writer.index.code.size()+writer.index.environments.size()+writer.index.pipelines.size()+1<=200000);
         if (writer.index.valid_bytes + pending.size() > MaxFile)
             throw std::runtime_error("Local shader cache reached its 256 MiB limit; new entries were not written");
         std::ofstream out(path, std::ios::binary | std::ios::app);
@@ -236,6 +283,7 @@ void Append(const std::filesystem::path & path, u32 shader_abi, const Record & r
         writer.index.pipelines.insert(pipeline_id);
         writer.index.valid_bytes += pending.size();
         writer.disk_size = writer.index.valid_bytes;
+        if (!context.empty()) AppendContext(path,context,pipeline_id);
         if(record_id)*record_id=pipeline_id;
     }
     catch (...)
@@ -246,143 +294,8 @@ void Append(const std::filesystem::path & path, u32 shader_abi, const Record & r
     }
 }
 
-std::vector<Record> ReadLegacyVulkan(const std::filesystem::path & path, u32 shader_abi)
-{
-    Check(shader_abi == 20 && std::filesystem::file_size(path) <= MaxFile);
-    std::ifstream in(path, std::ios::binary);
-    size_t consumed{};
-    const auto take = [&](size_t count) {
-        Check(count <= MaxFrame && count <= MaxFile - consumed);
-        consumed += count;
-        std::string bytes(count, '\0');
-        in.read(bytes.data(), count);
-        Check(bool(in));
-        return bytes;
-    };
-    const auto header = take(12);
-    Check(header.substr(0, 8) == "yuzucach" && Get(header, 8, 4) == shader_abi);
-    std::vector<Record> result;
-    size_t expanded{};
-    while (in.peek() != std::char_traits<char>::eof())
-    {
-        const auto count = Get(take(4), 0, 4);
-        Check(count >= 1 && count <= 6);
-        Record record;
-        bool compute{};
-        for (size_t i = 0; i < count; ++i)
-        {
-            auto env = take(EnvHeader);
-            const auto code_size = Get(env, 0, 8), stage = Get(env, 64, 4);
-            Check(code_size && code_size % 8 == 0 && code_size <= 1024 * 1024 && stage <= 6);
-            if (i == 0) compute = stage == 5;
-            Check((stage == 5) == compute && (!compute || count == 1));
-            size_t maps{};
-            for (size_t m = 0; m < 4; ++m)
-            {
-                const auto entries = Get(env, 8 + m * 8, 8);
-                Check(entries <= 65536);
-                maps += static_cast<size_t>(entries) * (m < 2 ? 8 : 12);
-            }
-            const auto tail = maps + (compute ? 16 : 80) + (stage == 3 ? 32 : 0);
-            Check(code_size + tail <= MaxFrame);
-            env += take(static_cast<size_t>(code_size) + tail);
-            Check(env.size() <= 256 * 1024 * 1024ULL - expanded);
-            expanded += env.size();
-            record.environments.push_back(std::move(env));
-        }
-        record.key = take(compute ? 64 : 1400);
-        result.push_back(std::move(record));
-        Check(result.size() <= 65536);
-    }
-    Check(!in.bad());
-    return result;
+std::set<std::string> ReadContext(const std::filesystem::path& path, std::string_view context) {
+    return ParseContext(ContextPath(path,context),context).ids;
 }
 
-bool MigrateLegacyVulkan(const std::filesystem::path & legacy,
-                         const std::filesystem::path & destination, u32 shader_abi)
-{
-    if (!std::filesystem::exists(legacy)) return false;
-    const auto stamp = [&] {
-        return "legacy-vulkan-1:" + std::to_string(shader_abi) + ":" +
-               std::to_string(std::filesystem::file_size(legacy)) + ":" +
-               std::to_string(std::filesystem::last_write_time(legacy).time_since_epoch().count());
-    };
-    const auto source_stamp = stamp();
-    auto marker = destination;
-    marker += ".legacy-source";
-    if (std::filesystem::exists(destination) && std::filesystem::exists(marker) && std::filesystem::file_size(marker) <= 256)
-    {
-        std::ifstream in(marker, std::ios::binary);
-        const std::string saved((std::istreambuf_iterator<char>(in)), {});
-        if (saved == source_stamp) return false;
-    }
-    auto records = Read(destination, shader_abi);
-    auto old = ReadLegacyVulkan(legacy, shader_abi);
-    for (auto & record : old)
-        records.push_back(std::move(record));
-    old.clear();
-    const auto signature = [](const Record & record) {
-        SHA256 hash;
-        hash.init();
-        const auto update = [&](std::string_view bytes) { hash.update(reinterpret_cast<const unsigned char *>(bytes.data()), static_cast<unsigned int>(bytes.size())); };
-        std::string count;
-        Put(count, record.environments.size(), 8);
-        update(count);
-        for (const auto & env : record.environments)
-        {
-            std::string length;
-            Put(length, env.size(), 8);
-            update(length);
-            update(env);
-        }
-        std::string length;
-        Put(length, record.key.size(), 8);
-        update(length);
-        update(record.key);
-        std::string out(32, '\0');
-        hash.final(reinterpret_cast<unsigned char *>(out.data()));
-        return out;
-    };
-    std::set<std::string> expected;
-    for (const auto & record : records)
-        expected.insert(signature(record));
-    if (records.empty()) return false;
-    auto temporary = destination;
-    temporary += ".migrating-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
-    Check(!std::filesystem::exists(temporary));
-    const auto replace = [](const auto & from, const auto & to) {
-#ifdef _WIN32
-        Check(MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0);
-#else
-        std::filesystem::rename(from, to);
-#endif
-    };
-    try
-    {
-        for (const auto & record : records)
-            Append(temporary, shader_abi, record);
-        records.clear();
-        records.shrink_to_fit();
-        std::set<std::string> actual;
-        for (const auto & record : Read(temporary, shader_abi))
-            actual.insert(signature(record));
-        Check(expected == actual && stamp() == source_stamp);
-        replace(temporary, destination);
-        auto marker_temp = marker;
-        marker_temp += ".partial";
-        std::ofstream out(marker_temp, std::ios::binary | std::ios::trunc);
-        out << source_stamp;
-        out.flush();
-        Check(bool(out));
-        out.close();
-        replace(marker_temp, marker);
-    }
-    catch (...)
-    {
-        std::error_code error;
-        std::filesystem::remove(temporary, error);
-        throw;
-    }
-    return true;
-}
 } // namespace VideoCommon::CacheStore

@@ -1,5 +1,6 @@
 """Targeted tests for physical-stream bounds and the permitted existing HLE alias."""
 import ctypes as c
+import os
 from pathlib import Path
 import struct
 import unittest
@@ -9,7 +10,11 @@ from rebuild_recipes import REPO
 
 class RebuildTests(unittest.TestCase):
     def test_physical_yaz0_exact_consumed_extent(self):
-        dll=c.CDLL(str(REPO/'build/shader-recipe-poc/tests/Release/yaz0-scan.dll'))
+        library=os.environ.get('NXSHADER_SEARCH_LIBRARY')
+        if not library:
+            library=REPO/'build/shader-recipe-poc/tests/Release/yaz0-scan.dll'
+            if not library.exists():self.skipTest('set NXSHADER_SEARCH_LIBRARY to test native Yaz0 bounds')
+        dll=c.CDLL(str(library))
         decode=dll.nxshader_yaz0_extent
         decode.argtypes=[c.c_void_p,c.c_size_t,c.c_void_p,c.c_size_t,c.POINTER(c.c_size_t)]
         raw=b'Yaz0'+struct.pack('>I',3)+bytes(8)+b'\xe0abc'+b'trailing bytes'

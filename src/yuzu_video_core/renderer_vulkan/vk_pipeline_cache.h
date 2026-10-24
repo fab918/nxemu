@@ -227,6 +227,7 @@ private:
     Shader::Profile profile;
     Shader::HostTranslateInfo host_info;
 
+    std::string capture_context;
     std::filesystem::path pipeline_cache_filename;
 
     std::filesystem::path vulkan_pipeline_cache_filename;

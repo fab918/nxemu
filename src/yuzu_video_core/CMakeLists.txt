@@ -18,6 +18,9 @@ add_library(video_core STATIC
     shader_profile_sph.h
     shader_profile_import_status.h
     shader_profile_identity.h
+    shader_profile_context.h
+    shader_profile_file_stamp.h
+    shared_shader_bytes.h
     shader_profile_validation.h
     renderer_vulkan/startup_pipeline_variants.h
     shader_profile.cpp

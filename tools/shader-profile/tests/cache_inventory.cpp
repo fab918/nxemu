@@ -33,14 +33,14 @@ int main(int argc,char** argv)try {
     if(argc!=2)throw std::runtime_error("usage: cache-inventory cache.nxc");
     const auto records=VideoCommon::CacheStore::Read(argv[1],20);
     Vulkan::CbufSizeDependencies dependencies;
-    for(const auto& r:records)if(r.key.size()==1400){GraphicsKey key;std::memcpy(&key,r.key.data(),sizeof(key));size_t i{};for(auto hash:key.hashes)if(hash)dependencies.Observe(hash,Mask(r.environments.at(i++)));}
+    for(const auto& r:records)if(r.key.size()==1400){GraphicsKey key;std::memcpy(&key,r.key.data(),sizeof(key));size_t i{};for(auto hash:key.hashes)if(hash)dependencies.Observe(hash,Mask(r.environments.at(i++).String()));}
     std::cout<<"{\"records\":[";bool comma{};
     for(const auto& r:records){if(r.key.size()!=1400)continue;GraphicsKey raw;std::memcpy(&raw,r.key.data(),sizeof(raw));auto key=raw;
         key.state.NormalizeInactiveFields();for(size_t stage=0;stage<5;++stage)Vulkan::CbufSizeDependencies::Normalize(key.sizes[stage],dependencies.Mask(key.hashes[stage+1])|(stage==0?dependencies.Mask(key.hashes[0]):0));
         bool texture{};for(auto hash:key.hashes)texture|=bool(dependencies.Mask(hash)&(1U<<31));if(!texture)key.textures={};
         if(comma)std::cout<<',';comma=true;
         std::cout<<"{\"hash\":\""<<Common::CityHash64(reinterpret_cast<const char*>(&key),key.Size())<<"\",\"raw_hash\":\""<<Common::CityHash64(reinterpret_cast<const char*>(&raw),raw.Size())<<"\",\"key\":\""<<Hex(std::string_view(reinterpret_cast<const char*>(&key),key.Size()))<<"\",\"raw_key\":\""<<Hex(r.key)<<"\",\"programs\":[";
-        size_t env{};bool pc{};for(auto hash:key.hashes)if(hash){if(pc)std::cout<<',';pc=true;const auto& e=r.environments.at(env++);const auto length=Get(e,0,8);const auto code=std::string_view(e).substr(68,length);
+        size_t env{};bool pc{};for(auto hash:key.hashes)if(hash){if(pc)std::cout<<',';pc=true;const auto e=r.environments.at(env++).String();const auto length=Get(e,0,8);const auto code=std::string_view(e).substr(68,length);
             std::cout<<"{\"hash\":\""<<hash<<"\",\"code_sha256\":\""<<VideoCommon::ShaderProfile::ResourceSha256(code)<<"\",\"environment_sha256\":\""<<VideoCommon::ShaderProfile::ResourceSha256(e)<<"\",\"size\":"<<length<<",\"code_trim8_sha256\":\""<<VideoCommon::ShaderProfile::ResourceSha256(code.substr(0,code.size()-8))<<"\",\"body_sha256\":\""<<VideoCommon::ShaderProfile::ResourceSha256(code.substr(80))<<"\",\"replacement_count\":"<<Get(e,32,8)<<",\"semantic_environment\":\""<<SemanticEnvironment(e)<<"\",\"mask\":"<<Mask(e)<<'}';}
         std::cout<<"]}";
     }std::cout<<"]}\n";

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "yuzu_video_core/shader_profile_export.h"
+#include "yuzu_video_core/shader_profile_context.h"
 #include "yuzu_video_core/pipeline_cache_store.h"
 #include "yuzu_video_core/renderer_vulkan/fixed_pipeline_state.h"
 #include "yuzu_video_core/shader_profile_codec.h"
@@ -161,13 +162,16 @@ Model ReadCache(const ExportOptions & options)
     Require(bool(source),"Truncated local cache header");
     if (magic == "NXSCACHE")
     {
+        const auto contextual = options.context.empty() ? std::set<std::string>{} : CacheStore::ReadContext(options.cache, options.context);
         for (const auto & record : CacheStore::Read(options.cache, 20))
         {
+            if (!options.context.empty() && !contextual.contains(record.id)) continue;
             Pipeline p;
             p.key = record.key;
             for (const auto & env : record.environments)
             {
-                Cursor c{env};
+                const auto serialized=env.String();
+                Cursor c{serialized};
                 p.environments.push_back(ReadEnvironment(c, model));
                 Require(c.pos == env.size(), "Trailing environment data");
             }
@@ -176,59 +180,9 @@ Model ReadCache(const ExportOptions & options)
             model.pipelines.push_back(std::move(p));
         }
     }
-    else
-    {
-        const auto data = Load(options.cache);
-        Cursor input{data};
-        Require(input.Take(8) == "yuzucach" && input.Get(4) == 20, "Unsupported legacy shader cache");
-        while (input.pos < data.size())
-        {
-            const auto count = input.Get(4);
-            Require(count >= 1 && count <= 6, "Invalid shader stage count");
-            Pipeline p;
-            for (u64 i = 0; i < count; ++i)
-                p.environments.push_back(ReadEnvironment(input, model));
-            p.compute = Number(model.profile["environments"][p.environments.front()]["stage"]) == 5;
-            Require(!p.compute || count == 1, "Compute stage count");
-            p.key = input.Take(p.compute ? 64 : 1400);
-            model.pipelines.push_back(std::move(p));
-        }
-    }
+    else throw std::runtime_error("Expected an NXEmu local shader store");
     Require(model.pipelines.size() <= 65536, "Pipeline table limit");
     return model;
-}
-void NormalizeLocatedTails(Model & model)
-{
-    std::map<std::string, std::string> remap;
-    for (const auto & old : model.profile["shaders"].GetMemberNames())
-    {
-        const auto & refs = model.profile["shaders"][old]["references"];
-        if (refs.empty()) continue;
-        const auto size = Number(refs[0]["size"]);
-        if (size == model.codes.at(old).size()) continue;
-        Require(size + 8 == model.codes.at(old).size() && ProvenExtraCacheWord(model.codes.at(old)), "Unproven instruction truncation");
-        const auto code = model.codes.at(old).substr(0, size), digest = ResourceSha256(code);
-        auto shader = model.profile["shaders"][old];
-        shader["size"] = Num(size);
-        model.profile["shaders"][digest] = shader;
-        for (const auto & id : model.profile["environments"].GetMemberNames())
-        {
-            auto env = model.profile["environments"][id];
-            if (env["shader"].asString() != old) continue;
-            env["shader"] = digest;
-            env["guest_read_highest"] = Num(Number(env["guest_read_highest"]) - 8);
-            const auto replacement = ResourceSha256(Canonical(env));
-            model.profile["environments"][replacement] = env;
-            remap[id] = replacement;
-        }
-        model.codes[digest] = code;
-        model.profile["shaders"].removeMember(old.c_str());
-    }
-    for (auto & p : model.pipelines)
-        for (auto & id : p.environments)
-            if (remap.contains(id)) id = remap.at(id);
-    for (const auto & [old, replacement] : remap)
-        model.profile["environments"].removeMember(old.c_str());
 }
 u64 At(const std::string & bytes, size_t pos, size_t count)
 {
@@ -424,6 +378,8 @@ JsonValue Assemble(Model & model, const ExportOptions & options, ExportReport & 
     std::snprintf(title, sizeof(title), "%016llx", static_cast<unsigned long long>(options.title_id));
     result["title_id"] = title;
     result["content_label"] = options.label;
+    result["source_files"] = model.profile["source_files"];
+    result["source_context"] = options.context;
     result["shaders"] = JsonValue(JsonValueType::Object);
     result["environments"] = JsonValue(JsonValueType::Object);
     result["recipes"] = graphics;
@@ -537,9 +493,8 @@ ExportReport Export(const ExportOptions & options)
     auto model = ReadCache(options);
     ExportReport report;
     Discover(options, model.profile, model.codes, report);
-    NormalizeLocatedTails(model);
     const auto profile = Assemble(model, options, report);
-    const auto bytes = options.compact ? PackCompact(profile) : Pack(Canonical(profile));
+    const auto bytes = PackCompact(profile);
     Publish(options.output, bytes);
     report.bytes = bytes.size();
     report.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();

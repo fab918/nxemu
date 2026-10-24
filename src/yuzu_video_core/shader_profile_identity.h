@@ -3,6 +3,7 @@
 #include "nxemu-module-spec/system_loader.h"
 #include "yuzu_common/common_types.h"
 #include "yuzu_video_core/shader_profile_hash.h"
+#include "yuzu_video_core/shader_profile_context.h"
 #include <filesystem>
 #include <memory>
 #include <vector>
@@ -24,7 +25,7 @@ using InterfacePtr = std::unique_ptr<T, ReleaseInterface<T>>;
 // the current public loader API cannot identify a selected older update among
 // several installed versions, nor fingerprint arbitrary layered mods reliably.
 inline std::string LoadedContentIdentity(ISystemloader & loader, u64 title,
-                                         const std::filesystem::path & game)
+                                         [[maybe_unused]] const std::filesystem::path & game)
 {
     try
     {
@@ -36,7 +37,7 @@ inline std::string LoadedContentIdentity(ISystemloader & loader, u64 title,
         if (info->GetGamePatches(patches.data(), count) != count) return {};
         size_t update_count{};
         bool update_enabled{};
-        std::string identity = "nxshader-content-1:" + std::to_string(title);
+        std::string base_part, update_part;
         for (const auto & patch : patches)
         {
             if (patch.type == GamePatchType::Mod && patch.enabled) return {};
@@ -44,7 +45,7 @@ inline std::string LoadedContentIdentity(ISystemloader & loader, u64 title,
             {
                 ++update_count;
                 update_enabled = patch.enabled;
-                identity += ":" + std::string(patch.key) + ":" + std::string(patch.version) + (patch.enabled ? ":on" : ":off");
+
             }
         }
         if (update_count > 1) return {};
@@ -53,24 +54,19 @@ inline std::string LoadedContentIdentity(ISystemloader & loader, u64 title,
             InterfacePtr<IFileSysNCA> unknown_update(loader.GetContentProviderEntry(title | 0x800, LoaderContentRecordType::Program));
             if (unknown_update) return {};
         }
-        const auto append = [&](IFileSysNCA * raw) {
+        const auto append = [&](IFileSysNCA * raw, std::string& part) {
             InterfacePtr<IFileSysNCA> nca(raw);
             if (!nca) return false;
             InterfacePtr<IVirtualFile> file(nca->GetBaseFile());
             if (!file || file->GetSize() < 0xc00) return false;
             std::string header(0xc00, '\0');
             if (file->ReadBytes(reinterpret_cast<uint8_t *>(header.data()), header.size(), 0) != header.size()) return false;
-            identity += ":" + std::string(file->GetFullPath()) + ":" + std::to_string(file->GetSize()) + ":" + ResourceSha256(header);
+            part = ContentPart(file->GetSize(), header);
             return true;
         };
-        if (!append(loader.GetContentProviderEntry(title, LoaderContentRecordType::Program))) return {};
-        if (update_enabled && !append(loader.GetContentProviderEntry(title | 0x800, LoaderContentRecordType::Program))) return {};
-        // Also invalidate for replacement/modification of a plaintext source container.
-        if (!std::filesystem::is_regular_file(game)) return {};
-        identity += ":" + std::filesystem::canonical(game).generic_string() + ":" +
-                    std::to_string(std::filesystem::file_size(game)) + ":" +
-                    std::to_string(std::filesystem::last_write_time(game).time_since_epoch().count());
-        return ResourceSha256(identity);
+        if (!append(loader.GetContentProviderEntry(title, LoaderContentRecordType::Program), base_part)) return {};
+        if (update_enabled && !append(loader.GetContentProviderEntry(title | 0x800, LoaderContentRecordType::Program), update_part)) return {};
+        return ContentContext(title, base_part, update_part);
     }
     catch (...)
     {

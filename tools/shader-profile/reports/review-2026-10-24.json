@@ -1,0 +1,167 @@
+{
+  "source_commit": "aee4d9fa25b4470e44db35c815de0db4f922d530",
+  "review_date": "2026-10-24",
+  "host": "macOS arm64 / Apple M4 Pro / AppleClang 21",
+  "validation": {
+    "native_ctest_passed": 11,
+    "python_unittest_passed": 62,
+    "python_skipped": 0,
+    "vulkan_pipeline_cache_syntax_exit": 0,
+    "full_application_build": false,
+    "cross_os_gameplay_roundtrip": false,
+    "matched_recorder_on_off_races": false,
+    "native_driver_failure_injection": false
+  },
+  "profile_probes": {
+    "baseline": {
+      "exit": 0,
+      "output": "{\"recipes\":1,\"graphics\":0,\"compute\":1,\"unique_local_records\":1,\"cache_bytes\":367}",
+      "error": ""
+    },
+    "arbitrary_pipeline_hash_json": {
+      "exit": 0,
+      "output": "{\"recipes\":1,\"graphics\":0,\"compute\":1,\"unique_local_records\":1,\"cache_bytes\":367}",
+      "error": ""
+    },
+    "key_environment_workgroup_mismatch_json": {
+      "exit": 0,
+      "output": "{\"recipes\":1,\"graphics\":0,\"compute\":1,\"unique_local_records\":1,\"cache_bytes\":367}",
+      "error": ""
+    },
+    "bad_environment_inspection_json": {
+      "exit": 0,
+      "output": "{\"graphics\":0,\"compute\":1,\"unresolved\":0}",
+      "error": ""
+    },
+    "bad_environment_import_json": {
+      "exit": 1,
+      "output": "",
+      "error": "Environment instruction bounds"
+    },
+    "arbitrary_pipeline_hash_compact": {
+      "exit": 0,
+      "output": "{\"recipes\":1,\"graphics\":0,\"compute\":1,\"unique_local_records\":1,\"cache_bytes\":367}",
+      "error": ""
+    },
+    "key_environment_workgroup_mismatch_compact": {
+      "exit": 0,
+      "output": "{\"recipes\":1,\"graphics\":0,\"compute\":1,\"unique_local_records\":1,\"cache_bytes\":367}",
+      "error": ""
+    },
+    "bad_environment_inspection_compact": {
+      "exit": 0,
+      "output": "{\"graphics\":0,\"compute\":1,\"unresolved\":0}",
+      "error": ""
+    },
+    "bad_environment_import_compact": {
+      "exit": 1,
+      "output": "",
+      "error": "Compact environment bounds"
+    },
+    "two_resource_baseline": {
+      "exit": 0,
+      "output": "{\"recipes\":2,\"graphics\":0,\"compute\":2,\"unique_local_records\":2,\"cache_bytes\":718}",
+      "error": ""
+    },
+    "one_resource_missing": {
+      "exit": 1,
+      "output": "",
+      "error": "filesystem error: in canonical: No such file or directory (temporary resource path omitted)"
+    },
+    "same_game_renamed": {
+      "exit": 1,
+      "output": "",
+      "error": "filesystem error: in canonical: No such file or directory (temporary resource path omitted)"
+    }
+  },
+  "store_probes": {
+    "shared_program_bytes": 1048576,
+    "pipelines_written": 300,
+    "disk_bytes": 1091082,
+    "read_with_default_limits": false,
+    "legacy_initial_migration": true,
+    "records_before_truncation": 2,
+    "legacy_repair_after_clean_truncation": false,
+    "records_after_repair": 1
+  },
+  "recorder_synthetic": {
+    "scope": "complete_ObserveState_plus_register_tracking_CPU_only",
+    "per_draw_clocks": false,
+    "scenarios": [
+      {
+        "workload": "unchanged",
+        "recorder": false,
+        "observations": 2000000,
+        "known_working_set": 512,
+        "median_ns_per_observation": 0.834261,
+        "median_cycles_per_observation": 0,
+        "median_main_thread_allocations": 0,
+        "median_worker_drain_ms": 0.000417
+      },
+      {
+        "workload": "unchanged",
+        "recorder": true,
+        "observations": 2000000,
+        "known_working_set": 512,
+        "median_ns_per_observation": 9.00833,
+        "median_cycles_per_observation": 0,
+        "median_main_thread_allocations": 0,
+        "median_worker_drain_ms": 0.000375
+      },
+      {
+        "workload": "known_transitions",
+        "recorder": false,
+        "observations": 2000000,
+        "known_working_set": 512,
+        "median_ns_per_observation": 0.756459,
+        "median_cycles_per_observation": 0,
+        "median_main_thread_allocations": 0,
+        "median_worker_drain_ms": 0.0002295
+      },
+      {
+        "workload": "known_transitions",
+        "recorder": true,
+        "observations": 2000000,
+        "known_working_set": 512,
+        "median_ns_per_observation": 70.6928,
+        "median_cycles_per_observation": 0,
+        "median_main_thread_allocations": 0,
+        "median_worker_drain_ms": 0.000875
+      },
+      {
+        "workload": "discovery",
+        "recorder": false,
+        "observations": 512,
+        "known_working_set": 512,
+        "median_ns_per_observation": 2.15625,
+        "median_cycles_per_observation": 0,
+        "median_main_thread_allocations": 0,
+        "median_worker_drain_ms": 0.0003125
+      },
+      {
+        "workload": "discovery",
+        "recorder": true,
+        "observations": 512,
+        "known_working_set": 512,
+        "median_ns_per_observation": 440.023,
+        "median_cycles_per_observation": 0,
+        "median_main_thread_allocations": 562,
+        "median_worker_drain_ms": 2.58431
+      }
+    ],
+    "recipe_sets_verified": true,
+    "checksum": 61048217600
+  },
+  "compute_completion_source_derived_probe": {
+    "before": {
+      "exit": 1,
+      "output": "",
+      "error": "incorrect native compute completion accounting"
+    },
+    "after": {
+      "exit": 0,
+      "output": "null result, successful native result, and non-null failed native result: passed",
+      "error": ""
+    }
+  }
+}

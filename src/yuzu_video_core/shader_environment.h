@@ -240,8 +240,14 @@ public:
 
     FileEnvironment& operator=(const FileEnvironment&) = delete;
     [[nodiscard]] FileEnvironment CloneForDiagnostic() const { return FileEnvironment(*this); }
+    [[nodiscard]] FileEnvironment ShareCompilationInputs() const { return FileEnvironment(*this); }
+    [[nodiscard]] const std::string& CompilationIdentity() const noexcept { return compilation_identity; }
+    [[nodiscard]] const void* CodeIdentity() const noexcept { return code.get(); }
+    [[nodiscard]] size_t SharedCodeBytes() const noexcept { return code ? code->size() * sizeof(u64) : 0; }
 
-    void Deserialize(std::istream& file);
+    void Deserialize(std::istream& file, std::shared_ptr<const std::vector<u64>> shared_program = {},
+                     std::string_view program_fingerprint = {});
+    [[nodiscard]] std::shared_ptr<const std::vector<u64>> ProgramStorage() const noexcept { return code; }
 
     // A shared host key does not prove that compilation inputs are equivalent.
     [[nodiscard]] bool HasSameCompilationInputs(const FileEnvironment& other) const noexcept;
@@ -287,7 +293,8 @@ public:
 
 private:
     FileEnvironment(const FileEnvironment&) = default;
-    std::vector<u64> code;
+    std::shared_ptr<const std::vector<u64>> code;
+    std::string compilation_identity;
     std::unordered_map<u32, Shader::TextureType> texture_types;
     std::unordered_map<u32, Shader::TexturePixelFormat> texture_pixel_formats;
     std::unordered_map<u64, u32> cbuf_values;
@@ -303,15 +310,15 @@ private:
 };
 
 void SerializePipeline(std::span<const char> key, std::span<const GenericEnvironment* const> envs,
-                       const std::filesystem::path& filename, u32 cache_version);
+                       const std::filesystem::path& filename, u32 cache_version, std::string_view context = {});
 
 template <typename Key, typename Envs>
 void SerializePipeline(const Key& key, const Envs& envs, const std::filesystem::path& filename,
-                       u32 cache_version) {
+                       u32 cache_version, std::string_view context = {}) {
     static_assert(std::is_trivially_copyable_v<Key>);
     static_assert(std::has_unique_object_representations_v<Key>);
     SerializePipeline(std::span(reinterpret_cast<const char*>(&key), sizeof(key)),
-                      std::span(envs.data(), envs.size()), filename, cache_version);
+                      std::span(envs.data(), envs.size()), filename, cache_version, context);
 }
 
 /// Loads the pipelines of a cache file. The callbacks return false for a record that is not

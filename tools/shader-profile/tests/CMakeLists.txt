@@ -14,6 +14,7 @@ set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 add_subdirectory("${NXEMU_ROOT}/external/zstd/build/cmake" "${CMAKE_CURRENT_BINARY_DIR}/zstd" EXCLUDE_FROM_ALL)
 target_sources(yaz0-scan PRIVATE ../profile_codec_api.cpp ../profile_search_api.cpp
+    "${NXEMU_ROOT}/src/yuzu_common/cityhash.cpp"
     "${NXEMU_ROOT}/src/yuzu_video_core/shader_profile_codec.cpp")
 target_include_directories(yaz0-scan PRIVATE "${NXEMU_ROOT}/src")
 target_compile_features(yaz0-scan PRIVATE cxx_std_20)
@@ -37,6 +38,7 @@ endif()
 add_test(NAME guest-pipeline-state COMMAND guest-pipeline-state)
 
 add_library(profile-storage STATIC
+    "${NXEMU_ROOT}/src/yuzu_common/cityhash.cpp"
     "${NXEMU_ROOT}/src/yuzu_video_core/pipeline_cache_store.cpp"
     "${NXEMU_ROOT}/src/yuzu_video_core/shader_profile.cpp"
     "${NXEMU_ROOT}/src/yuzu_video_core/shader_profile_codec.cpp"

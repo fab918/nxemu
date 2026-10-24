@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "shader_profile_dialog.h"
 #include "yuzu_video_core/shader_profile_location.h"
+#include "yuzu_video_core/shader_profile_context.h"
 #include <RmlUi/Core.h>
 #include <chrono>
 #include <common/json.h>
@@ -72,7 +73,7 @@ void ShaderProfileDialog::Prepare(IVideo & video, bool importing, std::string ga
     m_label = std::move(label);
     const auto path = std::filesystem::u8path(m_game);
     m_root = Utf8(path.parent_path());
-    m_recording = Utf8(m_cache / "guest-recipes.nxr");
+    m_recording = Utf8(VideoCommon::ShaderProfile::RecordingPath(m_cache, VideoCommon::ShaderProfile::CurrentContext(m_cache)));
     m_cacheFile = Utf8(std::filesystem::exists(m_cache / "vulkan.nxc") ? m_cache / "vulkan.nxc" : m_cache / "vulkan.bin");
     m_index = Utf8(m_cache / "discovery-index.json");
     m_update.clear();

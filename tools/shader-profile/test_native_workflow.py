@@ -56,7 +56,7 @@ class NativeWorkflowTests(unittest.TestCase):
         shader=second['shaders'].pop(old);shader['references'][0]['offset']=8;second['shaders'][new]=shader
         old_env=next(iter(second['environments']));env=second['environments'].pop(old_env);env['shader']=new
         eid=hashlib.sha256(canonical(env)).hexdigest();second['environments'][eid]=env
-        second['recipes'][0]['environments']=[eid];second['recipes'][0]['shader_hash']='18446744073709551614'
+        second['recipes'][0]['environments']=[eid];second['recipes'][0]['shader_hash']=str(reference.native_program_hash(code))
         combined=copy.deepcopy(self.profile)
         for key in ('shaders','environments'):combined[key].update(second[key])
         combined['recipes']+=second['recipes']
@@ -73,6 +73,24 @@ class NativeWorkflowTests(unittest.TestCase):
         self.assertNotEqual(self.read(self.root/'first.nxshader').returncode,0)
         self.assertNotEqual(self.export('changed').returncode,0)
         self.assertFalse((self.root/'changed.nxshader').exists())
+
+    def test_index_reuses_raw_offset_beyond_decoded_resource_limit(self):
+        self.assertEqual(self.export('first').returncode,0)
+        offset=512*1024*1024+16
+        # A raw file offset is independent of the bounded decoded resource size.
+        # Use a sparse file so this also verifies reuse without a full raw scan.
+        with (self.root/'game.dat').open('wb') as game:
+            game.seek(offset)
+            game.write(b'12345678')
+        path=self.root/'index.json'
+        index=json.loads(path.read_bytes())
+        next(iter(index['references'].values()))['offset']=offset
+        index.pop('checksum')
+        index['checksum']=hashlib.sha256(canonical(index)).hexdigest()
+        path.write_bytes(canonical(index))
+        result=self.export('large-offset')
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(json.loads(result.stdout)['reused'],1)
 
     def test_cancel_checkpoints_without_publishing_or_shader_code(self):
         result=self.export('cancelled',extra=('--cancel',))
@@ -113,6 +131,137 @@ class NativeWorkflowTests(unittest.TestCase):
             args[3]='0000000000000001'
             self.assertNotEqual(subprocess.run(args,capture_output=True).returncode,0)
             self.assertNotEqual(self.read(self.root/(fmt+'.nxshader'),fmt+'-missing').returncode,0)
+
+    def mixed_profile(self):
+        mixed=copy.deepcopy(self.profile)
+        code=b'ABCDEFGH';digest=hashlib.sha256(code).hexdigest()
+        env=copy.deepcopy(next(iter(mixed['environments'].values())));env['shader']=digest
+        eid=hashlib.sha256(canonical(env)).hexdigest()
+        mixed['shaders'][digest]=dict(size=8,references=[dict(encoding='raw',file='update.dat',offset=0,size=8)])
+        mixed['environments'][eid]=env
+        recipe=copy.deepcopy(mixed['recipes'][0]);recipe['shader_hash']=str(reference.native_program_hash(code));recipe['environments']=[eid]
+        mixed['recipes'].append(recipe)
+        return mixed
+
+    def pack(self,profile,name):
+        source=self.root/(name+'.json');source.write_bytes(canonical(profile))
+        target=self.root/(name+'.nxshader')
+        result=subprocess.run([self.exporter,'--compact',str(source),str(target)],capture_output=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        return source,target
+
+    def test_partial_import_retains_independent_recipes(self):
+        mixed=self.mixed_profile()
+        (self.root/'update.dat').write_bytes(b'ABCDEFGH')
+        source,target=self.pack(mixed,'mixed')
+        for index,path in enumerate((source,target)):
+            self.assertEqual(json.loads(self.read(path,'all'+str(index)).stdout)['recipes'],2)
+        (self.root/'update.dat').unlink()
+        for index,path in enumerate((source,target)):
+            result=self.read(path,'partial'+str(index))
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(json.loads(result.stdout)['recipes'],1)
+        (self.root/'game.dat').unlink()
+        self.assertNotEqual(self.read(target,'none').returncode,0)
+
+    def test_incoherent_hash_and_dimensions_reject_entire_import(self):
+        for field,value in [('shader_hash','1'),('workgroup_size',[2,3,4]),('shared_memory_size',32),('texture_table_size',99)]:
+            bad=self.mixed_profile();bad['recipes'][0][field]=value
+            (self.root/'update.dat').write_bytes(b'ABCDEFGH')
+            source,target=self.pack(bad,'incoherent-'+field)
+            for index,path in enumerate((source,target)):
+                result=self.read(path,field+str(index))
+                self.assertNotEqual(result.returncode,0,result.stdout)
+                self.assertFalse((self.root/(field+str(index)+'.nxc')).exists())
+
+    def test_inspection_rejects_invalid_bounds_without_resources(self):
+        bad=copy.deepcopy(self.profile)
+        next(iter(bad['environments'].values()))['guest_read_highest']=8
+        source,target=self.pack(bad,'invalid-bounds')
+        (self.root/'game.dat').unlink()
+        for path in (source,target):
+            result=subprocess.run([self.reader,str(path),str(self.root),bad['title_id'],str(self.root/'never.nxc'),'67','--inspect'],capture_output=True)
+            self.assertNotEqual(result.returncode,0)
+
+    def test_renamed_source_container_is_verified(self):
+        result=self.export('portable',extra=('--compact',))
+        self.assertEqual(result.returncode,0,result.stderr)
+        (self.root/'game.dat').rename(self.root/'renamed-game.dat')
+        read=self.read(self.root/'portable.nxshader','renamed')
+        self.assertEqual(read.returncode,0,read.stderr)
+        (self.root/'renamed-game.dat').write_bytes(b'87654321')
+        self.assertNotEqual(self.read(self.root/'portable.nxshader','different').returncode,0)
+
+    def test_merged_update_contexts_select_only_applicable_recipes(self):
+        mixed=self.mixed_profile()
+        a,b='a'*64,'b'*64
+        mixed['source_context']=a
+        mixed['recipes'][1]['source_context']=b
+        source,target=self.pack(mixed,'contexts')
+        for index,path in enumerate((source,target)):
+            args=[self.reader,str(path),str(self.root),mixed['title_id'],str(self.root/('context-'+str(index)+'.nxc')),'67','--context='+a]
+            result=subprocess.run(args,capture_output=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            report=json.loads(result.stdout)
+            self.assertEqual(report['recipes'],1)
+            self.assertEqual(report['incompatible_contexts'],1)
+            self.assertEqual(report['missing_resources'],0)
+        args[4]=str(self.root/'wrong-context.nxc');args[-1]='--context='+'c'*64
+        self.assertNotEqual(subprocess.run(args,capture_output=True).returncode,0)
+        self.assertFalse((self.root/'wrong-context.nxc').exists())
+
+    def test_revision_reuses_verified_recipes_without_old_resources(self):
+        _,r2=self.pack(self.profile,'revision-2')
+        first=self.read(r2,'revision-2-cache')
+        self.assertEqual(first.returncode,0,first.stderr)
+        known=json.loads(first.stdout)['recipe_ids']
+        mixed=self.mixed_profile();mixed['content_label']='revision 3'
+        next(iter(mixed['shaders'].values()))['references'][0]['file']='old-resource-no-longer-needed.dat'
+        _,r3=self.pack(mixed,'revision-3')
+        (self.root/'game.dat').unlink()
+        (self.root/'update.dat').write_bytes(b'ABCDEFGH')
+        reuse=self.root/'verified-recipes.json';reuse.write_bytes(canonical(known))
+        args=[self.reader,str(r3),str(self.root),mixed['title_id'],str(self.root/'revision-3-cache.nxc'),'67','--reuse='+str(reuse)]
+        second=subprocess.run(args,capture_output=True)
+        self.assertEqual(second.returncode,0,second.stderr)
+        report=json.loads(second.stdout)
+        self.assertEqual(report['recipes'],1);self.assertEqual(report['reused'],1)
+        self.assertEqual(report['missing_resources'],0)
+        reuse.write_bytes(canonical(report['recipe_ids']))
+        (self.root/'update.dat').unlink();args[4]=str(self.root/'fully-reused.nxc')
+        third=subprocess.run(args,capture_output=True)
+        self.assertEqual(third.returncode,0,third.stderr)
+        self.assertEqual(json.loads(third.stdout)['reused'],2)
+        self.assertFalse((self.root/'fully-reused.nxc').exists())
+
+    def test_new_recipe_reuses_stored_program_without_game_io(self):
+        _,profile=self.pack(self.profile,'program-source')
+        first=self.read(profile,'program-source-cache')
+        self.assertEqual(first.returncode,0,first.stderr)
+        changed=copy.deepcopy(self.profile)
+        changed['recipes'][0]['workgroup_size']=[2,2,2]
+        next(iter(changed['environments'].values()))['workgroup_size']=[2,2,2]
+        _,profile=self.pack(changed,'new-combination')
+        (self.root/'game.dat').unlink()
+        args=[self.reader,str(profile),str(self.root),changed['title_id'],str(self.root/'new-combination-cache.nxc'),'67','--program-cache='+str(self.root/'program-source-cache.nxc')]
+        result=subprocess.run(args,capture_output=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        report=json.loads(result.stdout)
+        self.assertEqual(report['recipes'],1);self.assertEqual(report['reused'],0)
+        self.assertEqual(report['missing_resources'],0)
+
+    def test_runtime_accepts_only_the_new_compressed_wire_format(self):
+        metadata=self.root/'runtime-metadata.json';metadata.write_bytes(canonical(self.profile))
+        args=[self.reader,str(metadata),str(self.root),self.profile['title_id'],str(self.root/'never-runtime.nxc'),'67','--runtime']
+        self.assertNotEqual(subprocess.run(args,capture_output=True).returncode,0)
+        codec=Path(self.reader).with_name('nxshader-codec'+Path(self.reader).suffix)
+        for index,payload in enumerate((b'NXSHBIN3'+bytes(400),canonical(self.profile))):
+            raw=self.root/('obsolete-'+str(index));raw.write_bytes(payload)
+            packed=self.root/('obsolete-'+str(index)+'.nxshader')
+            subprocess.run([str(codec),'pack',str(raw),str(packed)],check=True,capture_output=True)
+            args[1]=str(packed)
+            self.assertNotEqual(subprocess.run(args,capture_output=True).returncode,0)
+        self.assertFalse((self.root/'never-runtime.nxc').exists())
 
     def test_existing_output_is_preserved(self):
         target=self.root/'kept.nxshader';target.write_bytes(b'KEEP')

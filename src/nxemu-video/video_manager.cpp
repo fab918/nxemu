@@ -2,6 +2,7 @@
 #include "render_window.h"
 #include "video_manager.h"
 #include "yuzu_video_core/shader_profile_export.h"
+#include "yuzu_video_core/shader_profile_context.h"
 #include "yuzu_video_core/shader_profile.h"
 #include "yuzu_video_core/shader_profile_identity.h"
 #include "yuzu_video_core/renderer_vulkan/fixed_pipeline_state.h"
@@ -52,6 +53,9 @@ bool VideoManager::ProcessShaderProfile(const ShaderProfileTask & task, IShaderP
         VideoCommon::ShaderProfile::ExportOptions options;
         options.cache = path(task.cache);
         options.recording = path(task.recording);
+        options.context = VideoCommon::ShaderProfile::RecordingContext(options.recording);
+        if (!VideoCommon::ShaderProfile::ValidContext(options.context))
+            throw std::runtime_error("Play and stop this base/update with identified game content before exporting a profile");
         options.game_root = path(task.game_root);
         options.output = path(task.profile);
         options.index = path(task.index);

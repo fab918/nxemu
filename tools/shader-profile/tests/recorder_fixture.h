@@ -17,7 +17,7 @@ namespace Common::Log {
 LogLevel g_classLevel[static_cast<uint8_t>(LogClass::Count)]{};
 void FmtLogMessageImpl(LogClass,LogLevel,const char*,unsigned,const char*,const char*,const fmt::format_args&) {}
 }
-[[noreturn]] void assert_fail_impl(){throw std::runtime_error("renderer assertion");}
+void assert_fail_impl(){throw std::runtime_error("renderer assertion");}
 [[noreturn]] void unreachable_impl(){throw std::runtime_error("renderer unreachable");}
 using namespace Vulkan;
 using namespace VideoCommon::ShaderProfile;

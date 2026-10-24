@@ -2,6 +2,7 @@
 // Test/benchmark bridge; the search implementation is ordinary portable C++.
 #include "yuzu_video_core/shader_profile_search.h"
 #include <cstdint>
+#include "yuzu_common/cityhash.h"
 #ifdef _WIN32
 #define EXPORT extern "C" __declspec(dllexport)
 #else
@@ -25,4 +26,8 @@ EXPORT int nxshader_search_scan(const void* search, const unsigned char* input, 
                                                                {positions, capacity});
         return 0;
     } catch (...) { return -2; }
+}
+
+EXPORT uint64_t nxshader_hash64(const char* code, size_t size) {
+    return Common::CityHash64(code, size);
 }
