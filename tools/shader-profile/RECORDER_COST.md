@@ -88,3 +88,37 @@ start/end to separate gameplay from menus. Display/frametime results are pending
 the two user-piloted courses. Check swapchain identity and new cache entries when
 analyzing results; differing workloads/compilations can confound the comparison.
 No claim of zero FPS overhead or a measured FPS improvement is made yet.
+
+## Query lifetime fix imported for unlocked testing
+
+The later FIFO sessions are saved as `recorder-ab-{on,off}-vsync-1` after the
+user reported a failure with VSync disabled. No usable PresentMon CSV was found
+for either session. Their internal application tick logs have different durations
+and include menus; they do not establish a presentation FPS comparison. Results
+are preserved in ignored `recorder-ab-vsync-results.json`. The disabled recorder
+session leaves its initial recipe journal unchanged.
+
+The query pool lifetime fix from `a89fcb2601c83429d1c3ae09ce8c1b4a449a2b54`
+(`fix/vulkan-query-lifetime`, also present as `5bbc551c` on
+`origin/fix/stability-macos`) was imported without the diagnostic renderer edits
+or reverted acquisition-semaphore candidate. It retains query banks until
+abandoned-query work and GPU result copies complete, and reads traversal links
+before releasing the references that permit another thread to recycle a bank.
+It does not add a per-draw GPU wait or change shader/cache/profile formats.
+
+Both query lifetime regressions and the independent acquisition-semaphore test
+pass locally, and the isolated shader application compiles. These tests verify
+specific lifetime defects, not elimination of every in-game unlocked freeze.
+Re-run both recorder modes using the same corrected video module. A capped
+comparison cannot establish available throughput above its cap; use unlocked
+game throughput/CPU work as well as displayed-frame pacing, and verify the
+actual limiter and Vulkan present mode in each run.
+
+The first corrected boot check (`queryfix-smoke-1`) used `run_smoke.py` with a
+22-second duration. Its normal WM_CLOSE at that deadline was reported by the
+user as another crash. The runner exited with code 0 after 22.735 seconds; the
+engine log enters EmulationStopping at 22.033 seconds with no device-loss or
+native exception evidence. This particular exit is an automation artifact, not
+proof of a persistent Vulkan crash. A separate `queryfix-manual-1` was launched
+without a timer, with the actual video DLL digest saved in launch.json. No claim
+of sustained unlocked stability is made from the timed boot check.
