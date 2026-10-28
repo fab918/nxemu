@@ -64,7 +64,9 @@ ImageInfo::ImageInfo(const TICEntry& config) noexcept {
         break;
     case TextureType::Texture2D:
     case TextureType::Texture2DNoMipmap:
-        ASSERT(config.Depth() == 1);
+        // A non-array 2D view may retain the backing allocation's layer count
+        // in Depth() (for example a single face of a six-layer image). Its type
+        // selects one plane; keep using BaseLayer() to size the backing image.
         type = config.IsPitchLinear() ? ImageType::Linear : ImageType::e2D;
         rescaleable = !config.IsPitchLinear();
         size.width = config.Width();
