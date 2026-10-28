@@ -75,3 +75,8 @@ target_link_libraries(test_image_views_and_slices PRIVATE nxemu_test_support
 nxemu_unit_test(test_image_views_and_slices)
 add_test(NAME test_image_slice_copies COMMAND test_image_views_and_slices --copies)
 set_tests_properties(test_image_slice_copies PROPERTIES LABELS unit TIMEOUT 120)
+
+add_executable(test_surface_atomic_arrays surface_atomic_arrays/coordinates.cpp)
+target_include_directories(test_surface_atomic_arrays PRIVATE "${CMAKE_SOURCE_DIR}/src")
+target_link_libraries(test_surface_atomic_arrays PRIVATE shader_recompiler yuzu_common)
+nxemu_unit_test(test_surface_atomic_arrays)
