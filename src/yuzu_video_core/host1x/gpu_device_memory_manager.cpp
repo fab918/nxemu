@@ -7,6 +7,9 @@
 #include <limits>
 #include <memory>
 #include <type_traits>
+#if defined(__APPLE__)
+#include <execinfo.h>
+#endif
 
 #include "yuzu_common/address_space.h"
 #include "yuzu_common/address_space.inc"
@@ -27,6 +30,25 @@ namespace Core
 {
 namespace
 {
+// Opt-in investigation of bulk reads: no extra work on mapped memory, and at
+// most one stack trace per process. Keep errors visible while identifying the
+// exact caller rather than assuming that zero-filled holes are harmless.
+void TraceFirstUnmappedDeviceRead() {
+#if defined(__APPLE__)
+    static const bool enabled = std::getenv("NXEMU_TRACE_UNMAPPED_DEVICE_READ") != nullptr;
+    static std::atomic<bool> traced{};
+    if (!enabled || traced.exchange(true, std::memory_order_relaxed)) return;
+    void* frames[32];
+    const int count = backtrace(frames, 32);
+    char** symbols = backtrace_symbols(frames, count);
+    if (!symbols) return;
+    for (int i = 0; i < count; ++i) {
+        LOG_ERROR(HW_Memory, "Unmapped read caller [{}]: {}", i, symbols[i]);
+    }
+    std::free(symbols);
+#endif
+}
+
 class MultiAddressContainer
 {
 public:
@@ -469,6 +491,7 @@ void DeviceMemoryManager<Traits>::ReadBlock(DAddr address, void * dest_pointer, 
     WalkBlock(address, size, [&](size_t copy_amount, DAddr current_vaddr)
         {
             LOG_ERROR(HW_Memory, "Unmapped Device ReadBlock @ 0x{:016X} (start address = 0x{:016X}, size = {})", current_vaddr, address, size);
+            TraceFirstUnmappedDeviceRead();
             std::memset(dest_pointer, 0, copy_amount);
         },
         [&](size_t copy_amount, const u8* const src_ptr)
@@ -505,6 +528,7 @@ void DeviceMemoryManager<Traits>::ReadBlockUnsafe(DAddr address, void* dest_poin
     WalkBlock(address, size,[&](size_t copy_amount, DAddr current_vaddr) 
         {
             LOG_ERROR(HW_Memory,"Unmapped Device ReadBlock @ 0x{:016X} (start address = 0x{:016X}, size = {})",current_vaddr, address, size);
+            TraceFirstUnmappedDeviceRead();
             std::memset(dest_pointer, 0, copy_amount);
         },
         [&](size_t copy_amount, const u8* const src_ptr)
