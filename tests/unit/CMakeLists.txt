@@ -60,3 +60,7 @@ if(NOT MSVC)
     target_link_options(test_storage_pointer_tracking PRIVATE -fsanitize=address,undefined)
 endif()
 nxemu_unit_test(test_storage_pointer_tracking)
+
+add_executable(test_empty_storage_warnings storage_pointer_tracking/empty_warnings.cpp)
+target_include_directories(test_empty_storage_warnings PRIVATE "${CMAKE_SOURCE_DIR}/src")
+nxemu_unit_test(test_empty_storage_warnings)
