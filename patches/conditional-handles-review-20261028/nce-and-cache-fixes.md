@@ -43,3 +43,10 @@ ainsi que les limites annoncées par MoltenVK (geometryShader, shaderCullDistanc
 et sampler_filter_minmax). Le spam peut avoir un coût de journalisation ; ni
 sa cause ni son lien avec les portraits ne sont établis. Aucun changement de
 sémantique ni suppression de ces avertissements n'est inclus dans cette branche.
+
+Mise à jour après récupération du correctif Windows 4a44687f : le seuil de mise à
+l'échelle des petites profondeurs suit celui des couleurs. Le nouveau test
+ImageInfo passe aussi sur macOS. Le suivi de pointeurs invariants dans une boucle
+est corrigé séparément ; voir tests/unit/storage_pointer_tracking/README.md pour
+la reproduction, les limites du rejeu et l'erreur de registre 15 restante. Les
+caches OpenGL/Vulkan passent à 13/23 car la liste des storage descriptors change.

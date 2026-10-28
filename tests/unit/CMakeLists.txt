@@ -47,3 +47,16 @@ target_link_libraries(test_image_rescaling PRIVATE nxemu_test_support
     $<TARGET_FILE:video_core> $<TARGET_FILE:yuzu_common> $<TARGET_FILE:common>
     fmt bc_decoder stb_dxt)
 nxemu_unit_test(test_image_rescaling)
+
+# Compile the production pointer pass with sanitizers to exercise cyclic SSA inputs.
+add_executable(test_storage_pointer_tracking
+    storage_pointer_tracking/loops.cpp
+    "${CMAKE_SOURCE_DIR}/src/yuzu_shader_recompiler/ir_opt/global_memory_to_storage_buffer_pass.cpp")
+target_include_directories(test_storage_pointer_tracking PRIVATE "${CMAKE_SOURCE_DIR}/src")
+target_link_libraries(test_storage_pointer_tracking PRIVATE shader_recompiler yuzu_common)
+if(NOT MSVC)
+    target_compile_options(test_storage_pointer_tracking PRIVATE
+        -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer)
+    target_link_options(test_storage_pointer_tracking PRIVATE -fsanitize=address,undefined)
+endif()
+nxemu_unit_test(test_storage_pointer_tracking)

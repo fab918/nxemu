@@ -56,7 +56,8 @@ using VideoCommon::GenericEnvironment;
 using VideoCommon::GraphicsEnvironment;
 
 // Push-constant render-area dimensions now occupy a separate byte range.
-constexpr u32 CACHE_VERSION = 22;
+// Loop-invariant pointer tracking also changes the storage descriptor list.
+constexpr u32 CACHE_VERSION = 23;
 constexpr std::array<char, 8> VULKAN_CACHE_MAGIC_NUMBER{'y', 'u', 'z', 'u', 'v', 'k', 'c', 'h'};
 
 template <typename Container>
