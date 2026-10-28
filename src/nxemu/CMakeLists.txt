@@ -147,6 +147,14 @@ else()
         VERBATIM)
     include(nxemu_setup_environment)
     nxemu_setup_environment(nxemu)
+    if(WIN32)
+        add_custom_command(TARGET nxemu POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_SOURCE_DIR}/tools/gpu/launch-f8-capture.ps1"
+                "${CMAKE_SOURCE_DIR}/tools/gpu/Lancer-Dump-GPU.cmd"
+                "$<TARGET_FILE_DIR:nxemu>"
+            VERBATIM)
+    endif()
     foreach(_module nxemu-loader nxemu-cpu nxemu-video nxemu-os)
         if(_module STREQUAL "nxemu-os")
             set(_folder operating_system)

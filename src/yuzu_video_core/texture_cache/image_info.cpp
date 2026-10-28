@@ -22,7 +22,6 @@ using Tegra::Engines::Maxwell3D;
 using Tegra::Texture::TextureType;
 using Tegra::Texture::TICEntry;
 using VideoCore::Surface::PixelFormat;
-using VideoCore::Surface::SurfaceType;
 
 constexpr u32 RescaleHeightThreshold = 288;
 constexpr u32 DownscaleHeightThreshold = 512;
@@ -119,8 +118,10 @@ ImageInfo::ImageInfo(const TICEntry& config) noexcept {
         layer_stride = CalculateLayerStride(*this);
         maybe_unaligned_layer_stride = CalculateLayerSize(*this);
         rescaleable &= (block.depth == 0) && resources.levels == 1;
-        rescaleable &= size.height > RescaleHeightThreshold ||
-                       GetFormatType(format) != SurfaceType::ColorTexture;
+        // Match render-target eligibility for depth textures too. Scaling only the
+        // depth prepass changes its sample positions before a native-size color
+        // pass, so an EQUAL depth test can reject the same geometry.
+        rescaleable &= size.height > RescaleHeightThreshold;
         downscaleable = size.height > DownscaleHeightThreshold;
     }
     // Preserve the guest layer stride above, including any excess mip levels
@@ -198,8 +199,10 @@ ImageInfo::ImageInfo(const Maxwell3D::Regs::Zeta& zt, const Maxwell3D::Regs::Zet
         type = ImageType::e3D;
         size.depth = zt_size.depth;
     } else {
-        rescaleable = block.depth == 0;
-        downscaleable = size.height > 512;
+        // Small color targets stay native; their depth-only prepass must use the
+        // same pixel grid rather than being scaled and blitted back down.
+        rescaleable = block.depth == 0 && size.height > RescaleHeightThreshold;
+        downscaleable = size.height > DownscaleHeightThreshold;
         type = ImageType::e2D;
         switch (zt_size.dim_control) {
         case Maxwell3D::Regs::ZetaSize::DimensionControl::DefineArraySize:
