@@ -51,3 +51,7 @@ target_link_libraries(test_loader_metadata PRIVATE nxemu-loader)
 nxemu_unit_test(test_loader_metadata)
 
 add_subdirectory(shader_profile)
+
+add_executable(test_nce_written_ranges nce_written_ranges/written_ranges.cpp)
+target_include_directories(test_nce_written_ranges PRIVATE "${CMAKE_SOURCE_DIR}/src")
+nxemu_unit_test(test_nce_written_ranges)
