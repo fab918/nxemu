@@ -34,6 +34,7 @@
 #include "core/hle/kernel/k_page_table.h"
 #include "core/hle/kernel/k_process.h"
 #include "core/memory.h"
+#include "core/nce_written_ranges.h"
 #include <nxemu-module-spec/video.h>
 
 extern IModuleSettings* g_settings;
@@ -1205,7 +1206,7 @@ struct Memory::Impl {
 
     void FlushNceWrites(bool rearm_native_reads = true)
     {
-        std::vector<u64> written;
+        std::vector<std::pair<u64, u64>> written;
         {
             std::scoped_lock lk{nce_write_mutex};
             // Pages unmapped since are not cached anymore.
@@ -1230,19 +1231,24 @@ struct Memory::Impl {
                 if (rearm_native_reads) ProtectNceReadCached(begin, end - begin);
                 else buffer->ProtectAccess(begin, end - begin, Common::MemoryPermission::Read);
             }
+            // Report only the bytes the CPU changed. The rest of the page can hold GPU writes
+            // that are not downloaded yet, invalidating it would upload stale guest memory.
             for (const auto & [page, copy] : nce_written)
             {
                 const u8 * const pointer = GetPointerFromRasterizerCachedMemory(page);
-                if (pointer != nullptr && std::memcmp(pointer, copy->data(), YUZU_PAGESIZE) != 0)
+                if (pointer == nullptr || std::memcmp(pointer, copy->data(), YUZU_PAGESIZE) == 0)
                 {
-                    written.push_back(page);
+                    continue;
                 }
+                ForEachNceWrittenRange(pointer, copy->data(), YUZU_PAGESIZE, [&](u64 offset, u64 size) {
+                    written.emplace_back(page + offset, size);
+                });
             }
             nce_written.clear();
         }
-        for (const u64 page : written)
+        for (const auto & [address, size] : written)
         {
-            HandleRasterizerWrite(page, YUZU_PAGESIZE);
+            HandleRasterizerWrite(address, size);
         }
     }
 #endif

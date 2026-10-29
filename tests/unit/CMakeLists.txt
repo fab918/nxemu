@@ -80,3 +80,8 @@ add_executable(test_surface_atomic_arrays surface_atomic_arrays/coordinates.cpp)
 target_include_directories(test_surface_atomic_arrays PRIVATE "${CMAKE_SOURCE_DIR}/src")
 target_link_libraries(test_surface_atomic_arrays PRIVATE shader_recompiler yuzu_common)
 nxemu_unit_test(test_surface_atomic_arrays)
+
+# Guest bytes reported as written when an NCE write-tracked page is flushed.
+add_executable(test_nce_written_ranges nce_written_ranges/written_ranges.cpp)
+target_include_directories(test_nce_written_ranges PRIVATE "${CMAKE_SOURCE_DIR}/src")
+nxemu_unit_test(test_nce_written_ranges)

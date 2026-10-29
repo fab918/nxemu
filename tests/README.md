@@ -19,4 +19,5 @@ They run in the macOS CI job.
 | `test_session_lifecycle` | Host thread state across kernel sessions, cancellation of Host1x fence waits (ASan, UBSan) |
 | `test_spirv_constant_buffers` | SPIR-V declarations of constant buffers |
 | `test_loader_metadata` | Application control metadata (NACP) parsing |
+| `test_nce_written_ranges` | Bytes reported as CPU-written when an NCE page is flushed, GPU writes on the same page kept |
 
