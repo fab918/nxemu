@@ -119,6 +119,11 @@ void FixedPipelineState::Refresh(Tegra::Engines::Maxwell3D& maxwell3d, DynamicFe
     smooth_lines.Assign(regs.line_anti_alias_enable != 0 ? 1 : 0);
     alpha_to_coverage_enabled.Assign(regs.anti_alias_alpha_control.alpha_to_coverage != 0 ? 1 : 0);
     alpha_to_one_enabled.Assign(regs.anti_alias_alpha_control.alpha_to_one != 0 ? 1 : 0);
+    alpha_to_coverage_dither.Assign(regs.anti_alias_alpha_control.alpha_to_coverage != 0 &&
+                                            regs.alpha_to_coverage_dither ==
+                                                Maxwell::AlphaToCoverageDither::Footprint_2x2
+                                        ? 1
+                                        : 0);
     app_stage.Assign(maxwell3d.engine_state);
 
     bool color_formats_changed = false;

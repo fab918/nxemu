@@ -20,4 +20,5 @@ They run in the macOS CI job.
 | `test_spirv_constant_buffers` | SPIR-V declarations of constant buffers |
 | `test_loader_metadata` | Application control metadata (NACP) parsing |
 | `test_nce_written_ranges` | Bytes reported as CPU-written when an NCE page is flushed, GPU writes on the same page kept |
+| `test_alpha_to_coverage_dither` | 2x2 alpha-to-coverage dither pattern and the discard emitted in SPIR-V fragment shaders |
 

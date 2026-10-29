@@ -27,6 +27,17 @@ target_link_libraries(test_spirv_constant_buffers PRIVATE nxemu_test_support
     $<TARGET_FILE:shader_recompiler> $<TARGET_FILE:sirit> $<TARGET_FILE:fmt> $<TARGET_FILE:common>)
 nxemu_unit_test(test_spirv_constant_buffers)
 
+# Alpha-to-coverage dither pattern and its discard in the production SPIR-V backend.
+add_executable(test_alpha_to_coverage_dither alpha_to_coverage_dither/dither.cpp)
+target_include_directories(test_alpha_to_coverage_dither PRIVATE "${CMAKE_SOURCE_DIR}/src"
+    "${CMAKE_SOURCE_DIR}/external/boost" "${CMAKE_SOURCE_DIR}/external/fmt/include"
+    "${CMAKE_SOURCE_DIR}/external/sirit/include"
+    "${CMAKE_SOURCE_DIR}/external/sirit/externals/SPIRV-Headers/include")
+add_dependencies(test_alpha_to_coverage_dither shader_recompiler sirit fmt common)
+target_link_libraries(test_alpha_to_coverage_dither PRIVATE nxemu_test_support
+    $<TARGET_FILE:shader_recompiler> $<TARGET_FILE:sirit> $<TARGET_FILE:fmt> $<TARGET_FILE:common>)
+nxemu_unit_test(test_alpha_to_coverage_dither)
+
 # Application control metadata (NACP) parsing.
 add_executable(test_loader_metadata loader_metadata/nacp.cpp)
 target_include_directories(test_loader_metadata PRIVATE "${CMAKE_SOURCE_DIR}/src"

@@ -271,6 +271,7 @@ Shader::RuntimeInfo MakeRuntimeInfo(std::span<const Shader::IR::Program> program
         info.alpha_test_func = MaxwellToCompareFunction(
             key.state.UnpackComparisonOp(key.state.alpha_test_func.Value()));
         info.alpha_test_reference = Common::BitCast<float>(key.state.alpha_test_ref);
+        info.alpha_to_coverage_dither = key.state.EmulatesAlphaToCoverageDither();
         info.dual_source_blend = key.state.dual_source_blend != 0;
         // Vulkan requires integer fragment outputs for integer color attachments.
         for (size_t index = 0; index < info.color_output_types.size(); ++index) {

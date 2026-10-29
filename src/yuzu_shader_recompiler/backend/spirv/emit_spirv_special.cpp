@@ -3,6 +3,7 @@
 
 #include "yuzu_shader_recompiler/backend/spirv/emit_spirv.h"
 #include "yuzu_shader_recompiler/backend/spirv/emit_spirv_instructions.h"
+#include "yuzu_shader_recompiler/alpha_to_coverage_dither.h"
 #include "yuzu_shader_recompiler/backend/spirv/spirv_emit_context.h"
 
 namespace Shader::Backend::SPIRV {
@@ -93,6 +94,44 @@ void AlphaTest(EmitContext& ctx) {
     ctx.OpKill();
     ctx.AddLabel(true_label);
 }
+
+void AlphaToCoverageDither(EmitContext& ctx) {
+    if (!ctx.alpha_to_coverage_dither || !Sirit::ValidId(ctx.frag_color[0]) ||
+        !Sirit::ValidId(ctx.input_position)) {
+        return;
+    }
+    const AttributeType output_type{ctx.runtime_info.color_output_types[0]};
+    if (output_type == AttributeType::SignedInt || output_type == AttributeType::UnsignedInt) {
+        return;
+    }
+    const Id f32{ctx.F32[1]};
+    const Id u32{ctx.U32[1]};
+    const Id rt0_color{ctx.OpLoad(ctx.F32[4], ctx.frag_color[0])};
+    const Id raw_alpha{ctx.OpCompositeExtract(f32, rt0_color, 3u)};
+    const Id zero{ctx.Const(0.0f)};
+    const Id alpha{ctx.OpSelect(f32, ctx.OpIsNan(ctx.U1, raw_alpha), zero, raw_alpha)};
+    const Id saturated{ctx.OpFClamp(f32, alpha, zero, ctx.Const(1.0f))};
+    const Id level{ctx.OpUMin(u32, ctx.OpConvertFToU(u32, ctx.OpFMul(f32, saturated, ctx.Const(8.0f))),
+                              ctx.Const(7U))};
+
+    const Id frag_coord{ctx.OpLoad(ctx.F32[4], ctx.input_position)};
+    const Id one{ctx.Const(1U)};
+    const Id x{ctx.OpBitwiseAnd(u32, ctx.OpConvertFToU(u32, ctx.OpCompositeExtract(f32, frag_coord, 0u)), one)};
+    const Id y{ctx.OpBitwiseAnd(u32, ctx.OpConvertFToU(u32, ctx.OpCompositeExtract(f32, frag_coord, 1u)), one)};
+    const Id shift{ctx.OpBitwiseOr(u32, ctx.OpShiftLeftLogical(u32, level, ctx.Const(2U)),
+                                   ctx.OpBitwiseOr(u32, x, ctx.OpShiftLeftLogical(u32, y, one)))};
+    const Id bit{ctx.OpBitwiseAnd(
+        u32, ctx.OpShiftRightLogical(u32, ctx.Const(ALPHA_TO_COVERAGE_DITHER_MASK), shift), one)};
+    const Id keep{ctx.OpINotEqual(ctx.U1, bit, ctx.Const(0U))};
+
+    const Id keep_label{ctx.OpLabel()};
+    const Id discard_label{ctx.OpLabel()};
+    ctx.OpSelectionMerge(keep_label, spv::SelectionControlMask::MaskNone);
+    ctx.OpBranchConditional(keep, keep_label, discard_label);
+    ctx.AddLabel(discard_label);
+    ctx.OpKill();
+    ctx.AddLabel(keep_label);
+}
 } // Anonymous namespace
 
 void EmitPrologue(EmitContext& ctx) {
@@ -146,6 +185,7 @@ void EmitEpilogue(EmitContext& ctx) {
     }
     if (ctx.stage == Stage::Fragment) {
         AlphaTest(ctx);
+        AlphaToCoverageDither(ctx);
     }
 }
 
