@@ -83,7 +83,8 @@ using VideoCommon::FileEnvironment;
 using VideoCommon::GenericEnvironment;
 using VideoCommon::GraphicsEnvironment;
 
-constexpr u32 CACHE_VERSION = 20;
+// Loop pointer tracking and IGN single-sample coverage invalidate old shaders.
+constexpr u32 CACHE_VERSION = 25;
 constexpr std::array<char, 8> VULKAN_CACHE_MAGIC_NUMBER{'y', 'u', 'z', 'u', 'v', 'k', 'c', 'h'};
 
 // Startup/shutdown diagnostics only; no probe work is added to the draw path.
@@ -307,6 +308,7 @@ Shader::RuntimeInfo MakeRuntimeInfo(std::span<const Shader::IR::Program> program
         info.alpha_test_func = MaxwellToCompareFunction(
             key.state.UnpackComparisonOp(key.state.alpha_test_func.Value()));
         info.alpha_test_reference = Common::BitCast<float>(key.state.alpha_test_ref);
+        info.alpha_to_coverage_dither = key.state.EmulatesAlphaToCoverageDither();
         info.dual_source_blend = key.state.dual_source_blend != 0;
         // Vulkan requires integer fragment outputs for integer color attachments.
         for (size_t index = 0; index < info.color_output_types.size(); ++index) {
