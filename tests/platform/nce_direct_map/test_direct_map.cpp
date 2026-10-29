@@ -120,10 +120,13 @@ int main() {
     map.Map(base + 2 * MiB + 8 * KiB, 0x400000 + 8 * KiB, 8 * KiB, R | W);
     Check(HostProt(base + 2 * MiB) == VM_PROT_NONE, "D3 non-contiguous backing: inaccessible");
 
-    // D4: union of permissions, R|RW -> RW; RX|R -> RX; RW|RX -> RX (never W and X).
+    // D4: reads and writes need every guest page, execution any: R|RW -> R; RX|R -> RX;
+    // RW|RX -> RX (never W and X).
     map.Map(base + 3 * MiB, 0x500000, 16 * KiB, R);
     map.Protect(base + 3 * MiB + 8 * KiB, 8 * KiB, R | W);
-    Check(HostProt(base + 3 * MiB) == (VM_PROT_READ | VM_PROT_WRITE), "D4 R|RW -> RW");
+    Check(HostProt(base + 3 * MiB) == VM_PROT_READ && map.AccessAllowed(base + 3 * MiB + 8 * KiB, true) &&
+              !map.AccessAllowed(base + 3 * MiB, true),
+          "D4 R|RW -> R, the RW page emulated, the R page never written natively");
     map.Map(base + 3 * MiB + 16 * KiB, 0x504000, 16 * KiB, R | X);
     map.Protect(base + 3 * MiB + 24 * KiB, 8 * KiB, R);
     Check(HostProt(base + 3 * MiB + 16 * KiB) == (VM_PROT_READ | VM_PROT_EXECUTE), "D4 RX|R -> RX");
@@ -133,11 +136,12 @@ int main() {
               map.AccessAllowed(base + 3 * MiB + 32 * KiB, true),
           "D4 RW|RX -> RX, guest write allowed so emulated");
 
-    // D5: partially mapped host page keeps the direct mapping of the mapped pages.
+    // D5: an unmapped guest page makes the host page inaccessible: its backing is not the
+    // guest's. The mapped pages are emulated.
     map.Map(base + 4 * MiB, 0x600000, 8 * KiB, R | W);
-    Check(HostProt(base + 4 * MiB) == (VM_PROT_READ | VM_PROT_WRITE) && TryRead(base + 4 * MiB + 4 * KiB, &v) == 0 &&
-              v == 0x601000,
-          "D5 half-mapped host page: direct");
+    Check(HostProt(base + 4 * MiB) == VM_PROT_NONE && TryRead(base + 4 * MiB + 8 * KiB, &v) == 1 &&
+              map.AccessAllowed(base + 4 * MiB + 4 * KiB, true),
+          "D5 half-mapped host page: inaccessible, mapped pages emulated");
     map.Unmap(base + 4 * MiB, 8 * KiB);
     Check(HostProt(base + 4 * MiB) == VM_PROT_NONE && !map.AccessAllowed(base + 4 * MiB, false),
           "D5 unmapped: inaccessible");
@@ -204,18 +208,19 @@ int main() {
         // Reference.
         bool any = false, direct = true;
         u64 b = 0;
-        u32 u = 0;
+        u32 rw = R | W, x = 0;
         for (int i = 0; i < 4; i++) {
-            if (!mapped[i]) continue;
+            if (!mapped[i]) { rw = 0; continue; }
             const u64 pb = offs[i] - i * 4 * KiB;
             if (!any) b = pb;
             any = true;
             direct &= pb == b && pb % (16 * KiB) == 0;
-            u |= perms[i];
+            rw &= perms[i] & (R | W);
+            x |= perms[i] & X;
         }
         int expect = VM_PROT_NONE;
         if (any && direct) {
-            expect = static_cast<int>(u);
+            expect = static_cast<int>(rw | x);
             if ((expect & W) && (expect & X)) expect &= ~W;
             if (expect & X) expect |= R; // macOS has no execute-only pages
         }

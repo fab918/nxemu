@@ -924,6 +924,12 @@ struct Memory::Impl {
         context.impl->gpu_dirty_managers[context.core].Collect(address, size);
     }
 
+    static void HandleRasterizerWriteCollectExact(uint64_t address, uint64_t size, void * user_data)
+    {
+        auto & context = *static_cast<RasterizerWriteCollectContext *>(user_data);
+        context.impl->gpu_dirty_managers[context.core].CollectExact(address, size);
+    }
+
 #if defined(__APPLE__)
     // Caller holds nce_write_mutex. Apply each contiguous permission run once, and never
     // temporarily expose GPU-dirty pages while changing buffer write tracking.
@@ -1248,7 +1254,7 @@ struct Memory::Impl {
         }
         for (const auto & [address, size] : written)
         {
-            HandleRasterizerWrite(address, size);
+            HandleRasterizerWrite(address, size, true);
         }
     }
 #endif
@@ -1272,7 +1278,7 @@ struct Memory::Impl {
         area = system.GetVideo().HandleRasterizerDownload(p, size, area);
     }
 
-    void HandleRasterizerWrite(VAddr v_address, size_t size)
+    void HandleRasterizerWrite(VAddr v_address, size_t size, bool exact = false)
     {
         const auto * p = GetPointerImpl(v_address, []() {}, []() {});
         constexpr size_t sys_core = Hardware::NUM_CPU_CORES - 1;
@@ -1291,7 +1297,8 @@ struct Memory::Impl {
         };
 
         RasterizerWriteCollectContext context{this, core};
-        system.GetVideo().HandleRasterizerWrite(p, size, &rasterizer_write_areas[core].last_address, HandleRasterizerWriteCollect, &context);
+        system.GetVideo().HandleRasterizerWrite(p, size, &rasterizer_write_areas[core].last_address,
+            exact ? HandleRasterizerWriteCollectExact : HandleRasterizerWriteCollect, &context);
     }
 
     struct GPUDirtyState

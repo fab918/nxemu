@@ -20,9 +20,10 @@ namespace Common {
 /**
  * Maps guest memory at the same address in the host for native code execution on hosts with
  * 16 KiB pages. Each host page holds four guest pages; it is mapped directly when the backing
- * of its mapped guest pages is one aligned 16 KiB block, with the union of their permissions,
- * minus write when it would be writable and executable, minus what the access mask of any of
- * them denies. Otherwise it is inaccessible. Accesses the host page refuses but the guest page
+ * of its mapped guest pages is one aligned 16 KiB block. It is readable or writable only if all
+ * four guest pages are mapped and allow it, minus what the access mask of any of them denies;
+ * executable if any of them is, since instruction fetches cannot be emulated, never writable
+ * and executable at once. Otherwise it is inaccessible. Accesses the host page refuses but the guest page
  * allows are emulated by the fault handler.
  */
 class NceDirectMap {

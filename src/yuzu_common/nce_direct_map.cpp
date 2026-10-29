@@ -314,12 +314,17 @@ void NceDirectMap::UpdateWindow(WindowState& state, u64 begin, u64 end) {
         // Desired state of the host page.
         u64 desired = HostNone;
         u64 base = ~0ULL;
-        u32 perm = 0;
+        // Reads and writes are granted only where every guest page of the host page grants
+        // them, including unmapped ones; refused accesses the guest allows are emulated.
+        // Instruction fetches cannot be emulated, so execution is granted if any page grants it.
+        u32 data = PermRead | PermWrite;
+        u32 exec = 0;
         u32 denied = 0;
         bool direct = true;
         for (u64 i = 0; i < 4; i++) {
             const u64 value = guest[i].load(std::memory_order_relaxed);
             if ((value & Mapped) == 0) {
+                data = 0;
                 continue;
             }
             const u64 page_base = (value & OffsetMask) - i * GuestPageSize;
@@ -327,11 +332,12 @@ void NceDirectMap::UpdateWindow(WindowState& state, u64 begin, u64 end) {
                 base = page_base;
             }
             direct &= page_base == base && (base % HostPageSize) == 0;
-            perm |= static_cast<u32>(value & PermMask);
+            data &= static_cast<u32>(value & (PermRead | PermWrite));
+            exec |= static_cast<u32>(value & PermExecute);
             denied |= static_cast<u32>((value >> DenyShift) & PermMask);
         }
         if (base != ~0ULL && direct) {
-            u32 prot = perm & ~denied;
+            u32 prot = (data & ~denied) | exec;
             if ((prot & PermWrite) != 0 && (prot & PermExecute) != 0) {
                 prot &= ~PermWrite;
             }

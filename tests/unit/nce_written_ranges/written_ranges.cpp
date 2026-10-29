@@ -5,6 +5,9 @@
 #include <cstring>
 #include <utility>
 #include <vector>
+#include "yuzu_common/common_types.h"
+#include "nxemu-module-spec/operating_system.h"
+#include "nxemu-os/core/gpu_dirty_memory_manager.h"
 #include "nxemu-os/core/nce_written_ranges.h"
 
 namespace {
@@ -37,6 +40,24 @@ void Invalidate(Page& host, std::vector<bool>& gpu_modified, const Page& guest, 
             host[i] = guest[i];
         }
     }
+}
+// Invalidations the GPU thread applies when it gathers the CPU writes, relative to a page.
+struct Recorder final : ICacheInvalidator {
+    u64 base;
+    Ranges ranges;
+    explicit Recorder(u64 base_) : base{base_} {}
+    void OnCacheInvalidation(uint64_t address, uint32_t size) override {
+        ranges.emplace_back(address - base, size);
+    }
+};
+
+template <typename Collect>
+Ranges Gathered(u64 base, const Ranges& written, Collect&& collect) {
+    Core::GPUDirtyMemoryManager manager;
+    for (const auto& [offset, size] : written) collect(manager, base + offset, size);
+    Recorder recorder{base};
+    manager.Gather(&recorder);
+    return recorder.ranges;
 }
 } // namespace
 
@@ -95,6 +116,34 @@ int main() {
     for (u64 offset = 0x6c; offset < 0xa80; offset += 0x100) kept &= Load(host, offset) == 0xf9 && gpu_modified[offset];
     check(kept, "the GPU counters next to a CPU write are kept");
     check(Load(host, 0xaa0) == 0x1234 && Load(host, PageSize - 4) == 0x1234, "the CPU write reaches the host buffer");
+
+    // The GPU writes a counter at 0xaa8 and the CPU writes 4 bytes at 0xaa0, in the same 64-byte
+    // block. The ranges reach the buffer cache through the GPU dirty memory manager.
+    {
+        constexpr u64 base = 0x19838000;
+        Page guest{};
+        Page host = guest;
+        std::vector<bool> gpu_modified(PageSize);
+        Store(host, 0xaa8, 0xf9);
+        for (u64 i = 0xaa8; i < 0xaac; ++i) gpu_modified[i] = true;
+        const Page before = guest;
+        Store(guest, 0xaa0, 0x1234);
+        Store(host, 0xaa0, 0x1234);
+        const Ranges cpu = Written(guest, before);
+        check(cpu.size() == 1 && cpu[0] == std::pair<u64, u64>{0xaa0, 4}, "the CPU write is one word");
+
+        Page block_host = host;
+        std::vector<bool> block_modified = gpu_modified;
+        Invalidate(block_host, block_modified, guest,
+                   Gathered(base, cpu, [](auto& m, u64 a, u64 n) { m.Collect(a, n); }));
+        check(Load(block_host, 0xaa8) == 0, "64-byte collection loses the GPU counter (the bug)");
+
+        const Ranges exact = Gathered(base, cpu, [](auto& m, u64 a, u64 n) { m.CollectExact(a, n); });
+        check(exact == cpu, "exact collection invalidates only the CPU write");
+        Invalidate(host, gpu_modified, guest, exact);
+        check(Load(host, 0xaa8) == 0xf9 && gpu_modified[0xaa8], "the GPU counter in the same block is kept");
+        check(Load(host, 0xaa0) == 0x1234, "the CPU write in the same block reaches the host buffer");
+    }
 
     std::printf("NCE written ranges: %u failures\n", failures);
     return failures ? EXIT_FAILURE : EXIT_SUCCESS;
