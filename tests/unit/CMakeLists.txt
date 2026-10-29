@@ -55,6 +55,19 @@ target_include_directories(test_swapchain_present_mode PRIVATE "${CMAKE_SOURCE_D
 target_link_libraries(test_swapchain_present_mode PRIVATE Vulkan::Headers)
 nxemu_unit_test(test_swapchain_present_mode)
 
+# Exercise the actual fence method and query callback with deterministic GPU completion.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(_readback_fence_fixture "${CMAKE_CURRENT_BINARY_DIR}/readback_fence_fixture.cpp")
+add_custom_command(OUTPUT "${_readback_fence_fixture}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/readback_fence_order/generate.py"
+        "${CMAKE_SOURCE_DIR}" "${_readback_fence_fixture}"
+    DEPENDS readback_fence_order/generate.py readback_fence_order/fixture.cpp.in
+        "${CMAKE_SOURCE_DIR}/src/yuzu_video_core/fence_manager.h"
+        "${CMAKE_SOURCE_DIR}/src/yuzu_video_core/query_cache/query_cache.h"
+    VERBATIM)
+add_executable(test_readback_fence_order "${_readback_fence_fixture}")
+nxemu_unit_test(test_readback_fence_order)
+
 add_executable(test_image_rescaling image_rescaling/image_rescaling.cpp)
 target_include_directories(test_image_rescaling PRIVATE "${CMAKE_SOURCE_DIR}/src"
     "${CMAKE_SOURCE_DIR}/external/fmt/include" "${CMAKE_SOURCE_DIR}/external/boost")

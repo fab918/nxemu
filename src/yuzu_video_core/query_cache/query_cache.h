@@ -267,6 +267,8 @@ void QueryCacheBase<Traits>::CounterReport(GPUVAddr addr, QueryType counter_type
         if (True(query_base->flags & QueryFlagBits::IsInvalidated)) {
             if (!is_synced) [[likely]] {
                 impl->pending_unregister.push_back(query_location);
+            } else {
+                streamer->Free(query_location.query_id.Value());
             }
             return;
         }
@@ -286,6 +288,11 @@ void QueryCacheBase<Traits>::CounterReport(GPUVAddr addr, QueryType counter_type
         }
         if (!is_synced) [[likely]] {
             impl->pending_unregister.push_back(query_location);
+        } else {
+            // Normal fences can also be deferred behind a readback. Keep the
+            // slot alive until this callback has consumed it, not just until
+            // SignalFence returns.
+            streamer->Free(query_location.query_id.Value());
         }
     });
     if (is_fence) {
@@ -306,7 +313,6 @@ void QueryCacheBase<Traits>::CounterReport(GPUVAddr addr, QueryType counter_type
         impl->rasterizer.SyncOperation(std::move(operation));
     }
     if (is_synced) {
-        streamer->Free(new_query_id);
         return;
     }
     auto [cont_addr, base] = gen_caching_indexing(cpu_addr);

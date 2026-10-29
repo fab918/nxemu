@@ -1,0 +1,154 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// GPU completion is controlled by the test. The injected methods come directly
+// from the production headers; no Vulkan driver or wall-clock timing is needed.
+#include <atomic>
+#include <condition_variable>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <deque>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <queue>
+#include <utility>
+#include <vector>
+using u8 = uint8_t;
+using u32 = uint32_t;
+using u64 = uint64_t;
+void Check(bool ok, const char* message) {
+    if (!ok) { std::fprintf(stderr, "FAIL: %s\n", message); std::exit(1); }
+}
+#define ASSERT(x) Check((x), #x)
+#define True(x) ((x) != 0)
+#define False(x) ((x) == 0)
+namespace Settings {
+bool exact = false;
+bool IsGpuReadbackExact() { return exact; }
+}
+struct Fence {
+    bool stub;
+};
+struct Rasterizer {
+    unsigned flushes{}, invalidations{};
+    void FlushCommands() { ++flushes; }
+    void InvalidateGPUCache() { ++invalidations; }
+};
+struct FenceManager {
+    using TFence = std::shared_ptr<Fence>;
+    static constexpr bool can_async_check = true;
+    bool should_flush{}, fence_in_flight{}, gpu_complete{}, readback_ready{};
+    unsigned retired{};
+    std::mutex guard;
+    std::condition_variable cv;
+    Rasterizer rasterizer;
+    std::queue<TFence> fences;
+    std::deque<std::deque<std::function<void()>>> pending_operations;
+    std::deque<std::atomic<bool>*> pending_waiters;
+    std::deque<std::function<void()>> uncommitted_operations;
+    bool ShouldFlush() { return should_flush; }
+    void CommitAsyncFlushes() {}
+    void PopAsyncFlushes() { ++retired; if (gpu_complete) readback_ready = true; }
+    TFence CreateFence(bool stub) { return std::make_shared<Fence>(Fence{stub}); }
+    void QueueFence(TFence&) {}
+    template<bool> void TryReleasePendingFences() {}
+    @SUBMIT_FENCE@
+    void FinishFront() {
+        Check(!fences.empty(), "a fence is pending");
+        Check(fences.front()->stub || gpu_complete, "GPU work must finish before retirement");
+        PopAsyncFlushes();
+        auto ops = std::move(pending_operations.front());
+        pending_operations.pop_front(); pending_waiters.pop_front(); fences.pop();
+        for (auto& op : ops) op();
+    }
+};
+namespace QueryFlagBits {
+constexpr unsigned IsInvalidated = 1, IsFinalValueSynced = 2, HasTimestamp = 4;
+}
+struct Index { unsigned Value() const { return 0; } };
+struct Location { Index query_id; };
+struct Query { unsigned flags = QueryFlagBits::IsFinalValueSynced; u64 value = 42; };
+struct Streamer {
+    Query query;
+    bool live = true;
+    unsigned frees{};
+    u64 GetAmendValue() { Check(live, "query must live until its callback reads it"); return 0; }
+    void SetAccumulationValue(u64) {}
+    void Free(unsigned) { Check(live, "query must be freed exactly once"); live = false; ++frees; }
+};
+struct Gpu { u64 GetTicks() const { return 1234; } };
+struct QueryCache {
+    struct Impl { Gpu gpu; std::vector<Location> pending_unregister; } storage;
+    Impl* impl = &storage;
+    FenceManager& manager;
+    Streamer pool;
+    u64 guest_value{}, timestamp{};
+    explicit QueryCache(FenceManager& m) : manager(m) {}
+    void Signal() {
+        bool is_synced = true;
+        auto* streamer = &pool;
+        auto* query = &pool.query;
+        Location query_location;
+        const size_t new_query_id = 0;
+        auto* pointer = reinterpret_cast<u8*>(&guest_value);
+        auto* pointer_timestamp = reinterpret_cast<u8*>(&timestamp);
+        @QUERY_OPERATION@
+        manager.SubmitFence(std::move(operation), false, false, nullptr);
+        @QUERY_RETIREMENT@
+    }
+};
+int main() {
+    {
+        FenceManager manager; QueryCache queries(manager); queries.Signal();
+        Check(queries.guest_value == 42 && queries.pool.frees == 1,
+              "Normal keeps its immediate path without GPU results or predecessors");
+        manager.FinishFront();
+    }
+    {
+        FenceManager manager; manager.should_flush = true;
+        QueryCache queries(manager); queries.Signal();
+        Check(queries.guest_value == 0 && queries.pool.live,
+              "Normal must not publish or recycle a signal ahead of a readback");
+        Check(manager.rasterizer.flushes == 1, "the GPU work is submitted");
+        manager.gpu_complete = true; manager.FinishFront();
+        Check(manager.readback_ready && queries.guest_value == 42 && queries.pool.frees == 1,
+              "readback retirement precedes guest completion and frees the slot once");
+    }
+    {
+        FenceManager manager; manager.should_flush = true;
+        manager.SubmitFence([] {}, true, false, nullptr);
+        manager.should_flush = false;
+        QueryCache queries(manager); queries.Signal();
+        Check(queries.guest_value == 0 && queries.pool.live,
+              "a later Normal signal cannot overtake an older pending fence");
+        manager.gpu_complete = true; manager.FinishFront();
+        Check(queries.guest_value == 0, "later signal waits its turn");
+        manager.FinishFront();
+        Check(queries.guest_value == 42 && queries.pool.frees == 1, "ordered later retirement");
+    }
+    {
+        FenceManager manager; manager.fence_in_flight = true;
+        QueryCache queries(manager); queries.Signal();
+        Check(queries.pool.live && queries.guest_value == 0,
+              "a fence popped by the worker still prevents overtaking");
+        manager.fence_in_flight = false; manager.FinishFront();
+    }
+    {
+        FenceManager manager; manager.should_flush = true;
+        QueryCache queries(manager); queries.pool.query.flags |= QueryFlagBits::IsInvalidated;
+        queries.Signal(); Check(queries.pool.live, "invalidated deferred query stays owned");
+        manager.gpu_complete = true; manager.FinishFront();
+        Check(queries.guest_value == 0 && queries.pool.frees == 1,
+              "invalidated callback frees its slot without writing guest memory");
+    }
+    {
+        FenceManager manager; bool signalled = false;
+        Check(manager.SubmitFence([&] { signalled = true; }, true, true, nullptr) && signalled,
+              "explicit empty synchronization keeps its inline fast path");
+        Settings::exact = true; manager.SubmitFence([&] { signalled = false; }, false, false, nullptr);
+        Check(signalled, "High still defers even an empty ordinary fence");
+        manager.FinishFront(); Check(!signalled, "High callback completes at retirement");
+    }
+    std::puts("Readback fence ordering and query lifetime: PASS");
+}
