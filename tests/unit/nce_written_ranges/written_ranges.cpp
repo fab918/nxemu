@@ -80,7 +80,7 @@ int main() {
     Store(current, 0x40, 2);
     Store(current, 0x7c, 3);
     ranges = Written(current, snapshot);
-    check(ranges.size() == 1 && ranges[0] == std::pair<u64, u64>{0x3c, 0x44}, "a run crossing blocks is trimmed at both ends");
+    check(ranges == Ranges{{0x3c, 8}, {0x7c, 4}}, "unchanged words split writes across adjacent blocks");
 
     current = snapshot;
     Store(current, 0x0, 1);
@@ -143,6 +143,30 @@ int main() {
         Invalidate(host, gpu_modified, guest, exact);
         check(Load(host, 0xaa8) == 0xf9 && gpu_modified[0xaa8], "the GPU counter in the same block is kept");
         check(Load(host, 0xaa0) == 0x1234, "the CPU write in the same block reaches the host buffer");
+    }
+
+    // CPU writes on both sides of an undownloaded GPU counter must not erase it.
+    // Exercise holes inside one scan block and across adjacent scan blocks.
+    for (const auto& offsets : {std::array<u64, 3>{0x100, 0x104, 0x108},
+                               std::array<u64, 3>{0x13c, 0x140, 0x144}}) {
+        constexpr u64 base = 0x19838000;
+        Page guest{};
+        Page host{};
+        std::vector<bool> gpu_modified(PageSize);
+        const Page before = guest;
+        Store(host, offsets[1], 0xf9);
+        for (u64 i = offsets[1]; i < offsets[1] + 4; ++i) gpu_modified[i] = true;
+        Store(guest, offsets[0], 1);
+        Store(guest, offsets[2], 2);
+        const Ranges cpu = Written(guest, before);
+        check(cpu == Ranges{{offsets[0], 4}, {offsets[2], 4}},
+              "unchanged words between CPU stores are not invalidated");
+        Invalidate(host, gpu_modified, guest,
+                   Gathered(base, cpu, [](auto& m, u64 a, u64 n) { m.CollectExact(a, n); }));
+        check(Load(host, offsets[1]) == 0xf9 && gpu_modified[offsets[1]],
+              "the GPU counter between CPU stores is kept");
+        check(Load(host, offsets[0]) == 1 && Load(host, offsets[2]) == 2,
+              "both CPU stores reach the host buffer");
     }
 
     std::printf("NCE written ranges: %u failures\n", failures);

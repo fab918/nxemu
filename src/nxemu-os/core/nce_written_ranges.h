@@ -1,34 +1,45 @@
 #pragma once
 
+#include <algorithm>
 #include <cstring>
 #include "yuzu_common/common_types.h"
 
 namespace Core {
 
-// Calls func(offset, size) for each run of 4-byte words that differ between a guest page and the
-// snapshot taken before it became writable. The page is scanned in 64-byte blocks, each run is
-// then trimmed to its first and last changed word.
+// Calls func(offset, size) for each contiguous run of changed 4-byte words.
+// Skip unchanged 64-byte blocks, but never merge across an unchanged word: it can
+// contain a GPU write that has not been downloaded to guest memory yet.
 template <typename Func>
 void ForEachNceWrittenRange(const u8 * current, const u8 * snapshot, u64 page_size, Func && func)
 {
     constexpr u64 granularity = 64;
     constexpr u64 word = 4;
-    for (u64 offset = 0; offset < page_size;)
-    {
-        if (std::memcmp(current + offset, snapshot + offset, granularity) == 0)
-        {
-            offset += granularity;
-            continue;
+    u64 begin = page_size;
+    const auto finish = [&](u64 end) {
+        if (begin != page_size) {
+            func(begin, end - begin);
+            begin = page_size;
         }
-        u64 begin = offset;
-        do {
-            offset += granularity;
-        } while (offset < page_size && std::memcmp(current + offset, snapshot + offset, granularity) != 0);
-        u64 end = offset;
-        while (std::memcmp(current + begin, snapshot + begin, word) == 0) begin += word;
-        while (std::memcmp(current + end - word, snapshot + end - word, word) == 0) end -= word;
-        func(begin, end - begin);
+    };
+    for (u64 block = 0; block < page_size;) {
+        const u64 block_size = std::min(granularity, page_size - block);
+        const u64 end = block + block_size;
+        if (std::memcmp(current + block, snapshot + block, block_size) == 0) {
+            finish(block);
+        } else {
+            for (u64 offset = block; offset < end;) {
+                const u64 size = std::min(word, end - offset);
+                if (std::memcmp(current + offset, snapshot + offset, size) == 0) {
+                    finish(offset);
+                } else if (begin == page_size) {
+                    begin = offset;
+                }
+                offset += size;
+            }
+        }
+        block = end;
     }
+    finish(page_size);
 }
 
 } // namespace Core
