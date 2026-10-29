@@ -105,24 +105,23 @@ void AlphaToCoverageDither(EmitContext& ctx) {
         return;
     }
     const Id f32{ctx.F32[1]};
-    const Id u32{ctx.U32[1]};
     const Id rt0_color{ctx.OpLoad(ctx.F32[4], ctx.frag_color[0])};
     const Id raw_alpha{ctx.OpCompositeExtract(f32, rt0_color, 3u)};
-    const Id zero{ctx.Const(0.0f)};
-    const Id alpha{ctx.OpSelect(f32, ctx.OpIsNan(ctx.U1, raw_alpha), zero, raw_alpha)};
-    const Id saturated{ctx.OpFClamp(f32, alpha, zero, ctx.Const(1.0f))};
-    const Id level{ctx.OpUMin(u32, ctx.OpConvertFToU(u32, ctx.OpFMul(f32, saturated, ctx.Const(8.0f))),
-                              ctx.Const(7U))};
-
+    // Raw host FragCoord stays at single-pixel granularity at every resolution scale.
+    // Do not use the guest-scaled Position attributes or a temporal/jitter seed.
     const Id frag_coord{ctx.OpLoad(ctx.F32[4], ctx.input_position)};
-    const Id one{ctx.Const(1U)};
-    const Id x{ctx.OpBitwiseAnd(u32, ctx.OpConvertFToU(u32, ctx.OpCompositeExtract(f32, frag_coord, 0u)), one)};
-    const Id y{ctx.OpBitwiseAnd(u32, ctx.OpConvertFToU(u32, ctx.OpCompositeExtract(f32, frag_coord, 1u)), one)};
-    const Id shift{ctx.OpBitwiseOr(u32, ctx.OpShiftLeftLogical(u32, level, ctx.Const(2U)),
-                                   ctx.OpBitwiseOr(u32, x, ctx.OpShiftLeftLogical(u32, y, one)))};
-    const Id bit{ctx.OpBitwiseAnd(
-        u32, ctx.OpShiftRightLogical(u32, ctx.Const(ALPHA_TO_COVERAGE_DITHER_MASK), shift), one)};
-    const Id keep{ctx.OpINotEqual(ctx.U1, bit, ctx.Const(0U))};
+    const Id x{ctx.OpCompositeExtract(f32, frag_coord, 0u)};
+    const Id y{ctx.OpCompositeExtract(f32, frag_coord, 1u)};
+    const Id nx{ctx.OpFMul(f32, x, ctx.Const(IGN_X))};
+    const Id ny{ctx.OpFMul(f32, y, ctx.Const(IGN_Y))};
+    const Id gradient{ctx.OpFAdd(f32, nx, ny)};
+    const Id value{ctx.OpFMul(f32, ctx.OpFract(f32, gradient), ctx.Const(IGN_MULTIPLIER))};
+    // Keep the threshold deterministic across compiler contraction choices.
+    for (const Id id : {nx, ny, gradient, value}) {
+        ctx.Decorate(id, spv::Decoration::NoContraction);
+    }
+    const Id noise{ctx.OpFract(f32, value)};
+    const Id keep{ctx.OpFOrdGreaterThan(ctx.U1, raw_alpha, noise)};
 
     const Id keep_label{ctx.OpLabel()};
     const Id discard_label{ctx.OpLabel()};

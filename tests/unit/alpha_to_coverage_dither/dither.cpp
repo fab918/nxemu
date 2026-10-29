@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include <cmath>
+#include <bit>
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
@@ -20,10 +21,10 @@ VideoSettings videoSettings{};
 namespace IR = Shader::IR;
 
 namespace {
-unsigned Kept(float alpha, u32 x0 = 0, u32 y0 = 0) {
+unsigned Kept(float alpha, u32 size = 128, u32 x0 = 63, u32 y0 = 119) {
     unsigned kept{};
-    for (u32 y = y0; y < y0 + 2; ++y) {
-        for (u32 x = x0; x < x0 + 2; ++x) {
+    for (u32 y = y0; y < y0 + size; ++y) {
+        for (u32 x = x0; x < x0 + size; ++x) {
             kept += Shader::AlphaToCoverageDitherKeeps(alpha, x, y) ? 1 : 0;
         }
     }
@@ -34,12 +35,14 @@ struct Module {
     std::vector<u32> words;
     bool kill{};
     bool frag_coord{};
-    bool mask{};
+    bool ign{};
+    unsigned multiplies{}, fractions{}, adds{}, contractions{}, loops{}, texture_reads{};
 };
 
 // Compile a fragment shader that writes the alpha of render target 0 through the production
 // SPIR-V backend.
-Module Compile(bool dither, bool writes_color, bool writes_alpha = true) {
+Module Compile(bool dither, bool writes_color, bool writes_alpha = true,
+               Shader::AttributeType output = Shader::AttributeType::Float) {
     Shader::ObjectPool<IR::Inst> inst_pool{64};
     Shader::ObjectPool<IR::Block> block_pool{4};
     IR::Block* const block = block_pool.Create(inst_pool);
@@ -63,6 +66,7 @@ Module Compile(bool dither, bool writes_color, bool writes_alpha = true) {
     profile.supported_spirv = 0x00010300;
     Shader::RuntimeInfo runtime{};
     runtime.alpha_to_coverage_dither = dither;
+    runtime.color_output_types[0] = output;
     Shader::Backend::Bindings bindings{};
     Module module;
     module.words = Shader::Backend::SPIRV::EmitSPIRV(profile, runtime, program, bindings);
@@ -74,8 +78,17 @@ Module Compile(bool dither, bool writes_color, bool writes_alpha = true) {
         }
         const auto op = static_cast<spv::Op>(w[i] & 0xffff);
         module.kill |= op == spv::Op::OpKill;
-        module.mask |= op == spv::Op::OpConstant && count == 4 &&
-                       w[i + 3] == Shader::ALPHA_TO_COVERAGE_DITHER_MASK;
+        module.ign |= op == spv::Op::OpConstant && count == 4 &&
+                      w[i + 3] == std::bit_cast<u32>(Shader::IGN_MULTIPLIER);
+        module.multiplies += op == spv::Op::OpFMul;
+        module.adds += op == spv::Op::OpFAdd;
+        // GLSL.std.450 Fract is instruction 10.
+        module.fractions += op == spv::Op::OpExtInst && count >= 6 && w[i + 4] == 10;
+        module.contractions += op == spv::Op::OpDecorate && count == 3 &&
+                               w[i + 2] == static_cast<u32>(spv::Decoration::NoContraction);
+        module.loops += op == spv::Op::OpLoopMerge;
+        module.texture_reads += op == spv::Op::OpImageSampleImplicitLod ||
+                                op == spv::Op::OpImageSampleExplicitLod || op == spv::Op::OpImageFetch;
         module.frag_coord |= op == spv::Op::OpDecorate && count == 4 &&
                              w[i + 2] == static_cast<u32>(spv::Decoration::BuiltIn) &&
                              w[i + 3] == static_cast<u32>(spv::BuiltIn::FragCoord);
@@ -91,44 +104,62 @@ int main(int argc, char** argv) {
         if (!ok) { ++failures; std::fprintf(stderr, "FAIL: %s\n", label); }
     };
 
-    // Coverage of the 2x2 footprint for each eighth of alpha
-    constexpr unsigned expected[8]{0, 1, 1, 2, 2, 3, 3, 4};
-    bool levels = true;
-    for (u32 level = 0; level < 8; ++level) {
-        levels &= Kept((static_cast<float>(level) + 0.5f) / 8.0f) == expected[level];
-    }
-    check(levels, "each alpha eighth keeps 0, 1, 1, 2, 2, 3, 3 or 4 pixels of the footprint");
-    check(Kept(0.0f) == 0 && Kept(1.0f) == 4, "alpha 0 drops and alpha 1 keeps the footprint");
-    check(Kept(-1.0f) == 0 && Kept(2.0f) == 4, "alpha is saturated");
-    check(Kept(std::numeric_limits<float>::quiet_NaN()) == 0, "a NaN alpha drops the footprint");
+    check(Kept(0.0f) == 0 && Kept(1.0f) == 128 * 128, "alpha endpoints stay fully transparent/opaque");
+    check(Kept(-1.0f) == 0 && Kept(2.0f) == 128 * 128, "out-of-range alpha saturates coverage");
+    check(Kept(std::numeric_limits<float>::quiet_NaN()) == 0, "NaN alpha is transparent");
+    check(Kept(-std::numeric_limits<float>::infinity()) == 0 &&
+          Kept(std::numeric_limits<float>::infinity()) == 128 * 128, "infinite alpha endpoints");
 
-    bool nested = true;
-    for (u32 level = 0; level < 7; ++level) {
-        for (u32 xy = 0; xy < 4; ++xy) {
-            const bool now = Shader::AlphaToCoverageDitherKeeps(level / 8.0f, xy & 1, xy >> 1);
-            const bool next = Shader::AlphaToCoverageDitherKeeps((level + 1) / 8.0f, xy & 1, xy >> 1);
-            nested &= !now || next;
+    for (u32 scale : {1U, 2U, 3U, 4U, 6U}) {
+        const u32 size = 128 * scale;
+        for (float alpha : {.01f, .1f, .125f, .3f, .4f, .5f, .6f, .75f, .9f, .99f}) {
+            const float coverage = float(Kept(alpha, size)) / float(size * size);
+            check(std::abs(coverage - alpha) < .005f,
+                  "coverage follows continuous alpha at every resolution scale");
         }
     }
-    check(nested, "a pixel kept at one alpha stays kept at higher alpha (no flicker while fading)");
-    check(Kept(0.3f, 0, 0) == Kept(0.3f, 6, 10), "the pattern repeats every 2 pixels");
+    check(Kept(.41f) > Kept(.40f) + 100,
+          "small alpha changes produce a fade instead of eight quantized levels");
 
-    // A fading object covers a share of the screen close to its alpha, instead of all or nothing
-    unsigned covered{};
-    for (u32 y = 0; y < 64; ++y) {
-        for (u32 x = 0; x < 64; ++x) {
-            covered += Shader::AlphaToCoverageDitherKeeps(0.4f, x, y) ? 1 : 0;
+    bool nested = true, repeated = true;
+    unsigned changed_after_two{}, mixed_blocks{};
+    for (u32 y = 0; y < 128; ++y) {
+        for (u32 x = 0; x < 128; ++x) {
+            const bool keep = Shader::AlphaToCoverageDitherKeeps(.4f, x, y);
+            nested &= !keep || Shader::AlphaToCoverageDitherKeeps(.41f, x, y);
+            repeated &= keep == Shader::AlphaToCoverageDitherKeeps(.4f, x, y);
+            changed_after_two += keep != Shader::AlphaToCoverageDitherKeeps(.4f, x + 2, y);
+            if ((x % 4 == 0) && (y % 4 == 0)) {
+                const unsigned count = Kept(.5f, 4, x, y);
+                mixed_blocks += count > 0 && count < 16;
+            }
         }
     }
-    check(covered == 64 * 64 / 2, "alpha 0.4 covers half of the pixels instead of all or none");
+    check(nested && repeated, "coverage is spatially stable and monotonic during a fade");
+    check(changed_after_two > 2048, "no repeating 2x2 checkerboard");
+    check(mixed_blocks == 32 * 32, "4x4 host blocks contain fine mixed coverage");
 
     const Module off = Compile(false, true);
     const Module on = Compile(true, true);
     const Module no_color = Compile(true, false);
     check(!off.kill && !off.frag_coord, "without dither the shader has no discard");
-    check(on.kill && on.frag_coord && on.mask, "with dither the shader reads FragCoord and discards");
+    check(on.kill && on.frag_coord && on.ign, "IGN shader reads host FragCoord and discards");
+    check(on.multiplies == 3 && on.adds == 1 && on.fractions == 2 &&
+          on.loops == 0 && on.texture_reads == 0, "IGN uses bounded arithmetic, no loops or texture reads");
+    check(on.contractions == 4, "IGN arithmetic prevents compiler-dependent contraction");
     check(!no_color.kill, "a shader that does not write the color is left alone");
     check(!Compile(true, true, false).kill, "a shader that does not write alpha is left alone");
+    check(!Compile(true, true, true, Shader::AttributeType::UnsignedInt).kill &&
+          !Compile(true, true, true, Shader::AttributeType::SignedInt).kill,
+          "integer color attachments remain untouched");
+    for (u32 scale : {1U, 2U, 4U}) {
+        videoSettings.resolution_info.up_scale = scale;
+        videoSettings.resolution_info.up_factor = float(scale);
+        videoSettings.resolution_info.down_factor = 1.0f / float(scale);
+        videoSettings.resolution_info.active = scale != 1;
+        check(Compile(true, true).words == on.words,
+              "IGN shader does not change with guest resolution scaling");
+    }
 
     if (argc > 1) {
         // Write the module for spirv-val

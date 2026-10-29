@@ -57,7 +57,8 @@ using VideoCommon::GraphicsEnvironment;
 
 // Push-constant render-area dimensions now occupy a separate byte range.
 // Loop-invariant pointer tracking also changes the storage descriptor list.
-constexpr u32 CACHE_VERSION = 23;
+// Single-sample alpha-to-coverage now uses continuous IGN thresholds.
+constexpr u32 CACHE_VERSION = 24;
 constexpr std::array<char, 8> VULKAN_CACHE_MAGIC_NUMBER{'y', 'u', 'z', 'u', 'v', 'k', 'c', 'h'};
 
 template <typename Container>

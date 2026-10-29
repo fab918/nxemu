@@ -102,7 +102,7 @@ struct RuntimeInfo {
     std::optional<float> fixed_state_point_size;
     std::optional<CompareFunction> alpha_test_func;
     float alpha_test_reference{};
-    /// Emulate the 2x2 alpha-to-coverage dither of a single-sample target with discards
+    /// Approximate single-sample alpha-to-coverage with stable host-pixel IGN coverage
     bool alpha_to_coverage_dither{};
 
     /// Static Y negate value
