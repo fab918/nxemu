@@ -50,6 +50,11 @@ target_include_directories(test_surface_clip PRIVATE "${CMAKE_SOURCE_DIR}/src")
 target_link_libraries(test_surface_clip PRIVATE Vulkan::Headers)
 nxemu_unit_test(test_surface_clip)
 
+add_executable(test_swapchain_present_mode swapchain_present_mode/present_mode.cpp)
+target_include_directories(test_swapchain_present_mode PRIVATE "${CMAKE_SOURCE_DIR}/src")
+target_link_libraries(test_swapchain_present_mode PRIVATE Vulkan::Headers)
+nxemu_unit_test(test_swapchain_present_mode)
+
 add_executable(test_image_rescaling image_rescaling/image_rescaling.cpp)
 target_include_directories(test_image_rescaling PRIVATE "${CMAKE_SOURCE_DIR}/src"
     "${CMAKE_SOURCE_DIR}/external/fmt/include" "${CMAKE_SOURCE_DIR}/external/boost")
