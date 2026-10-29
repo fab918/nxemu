@@ -1,4 +1,7 @@
 function(nxemu_unit_test name)
+    # Release builds still need to execute assertion-based regression checks.
+    target_compile_options(${name} PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG> $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-UNDEBUG>)
     add_test(NAME ${name} COMMAND ${name})
     set_tests_properties(${name} PROPERTIES LABELS unit TIMEOUT 120)
 endfunction()
@@ -20,8 +23,6 @@ target_include_directories(test_query_fences BEFORE PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/query_fences/stubs" "${CMAKE_SOURCE_DIR}/src"
     "${CMAKE_SOURCE_DIR}/external/boost" "${CMAKE_SOURCE_DIR}/external/fmt/include")
 target_link_libraries(test_query_fences PRIVATE nxemu_test_support Threads::Threads)
-target_compile_options(test_query_fences PRIVATE
-    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG> $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-UNDEBUG>)
 nxemu_unit_test(test_query_fences)
 
 add_executable(test_startup_wait session_lifecycle/startup_wait.cpp)
