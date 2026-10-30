@@ -322,6 +322,9 @@ struct Info {
 
     bool stores_indexed_attributes{};
 
+    // Indirect global stores may reach any tracked storage buffer, so the helpers write to
+    // all of them. This does not set is_written: that flag makes the buffer cache treat a
+    // buffer as modified by the GPU and download it, over newer CPU writes.
     bool stores_global_memory{};
     bool uses_local_memory{};
 
@@ -418,6 +421,24 @@ u32 NumDescriptors(const Descriptors& descriptors) {
         num += desc.count;
     }
     return num;
+}
+
+// Buffers indirect global stores test, known-written ones first: a store that reaches one
+// of them takes the same path as when it was the only candidate.
+inline std::vector<size_t> GlobalStoreBufferOrder(const Info& info) {
+    std::vector<size_t> order;
+    if (!info.stores_global_memory) {
+        return order;
+    }
+    const auto& descs{info.storage_buffers_descriptors};
+    for (bool is_written : {true, false}) {
+        for (size_t index = 0; index < descs.size(); ++index) {
+            if (descs[index].is_written == is_written) {
+                order.push_back(index);
+            }
+        }
+    }
+    return order;
 }
 
 } // namespace Shader

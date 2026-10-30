@@ -5,6 +5,7 @@
 #include <array>
 #include <bit>
 #include <climits>
+#include <numeric>
 #include <unordered_map>
 
 #include <boost/container/static_vector.hpp>
@@ -1031,18 +1032,16 @@ void EmitContext::DefineGlobalMemoryFunctions(const Info& info) {
     using DefPtr = Id StorageDefinitions::*;
     const Id zero{u32_zero_value};
     const bool supports_uniform_aliasing{profile.SupportsUniformBufferDescriptorAliasing()};
+    std::vector<size_t> read_order(info.storage_buffers_descriptors.size());
+    std::iota(read_order.begin(), read_order.end(), size_t{0});
+    const std::vector<size_t> write_order{GlobalStoreBufferOrder(info)};
     const auto define_body{[&](DefPtr ssbo_member, Id addr, Id element_pointer, u32 shift,
                                u32 scalar_components, bool is_write, auto&& callback) {
         AddLabel();
-        const size_t num_buffers{info.storage_buffers_descriptors.size()};
-        for (size_t index = 0; index < num_buffers; ++index) {
-            // Indirect reads can also reference explicitly tracked buffers outside
-            // the NVN descriptor table. Test every bound guest range at runtime.
-            // Writes only reach buffers already known to be written.
+        // Indirect accesses can also reference explicitly tracked buffers outside
+        // the NVN descriptor table. Test every bound guest range at runtime.
+        for (const size_t index : is_write ? write_order : read_order) {
             const auto& ssbo{info.storage_buffers_descriptors[index]};
-            if (is_write && !ssbo.is_written) {
-                continue;
-            }
             Id unaligned_addr{};
             Id ssbo_size_pointer{};
             Id ssbo_size_word{};

@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: Copyright 2021 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <numeric>
+#include <vector>
+
 #include "yuzu_shader_recompiler/backend/glasm/emit_glasm_instructions.h"
 #include "yuzu_shader_recompiler/backend/glasm/glasm_emit_context.h"
 #include "yuzu_shader_recompiler/frontend/ir/program.h"
@@ -30,15 +33,15 @@ void StorageOp(EmitContext& ctx, const IR::Value& binding, ScalarU32 offset,
 
 void GlobalStorageOp(EmitContext& ctx, Register address, bool pointer_based, bool is_write,
                      std::string_view expr, std::string_view else_expr = {}) {
-    const size_t num_buffers{ctx.info.storage_buffers_descriptors.size()};
+    // Indirect accesses can reference tracked buffers outside the NVN table too.
+    std::vector<size_t> order(ctx.info.storage_buffers_descriptors.size());
+    std::iota(order.begin(), order.end(), size_t{0});
+    if (is_write) {
+        order = GlobalStoreBufferOrder(ctx.info);
+    }
     size_t num_used_buffers{};
-    for (size_t index = 0; index < num_buffers; ++index) {
+    for (const size_t index : order) {
         const auto& ssbo{ctx.info.storage_buffers_descriptors[index]};
-        // Indirect reads can reference tracked buffers outside the NVN table too.
-        // Writes only reach buffers already known to be written.
-        if (is_write && !ssbo.is_written) {
-            continue;
-        }
         ++num_used_buffers;
         const u64 ssbo_align_mask{~(ctx.profile.min_ssbo_alignment - 1U)};
         ctx.Add("LDC.U64 DC.x,c{}[{}];"    // unaligned_ssbo_addr

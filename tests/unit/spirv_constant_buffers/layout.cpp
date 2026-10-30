@@ -54,7 +54,8 @@ static std::map<std::string, u32> Layout(bool molten, u32 used_size, bool global
 
 // Ace Combat's indirect parameter reads target a tracked descriptor at c0[0x290],
 // outside the compute NVN table (0x310). These helpers used to return only zero.
-static void GlobalMemoryLoads(bool aliasing, bool molten) {
+// A runtime pointer can also store into a tracked buffer the static pass saw only read.
+static void GlobalMemoryHelpers(bool aliasing, bool molten, bool indirect_stores) {
     Shader::Profile profile{};
     profile.support_int64 = true;
     profile.support_descriptor_aliasing = aliasing;
@@ -66,6 +67,7 @@ static void GlobalMemoryLoads(bool aliasing, bool molten) {
     program.stage = Shader::Stage::Compute;
     auto& info = program.info;
     info.uses_global_memory = true;
+    info.stores_global_memory = indirect_stores;
     info.nvn_buffer_base = 0x310;
     info.used_constant_buffer_types = Shader::IR::Type::U32 | Shader::IR::Type::U32x2;
     info.used_storage_buffer_types = Shader::IR::Type::U32 | Shader::IR::Type::U32x2 |
@@ -73,6 +75,8 @@ static void GlobalMemoryLoads(bool aliasing, bool molten) {
     info.constant_buffer_descriptors.push_back({.index = 0, .count = 1});
     info.storage_buffers_descriptors.push_back(
         {.cbuf_index = 0, .cbuf_offset = 0x290, .count = 1, .is_written = false});
+    info.storage_buffers_descriptors.push_back(
+        {.cbuf_index = 0, .cbuf_offset = 0x2a0, .count = 1, .is_written = true});
     assert(!info.nvn_buffer_used.any());
     Shader::Backend::Bindings bindings{};
     Shader::Backend::SPIRV::EmitContext context(profile, runtime, program, bindings);
@@ -80,6 +84,14 @@ static void GlobalMemoryLoads(bool aliasing, bool molten) {
     std::map<u32, unsigned> loads;
     std::map<u32, unsigned> stores;
     std::map<u32, u32> function_controls;
+    std::map<u32, size_t> buffer_of;
+    for (size_t buffer = 0; buffer < 2; ++buffer) {
+        const auto& views = context.ssbos[buffer];
+        for (const auto id : {views.U32, views.U32x2, views.U32x4}) {
+            if (id.value != 0) buffer_of[id.value] = buffer;
+        }
+    }
+    std::map<u32, std::vector<size_t>> buffers_accessed;
     u32 function = 0;
     for (size_t i = 5; i < words.size();) {
         const auto count = words[i] >> 16;
@@ -91,6 +103,8 @@ static void GlobalMemoryLoads(bool aliasing, bool molten) {
         }
         if (op == spv::Op::OpLoad) ++loads[function];
         if (op == spv::Op::OpStore) ++stores[function];
+        if (op == spv::Op::OpAccessChain && buffer_of.contains(words[i + 3]))
+            buffers_accessed[function].push_back(buffer_of.at(words[i + 3]));
         if (op == spv::Op::OpFunctionEnd) function = 0;
         i += count;
     }
@@ -98,11 +112,19 @@ static void GlobalMemoryLoads(bool aliasing, bool molten) {
     assert(loads[context.load_global_func_u32.value] >= 3);
     assert(loads[context.load_global_func_u32x2.value] >= 3);
     assert(loads[context.load_global_func_u32x4.value] >= 3);
-    // A buffer that is only read must not become a write target: marking it written
-    // makes the GPU download it over newer CPU writes.
-    assert(stores[context.write_global_func_u32.value] == 0);
-    assert(stores[context.write_global_func_u32x2.value] == 0);
-    assert(stores[context.write_global_func_u32x4.value] == 0);
+    // Indirect stores must reach the buffer even though it is not marked written: that
+    // flag makes the buffer cache download it over newer CPU writes.
+    assert(!info.storage_buffers_descriptors[0].is_written);
+    for (const auto function : {context.write_global_func_u32, context.write_global_func_u32x2,
+                                context.write_global_func_u32x4}) {
+        assert(indirect_stores ? stores[function.value] > 0 : stores[function.value] == 0);
+        // Known-written buffers are tested first: stores into them cost what they did
+        // when they were the only candidates.
+        const auto& accessed = buffers_accessed[function.value];
+        assert(indirect_stores ? accessed.size() >= 2 && accessed.front() == 1 &&
+                                     accessed.back() == 0
+                               : accessed.empty());
+    }
     for (const auto function : {context.load_global_func_u32, context.load_global_func_u32x2,
                                 context.load_global_func_u32x4, context.write_global_func_u32,
                                 context.write_global_func_u32x2, context.write_global_func_u32x4}) {
@@ -184,8 +206,10 @@ int main() {
     assert(Layout(true, 65536).at("c3") == 65536); // indirect accesses
     assert(Layout(true, 16, true).at("c3") == 65536); // global-memory helpers
     assert(Layout(false, 16).at("c3") == 65536); // other driver profiles
-    GlobalMemoryLoads(true, false);
-    GlobalMemoryLoads(false, false);
-    GlobalMemoryLoads(true, true);
-    std::puts("PASS: SPIR-V constant-buffer layouts and non-NVN global-memory loads");
+    for (bool indirect_stores : {false, true}) {
+        GlobalMemoryHelpers(true, false, indirect_stores);
+        GlobalMemoryHelpers(false, false, indirect_stores);
+        GlobalMemoryHelpers(true, true, indirect_stores);
+    }
+    std::puts("PASS: SPIR-V constant-buffer layouts and non-NVN global-memory accesses");
 }
