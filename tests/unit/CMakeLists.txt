@@ -51,3 +51,5 @@ target_link_libraries(test_loader_metadata PRIVATE nxemu-loader)
 nxemu_unit_test(test_loader_metadata)
 
 add_subdirectory(shader_profile)
+
+add_subdirectory(mediacodec)

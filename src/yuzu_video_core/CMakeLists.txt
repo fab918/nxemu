@@ -9,6 +9,9 @@ if(LIBVA_FOUND)
     list(APPEND FFmpeg_LIBRARIES ${LIBVA_LIBRARIES})
 endif()
 
+option(NXEMU_ENABLE_ANDROID_MEDIACODEC
+       "Use Android MediaCodec for H.264/VP9 NVDEC GPU decoding" ${ANDROID})
+
 add_library(video_core STATIC
     pipeline_cache_store.cpp
     pipeline_cache_store.h
@@ -460,6 +463,11 @@ if(NOT FFmpeg_INCLUDE_DIR)
     set(FFmpeg_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external/ffmpeg/include")
 endif()
 
+if(ANDROID AND NXEMU_ENABLE_ANDROID_MEDIACODEC AND NOT FFmpeg_LIBRARIES)
+    include(nxemu_android_ffmpeg)
+    add_dependencies(video_core nxemu_android_ffmpeg)
+endif()
+
 if(ANDROID AND NOT FFmpeg_LIBRARIES)
     # Static link order matters. Expected layout: external/ffmpeg/lib/<abi>/lib*.a
     set(_ffmpeg_android_root "${CMAKE_SOURCE_DIR}/external/ffmpeg/lib/${ANDROID_ABI}")
@@ -492,15 +500,20 @@ if(ANDROID AND NOT FFmpeg_LIBRARIES)
 endif()
 
 # SYSTEM: the FFmpeg headers do not pass the conversion checks below.
-target_include_directories(video_core SYSTEM PRIVATE ${FFmpeg_INCLUDE_DIR})
-target_link_libraries(video_core PRIVATE ${FFmpeg_LIBRARIES})
+add_library(nxemu_ffmpeg INTERFACE)
+target_include_directories(nxemu_ffmpeg SYSTEM INTERFACE ${FFmpeg_INCLUDE_DIR})
+target_link_libraries(nxemu_ffmpeg INTERFACE ${FFmpeg_LIBRARIES})
+target_link_libraries(video_core PRIVATE nxemu_ffmpeg)
+if(ANDROID AND NXEMU_ENABLE_ANDROID_MEDIACODEC)
+    target_compile_definitions(video_core PRIVATE NXEMU_ENABLE_ANDROID_MEDIACODEC=1)
+endif()
 if(APPLE)
     foreach(framework CoreFoundation CoreMedia CoreVideo VideoToolbox)
         find_library(NXEMU_${framework}_FRAMEWORK ${framework} REQUIRED)
-        target_link_libraries(video_core PRIVATE ${NXEMU_${framework}_FRAMEWORK})
+        target_link_libraries(nxemu_ffmpeg INTERFACE ${NXEMU_${framework}_FRAMEWORK})
     endforeach()
 endif()
-target_link_options(video_core PRIVATE ${FFmpeg_LDFLAGS})
+target_link_options(nxemu_ffmpeg INTERFACE ${FFmpeg_LDFLAGS})
 
 add_dependencies(video_core host_shaders)
 target_include_directories(video_core PRIVATE ${HOST_SHADERS_INCLUDE})

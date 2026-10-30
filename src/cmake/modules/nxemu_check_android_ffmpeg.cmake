@@ -1,0 +1,10 @@
+file(READ "${FFMPEG_BUILD_DIR}/config_components.h" _config)
+foreach(_feature H264_MEDIACODEC_DECODER VP9_MEDIACODEC_DECODER
+        H264_DECODER VP8_DECODER VP9_DECODER YADIF_FILTER)
+    if(NOT _config MATCHES "#define CONFIG_${_feature} 1")
+        message(FATAL_ERROR "Android FFmpeg is missing required feature ${_feature}")
+    endif()
+endforeach()
+if(_config MATCHES "#define CONFIG_VP8_MEDIACODEC_DECODER 1")
+    message(FATAL_ERROR "VP8 MediaCodec must remain disabled; use the software VP8 decoder")
+endif()
