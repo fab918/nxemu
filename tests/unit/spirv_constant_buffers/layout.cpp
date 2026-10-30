@@ -78,6 +78,7 @@ static void GlobalMemoryLoads(bool aliasing, bool molten) {
     Shader::Backend::SPIRV::EmitContext context(profile, runtime, program, bindings);
     const auto words = context.Assemble();
     std::map<u32, unsigned> loads;
+    std::map<u32, unsigned> stores;
     std::map<u32, u32> function_controls;
     u32 function = 0;
     for (size_t i = 5; i < words.size();) {
@@ -89,6 +90,7 @@ static void GlobalMemoryLoads(bool aliasing, bool molten) {
             function_controls[function] = words[i + 3];
         }
         if (op == spv::Op::OpLoad) ++loads[function];
+        if (op == spv::Op::OpStore) ++stores[function];
         if (op == spv::Op::OpFunctionEnd) function = 0;
         i += count;
     }
@@ -96,6 +98,11 @@ static void GlobalMemoryLoads(bool aliasing, bool molten) {
     assert(loads[context.load_global_func_u32.value] >= 3);
     assert(loads[context.load_global_func_u32x2.value] >= 3);
     assert(loads[context.load_global_func_u32x4.value] >= 3);
+    // A buffer that is only read must not become a write target: marking it written
+    // makes the GPU download it over newer CPU writes.
+    assert(stores[context.write_global_func_u32.value] == 0);
+    assert(stores[context.write_global_func_u32x2.value] == 0);
+    assert(stores[context.write_global_func_u32x4.value] == 0);
     for (const auto function : {context.load_global_func_u32, context.load_global_func_u32x2,
                                 context.load_global_func_u32x4, context.write_global_func_u32,
                                 context.write_global_func_u32x2, context.write_global_func_u32x4}) {
