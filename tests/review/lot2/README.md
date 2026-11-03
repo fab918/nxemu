@@ -94,3 +94,39 @@ The reference was rebuilt from the exact committed `42ef588ea0` source tree.
 Packaged graphics module SHA-256:
 - A: `826648C93FB4624446DE015C0B214F233A7445FB4E231AA13263208BD26562B1`
 - B: `2F7511DF071E13E8C1CAE60E5AD7F07A945FD726F580618E32C6B314C658D4FC`
+
+## Sacred performance investigation (2026-11-03)
+
+The user's A/B captures show a missing 3D scene at 30 FPS in A and a visible
+scene at approximately 5 FPS in B. Both logs contain thousands of Maxwell DMA
+assertions. A additionally reports sampled-descriptor budget exhaustion. Those
+shared DMA assertions alone do not explain the performance difference.
+
+Reverse applicability of the supplied cumulative patch passed: the experimental
+implementation had not diverged from it except for the missing bounds helper.
+The latest available `eden-master (7).zip` was inspected. Its handle-combination
+code supports fixed descriptors; it does not implement our draw-uniform index
+metadata and therefore does not directly supply this correction.
+
+Temporary external stack sampling identified descriptor preparation on the CPU.
+Temporary shader diagnostics then showed thousands of descriptors for an index
+loaded from a constant buffer. `TryGetConstBuffer` discarded `has_index_cbuf`
+and associated metadata when OR-combining that texture with a fixed sampler.
+Copying the primary address before assigning the sampler preserves that proof.
+The shader cache versions are incremented for Vulkan and OpenGL so stale shader
+metadata and compiled shaders cannot retain the expanded arrays.
+
+`test_uniform_sampler` calls production `TexturePass` with the observed handle
+expression. Before the correction it fails with 4,146 descriptors and no uniform
+index. Afterward all four cases pass: one descriptor for a draw-uniform index,
+and a full array for a varying index, each with either OR operand order.
+The standalone regression and Release graphics module build pass. No diagnostic
+logging or profiler is added to the runtime.
+
+Local variant C is `D:/Emulation/switch/NXDev/nxemu-lot2-ab/C-sacred-performance`.
+The corrected Vulkan title menu renders the character and background at 30 FPS
+(33.33 ms displayed), compared with the original candidate's roughly 5 FPS.
+This is a menu observation, not a GPU timestamp benchmark or a full gameplay
+validation. Character-selection and gameplay comparisons remain user tests;
+OpenGL has compiled but has not been measured in-game. The existing experimental
+TIR preservation and compute partial-write merge gates above still apply.

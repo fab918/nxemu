@@ -301,3 +301,11 @@ if(NXEMU_BUILD_VTG_GPU_TESTS)
     target_link_libraries(test_vtg_indirect_gpu PRIVATE nxemu_test_support video_core
         Vulkan::Headers Vulkan::UtilityHeaders GPUOpen::VulkanMemoryAllocator ${CMAKE_DL_LIBS})
 endif()
+
+# Production TexturePass: combining a fixed sampler retains a draw-uniform index.
+add_executable(test_uniform_sampler ../review/lot2/uniform_sampler.cpp)
+target_include_directories(test_uniform_sampler PRIVATE "${CMAKE_SOURCE_DIR}/src"
+    "${CMAKE_SOURCE_DIR}/src/nxemu-video" "${CMAKE_SOURCE_DIR}/external/boost"
+    "${CMAKE_SOURCE_DIR}/external/fmt/include")
+target_link_libraries(test_uniform_sampler PRIVATE shader_recompiler yuzu_common common fmt)
+nxemu_unit_test(test_uniform_sampler)

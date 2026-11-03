@@ -767,20 +767,16 @@ std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environme
         if (!rhs->dynamic_offset.IsEmpty()) {
             return std::nullopt;
         }
-        return ConstBufferAddr{
-            .index = lhs->index,
-            .offset = lhs->offset,
-            .shift_left = lhs->shift_left,
-            .secondary_index = rhs->index,
-            .secondary_offset = rhs->offset,
-            .secondary_shift_left = rhs->shift_left,
-            .dynamic_offset = lhs->dynamic_offset,
-            .count = lhs->count,
-            .has_secondary = true,
-            .handle_or_bits = lhs->handle_or_bits | rhs->handle_or_bits,
-            .mask = lhs->mask,
-            .secondary_mask = rhs->mask,
-        };
+        // Combining a fixed sampler must preserve the primary's uniform-index proof.
+        // Dropping it expands one per-draw handle into the entire cbuf descriptor array.
+        auto combined = *lhs;
+        combined.secondary_index = rhs->index;
+        combined.secondary_offset = rhs->offset;
+        combined.secondary_shift_left = rhs->shift_left;
+        combined.has_secondary = true;
+        combined.handle_or_bits |= rhs->handle_or_bits;
+        combined.secondary_mask = rhs->mask;
+        return combined;
     }
     case IR::Opcode::ShiftLeftLogical32: {
         const IR::Value shift{inst->Arg(1)};
