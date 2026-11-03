@@ -1,0 +1,4 @@
+device=NVIDIA GeForce RTX 5070 Ti
+baseline-LOAD untouched=0xffff0000 redrawn=0xff0000ff
+candidate-TIR untouched=0x00000000 redrawn=0xff0000ff
+validation_errors=0 preservation=FAIL
