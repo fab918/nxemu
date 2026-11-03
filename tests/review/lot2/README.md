@@ -130,3 +130,33 @@ This is a menu observation, not a GPU timestamp benchmark or a full gameplay
 validation. Character-selection and gameplay comparisons remain user tests;
 OpenGL has compiled but has not been measured in-game. The existing experimental
 TIR preservation and compute partial-write merge gates above still apply.
+
+## NVIDIA uniform-upload optimization (2026-11-03)
+
+With the same experimental 240 FPS game mod enabled, external stack sampling
+showed repeated buffer synchronization and memory protection calls. When the CPU
+changes uniform data already consumed by a draw in the current frame, the cached
+upload cannot be reordered before that draw. The existing streaming path makes a
+separate upload snapshot instead. Enable it for the NVIDIA proprietary Vulkan
+driver as well as MoltenVK. Other drivers and OpenGL retain their current policy.
+The existing caller guards still require CPU-modified contents and reject any
+GPU-modified range, preserving the cached synchronization path for GPU writes.
+
+Local comparison: Sacred 2 1.0.1 title menu, Vulkan, RTX 5070 Ti, 1x resolution,
+same 240 FPS mod, same configuration and warmed shader caches. The existing
+opt-in FPS counter was enabled only in the measurement processes, without adding
+runtime instrumentation. Twenty one-second samples after startup yielded:
+
+| Graphics module | Frames / seconds | Weighted FPS | One-second range |
+| --- | --- | --- | --- |
+| C before uniform streaming | 1,506 / 20.117974 | 74.86 | 71.41–77.57 |
+| C with uniform streaming | 2,155 / 20.141772 | 106.99 | 99.40–110.26 |
+
+The old module was restored for the control run and returned to approximately
+77 FPS; the candidate was then restored. This is about 43% more menu frames per
+second in this local sample, not a gameplay guarantee. The character and animated
+background remained visible. No GPU timestamp benchmark or full gameplay
+coherence validation is claimed. The Release module and the existing uniform
+sampler regression build/pass; this regression covers the earlier shader fix,
+not all buffer-coherence scenarios. C packages the optimization; A and B retain
+their original graphics modules.
