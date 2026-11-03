@@ -500,7 +500,7 @@ static OsSetting settings[] = {
         {NXOsSetting::ControllerAppletMode, "applet\\controller_applet_mode", &osSettings.controller_applet_mode, AppletMode::HLE},
         {NXOsSetting::DataEraseAppletMode, "applet\\data_erase_applet_mode", &osSettings.data_erase_applet_mode, AppletMode::LLE},
         {NXOsSetting::ErrorAppletMode, "applet\\error_applet_mode", &osSettings.error_applet_mode, AppletMode::LLE},
-        {NXOsSetting::NetConnectAppletMode, "applet\\net_connect_applet_mode", &osSettings.net_connect_applet_mode, AppletMode::LLE},
+        {NXOsSetting::NetConnectAppletMode, "applet\\net_connect_applet_mode", &osSettings.net_connect_applet_mode, AppletMode::HLE},
         {NXOsSetting::PlayerSelectAppletMode, "applet\\player_select_applet_mode", &osSettings.player_select_applet_mode, AppletMode::HLE},
         {NXOsSetting::SwkbdAppletMode, "applet\\swkbd_applet_mode", &osSettings.swkbd_applet_mode, AppletMode::LLE},
         {NXOsSetting::MiiEditAppletMode, "applet\\mii_edit_applet_mode", &osSettings.mii_edit_applet_mode, AppletMode::LLE},
