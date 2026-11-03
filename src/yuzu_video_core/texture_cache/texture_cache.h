@@ -880,6 +880,35 @@ void TextureCache<P>::WriteMemory(DAddr cpu_addr, size_t size) {
 }
 
 template <class P>
+template <typename BufferHandle>
+void TextureCache<P>::UpdateImagesFromBuffer(DAddr cpu_addr, size_t size, BufferHandle buffer,
+                                             u64 buffer_offset) {
+    if constexpr (requires(Image& image) { image.UploadSwizzledFromBuffer(buffer, buffer_offset); }) {
+        // A GPU compute dispatch can write the bytes of a block-linear image through an SSBO.
+        // Do not infer that a partially overlapping buffer contains the entire image.
+        constexpr size_t MAX_BINDING_PADDING = 64 * 1024;
+        ForEachImageInRegion(cpu_addr, size, [&](ImageId id, Image& image) {
+            if (image.cpu_addr != cpu_addr || image.guest_size_bytes > size ||
+                size - image.guest_size_bytes > MAX_BINDING_PADDING ||
+                True(image.flags & ImageFlagBits::Remapped) ||
+                True(image.flags & ImageFlagBits::Sparse)) {
+                return;
+            }
+            if (!image.UploadSwizzledFromBuffer(buffer, buffer_offset)) {
+                return;
+            }
+            if (True(image.flags & ImageFlagBits::CpuModified)) {
+                image.flags &= ~ImageFlagBits::CpuModified;
+                if (False(image.flags & ImageFlagBits::Tracked)) {
+                    TrackImage(image, id);
+                }
+            }
+            MarkModification(image, id);
+        });
+    }
+}
+
+template <class P>
 void TextureCache<P>::DownloadMemory(DAddr cpu_addr, size_t size, bool native_read) {
     static const bool release_native = std::getenv("NXEMU_NCE_RELEASE_READBACK") != nullptr;
     boost::container::small_vector<ImageId, 16> images;

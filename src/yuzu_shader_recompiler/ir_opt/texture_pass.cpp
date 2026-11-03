@@ -38,6 +38,14 @@ struct ConstBufferAddr {
     bool has_secondary;
     bool is_direct{};
     u32 handle_or_bits{};
+    u32 stride{};
+    IR::U32 array_index;
+    u32 mask{~0U};
+    u32 secondary_mask{~0U};
+    bool has_index_cbuf{};
+    u32 index_cbuf_index{};
+    u32 index_cbuf_offset{};
+    u32 index_shift{};
 };
 
 struct TextureInst {
@@ -48,6 +56,96 @@ struct TextureInst {
 };
 
 using TextureInstVector = boost::container::small_vector<TextureInst, 24>;
+
+struct StridedIndex {
+    IR::U32 index;
+    u32 stride;
+};
+
+
+// Recover the actual element index for arrays of structures, for example
+// FindUMsb(mask) * 304. Alignment alone would incorrectly interpret this as 19
+// elements of a 16-byte array.
+std::optional<StridedIndex> FindStridedIndex(const IR::U32& byte_offset) {
+    const IR::Inst* const inst = byte_offset.TryInstRecursive();
+    if (!inst) {
+        return std::nullopt;
+    }
+    switch (inst->GetOpcode()) {
+    case IR::Opcode::ShiftLeftLogical32:
+        if (inst->Arg(1).IsImmediate()) {
+            const u32 shift = inst->Arg(1).U32();
+            if (shift >= 2 && shift <= 15) {
+                return StridedIndex{IR::U32{inst->Arg(0)}, 1U << shift};
+            }
+        }
+        break;
+    case IR::Opcode::IMul32:
+        for (size_t arg = 0; arg < 2; ++arg) {
+            const IR::Value factor{inst->Arg(arg)};
+            if (factor.IsImmediate() && factor.U32() >= sizeof(u32) &&
+                (factor.U32() % sizeof(u32)) == 0 && factor.U32() <= 16 * 1024) {
+                return StridedIndex{IR::U32{inst->Arg(1 - arg)}, factor.U32()};
+            }
+        }
+        break;
+    default:
+        break;
+    }
+    return std::nullopt;
+}
+
+// Only fold an index known to be uniform throughout the draw. An arbitrary
+// varying expression must keep the ordinary runtime descriptor-array path.
+struct UniformHandleIndex {
+    u32 cbuf_index;
+    u32 cbuf_offset;
+    u32 shift;
+};
+
+std::optional<UniformHandleIndex> TrackUniformHandleIndex(IR::U32 offset) {
+    const IR::Inst* inst = offset.TryInstRecursive();
+    if (!inst || inst->GetOpcode() != IR::Opcode::ShiftLeftLogical32 ||
+        !inst->Arg(1).IsImmediate() || inst->Arg(1).U32() < 2 ||
+        inst->Arg(1).U32() >= 32) {
+        return std::nullopt;
+    }
+    const u32 shift = inst->Arg(1).U32();
+    inst = inst->Arg(0).TryInstRecursive();
+    if (!inst || inst->GetOpcode() != IR::Opcode::GetCbufU32 ||
+        !inst->Arg(0).IsImmediate() || !inst->Arg(1).IsImmediate()) {
+        return std::nullopt;
+    }
+    return UniformHandleIndex{inst->Arg(0).U32(), inst->Arg(1).U32(), shift};
+}
+
+// Exclusive upper bound, zero if the analysis cannot prove a finite bound.
+u32 StridedIndexBound(const IR::U32& index) {
+    const IR::Value value{index.Resolve()};
+    if (value.IsImmediate()) {
+        return value.U32() == ~0U ? 0 : value.U32() + 1;
+    }
+    const IR::Inst* const inst = value.TryInstRecursive();
+    if (!inst) {
+        return 0;
+    }
+    switch (inst->GetOpcode()) {
+    case IR::Opcode::FindUMsb32:
+    case IR::Opcode::FindSMsb32:
+        return 32;
+    case IR::Opcode::BitwiseAnd32:
+    case IR::Opcode::UMin32:
+        for (size_t arg = 0; arg < 2; ++arg) {
+            if (inst->Arg(arg).IsImmediate() && inst->Arg(arg).U32() < 16 * 1024) {
+                return inst->Arg(arg).U32() + 1;
+            }
+        }
+        break;
+    default:
+        break;
+    }
+    return 0;
+}
 
 // Bindless handles may be fields of material records rather than consecutive handles.
 // Track alignment through SSA merges so indexing and descriptor uploads use the same stride.
@@ -466,7 +564,11 @@ private:
                a.secondary_index == b.secondary_index && a.secondary_offset == b.secondary_offset &&
                a.secondary_shift_left == b.secondary_shift_left && a.dynamic_offset.Resolve() == b.dynamic_offset.Resolve() &&
                a.count == b.count && a.has_secondary == b.has_secondary &&
-               a.is_direct == b.is_direct && a.handle_or_bits == b.handle_or_bits;
+               a.is_direct == b.is_direct && a.handle_or_bits == b.handle_or_bits &&
+               a.mask == b.mask && a.secondary_mask == b.secondary_mask &&
+               a.has_index_cbuf == b.has_index_cbuf &&
+               a.index_cbuf_index == b.index_cbuf_index &&
+               a.index_cbuf_offset == b.index_cbuf_offset && a.index_shift == b.index_shift;
     }
 
     struct AddressHash
@@ -476,7 +578,9 @@ private:
             size_t hash{};
             for (const u32 part : {addr.index, addr.offset, addr.shift_left, addr.secondary_index,
                                    addr.secondary_offset, addr.secondary_shift_left,
-                                   u32{addr.has_secondary}, addr.handle_or_bits})
+                                   u32{addr.has_secondary}, addr.handle_or_bits, addr.mask,
+                                   addr.secondary_mask, u32{addr.has_index_cbuf},
+                                   addr.index_cbuf_index, addr.index_cbuf_offset, addr.index_shift})
                 hash ^= part + 0x9e3779b9U + (hash << 6) + (hash >> 2);
             return hash;
         }
@@ -649,11 +753,19 @@ std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environme
         if (lhs->has_secondary || rhs->has_secondary) {
             return std::nullopt;
         }
-        if (lhs->count > 1 || rhs->count > 1) {
+        if (lhs->count > 1 && rhs->count > 1) {
             return std::nullopt;
         }
-        if (lhs->shift_left > 0 || lhs->index > rhs->index || lhs->offset > rhs->offset) {
+        // Only the primary component may be dynamically indexed. A shared
+        // sampler from the other component always has a fixed offset.
+        if (rhs->count > 1) {
             std::swap(lhs, rhs);
+        } else if (lhs->count == 1 &&
+                   (lhs->shift_left > 0 || lhs->index > rhs->index || lhs->offset > rhs->offset)) {
+            std::swap(lhs, rhs);
+        }
+        if (!rhs->dynamic_offset.IsEmpty()) {
+            return std::nullopt;
         }
         return ConstBufferAddr{
             .index = lhs->index,
@@ -662,10 +774,12 @@ std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environme
             .secondary_index = rhs->index,
             .secondary_offset = rhs->offset,
             .secondary_shift_left = rhs->shift_left,
-            .dynamic_offset = {},
-            .count = 1,
+            .dynamic_offset = lhs->dynamic_offset,
+            .count = lhs->count,
             .has_secondary = true,
             .handle_or_bits = lhs->handle_or_bits | rhs->handle_or_bits,
+            .mask = lhs->mask,
+            .secondary_mask = rhs->mask,
         };
     }
     case IR::Opcode::ShiftLeftLogical32: {
@@ -675,7 +789,11 @@ std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environme
         }
         std::optional lhs{tracker.Track(inst->Arg(0))};
         if (lhs) {
+            if (lhs->has_secondary || lhs->shift_left != 0) {
+                return std::nullopt;
+            }
             lhs->shift_left = shift.U32();
+            lhs->mask <<= shift.U32();
             lhs->handle_or_bits = shift.U32() < 32 ? lhs->handle_or_bits << shift.U32() : 0;
         }
         return lhs;
@@ -705,7 +823,7 @@ std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environme
         }
         std::optional lhs{tracker.Track(op1)};
         if (lhs) {
-            lhs->shift_left = static_cast<u32>(std::countr_zero(op2.U32()));
+            lhs->mask &= op2.U32();
             lhs->handle_or_bits &= op2.U32();
         }
         return lhs;
@@ -736,12 +854,16 @@ std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environme
         };
     }
     IR::Inst* const offset_inst{offset.InstRecursive()};
-    if (offset_inst->GetOpcode() != IR::Opcode::IAdd32) {
-        return std::nullopt;
-    }
     u32 base_offset{};
     IR::U32 dynamic_offset;
-    if (offset_inst->Arg(0).IsImmediate()) {
+    if (offset_inst->GetOpcode() != IR::Opcode::IAdd32) {
+        // An indexed handle array can start at byte offset zero. Only accept a
+        // proven index * constant expression; arbitrary offsets remain unsupported.
+        if (!FindStridedIndex(IR::U32{offset})) {
+            return std::nullopt;
+        }
+        dynamic_offset = IR::U32{offset};
+    } else if (offset_inst->Arg(0).IsImmediate()) {
         base_offset = offset_inst->Arg(0).U32();
         dynamic_offset = IR::U32{offset_inst->Arg(1)};
     } else if (offset_inst->Arg(1).IsImmediate()) {
@@ -750,6 +872,7 @@ std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environme
     } else {
         return std::nullopt;
     }
+    const auto uniform_index = TrackUniformHandleIndex(dynamic_offset);
     return ConstBufferAddr{
         .index = index.U32(),
         .offset = base_offset,
@@ -760,6 +883,10 @@ std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environme
         .dynamic_offset = dynamic_offset,
         .count = 8,
         .has_secondary = false,
+        .has_index_cbuf = uniform_index.has_value(),
+        .index_cbuf_index = uniform_index ? uniform_index->cbuf_index : 0,
+        .index_cbuf_offset = uniform_index ? uniform_index->cbuf_offset : 0,
+        .index_shift = uniform_index ? uniform_index->shift : 0,
     };
 }
 
@@ -811,13 +938,16 @@ TextureInst MakeInst(Environment& env, IR::Block* block, IR::Inst& inst,
                         const auto& choice = choices[i];
                         sources.push_back({choice.has_secondary, choice.index, choice.offset, choice.shift_left,
                                            choice.secondary_index, choice.secondary_offset, choice.secondary_shift_left,
-                                           1, choice.size_shift, choice.handle_or_bits});
+                                           1, 1U << choice.size_shift, choice.handle_or_bits,
+                                           choice.mask, choice.secondary_mask});
                         if (i == 0) continue; // The default index needs no handle comparison.
                         auto handle = ir.GetCbuf(ir.Imm32(choice.index), ir.Imm32(choice.offset));
                         if (choice.shift_left != 0) handle = ir.ShiftLeftLogical(handle, ir.Imm32(choice.shift_left));
+                        if (choice.mask != ~0U) handle = ir.BitwiseAnd(handle, ir.Imm32(choice.mask));
                         if (choice.has_secondary) {
                             auto secondary = ir.GetCbuf(ir.Imm32(choice.secondary_index), ir.Imm32(choice.secondary_offset));
                             if (choice.secondary_shift_left != 0) secondary = ir.ShiftLeftLogical(secondary, ir.Imm32(choice.secondary_shift_left));
+                            if (choice.secondary_mask != ~0U) secondary = ir.BitwiseAnd(secondary, ir.Imm32(choice.secondary_mask));
                             handle = ir.BitwiseOr(handle, secondary);
                         }
                         if (choice.handle_or_bits != 0) handle = ir.BitwiseOr(handle, ir.Imm32(choice.handle_or_bits));
@@ -886,6 +1016,8 @@ TextureHandleSource TextureQuerySource(const ConstBufferAddr& cbuf) {
     source.secondary_cbuf_offset = cbuf.secondary_offset;
     source.secondary_shift_left = cbuf.secondary_shift_left;
     source.handle_or_bits = cbuf.handle_or_bits;
+    source.mask = cbuf.mask;
+    source.secondary_mask = cbuf.secondary_mask;
     source.count = 1;
     return source;
 }
@@ -948,8 +1080,9 @@ public:
                    desc.secondary_cbuf_index == existing.secondary_cbuf_index &&
                    desc.secondary_cbuf_offset == existing.secondary_cbuf_offset &&
                    desc.secondary_shift_left == existing.secondary_shift_left &&
-                   desc.count == existing.count && desc.size_shift == existing.size_shift &&
+                   desc.count == existing.count && desc.stride == existing.stride &&
                    desc.handle_or_bits == existing.handle_or_bits &&
+                   desc.mask == existing.mask && desc.secondary_mask == existing.secondary_mask &&
                    desc.has_secondary == existing.has_secondary && desc.sources == existing.sources;
         });
     }
@@ -958,7 +1091,7 @@ public:
         const u32 index{Add(image_buffer_descriptors, desc, [&desc](const auto& existing) {
             return desc.format == existing.format && desc.cbuf_index == existing.cbuf_index &&
                    desc.cbuf_offset == existing.cbuf_offset && desc.count == existing.count &&
-                   desc.size_shift == existing.size_shift;
+                   desc.stride == existing.stride;
         })};
         image_buffer_descriptors[index].is_written |= desc.is_written;
         image_buffer_descriptors[index].is_read |= desc.is_read;
@@ -976,8 +1109,13 @@ public:
                    desc.secondary_cbuf_index == existing.secondary_cbuf_index &&
                    desc.secondary_cbuf_offset == existing.secondary_cbuf_offset &&
                    desc.secondary_shift_left == existing.secondary_shift_left &&
-                   desc.count == existing.count && desc.size_shift == existing.size_shift &&
+                   desc.count == existing.count && desc.stride == existing.stride &&
                    desc.handle_or_bits == existing.handle_or_bits &&
+                   desc.mask == existing.mask && desc.secondary_mask == existing.secondary_mask &&
+                   desc.has_index_cbuf == existing.has_index_cbuf &&
+                   desc.index_cbuf_index == existing.index_cbuf_index &&
+                   desc.index_cbuf_offset == existing.index_cbuf_offset &&
+                   desc.index_shift == existing.index_shift &&
                    desc.is_direct == existing.is_direct && desc.sources == existing.sources;
         })};
         // TODO: Read this from TIC
@@ -990,7 +1128,7 @@ public:
             return desc.type == existing.type && desc.format == existing.format &&
                    desc.cbuf_index == existing.cbuf_index &&
                    desc.cbuf_offset == existing.cbuf_offset && desc.count == existing.count &&
-                   desc.size_shift == existing.size_shift && desc.is_direct == existing.is_direct &&
+                   desc.stride == existing.stride && desc.is_direct == existing.is_direct &&
                    (!desc.is_direct || (desc.is_integer == existing.is_integer &&
                                         desc.is_signed == existing.is_signed));
         })};
@@ -1112,9 +1250,41 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
         if (buffer_size == 0) {
             throw NotImplementedException("Bindless constant buffer size is unavailable");
         }
+        if (texture.cbuf.has_index_cbuf &&
+            texture.inst->Flags<IR::TextureInstInfo>().type != TextureType::Buffer &&
+            texture.cbuf.index_cbuf_offset % sizeof(u32) == 0 &&
+            buffer_size >= sizeof(u32) && texture.cbuf.offset <= buffer_size - sizeof(u32) &&
+            env.ReadCbufSize(texture.cbuf.index_cbuf_index) >= sizeof(u32) &&
+            texture.cbuf.index_cbuf_offset <=
+                env.ReadCbufSize(texture.cbuf.index_cbuf_index) - sizeof(u32)) {
+            // One shader descriptor, selected from the guest cbuf at each draw.
+            // No large host descriptor array and no per-fragment index calculation.
+            texture.cbuf.count = 1;
+            continue;
+        }
+        // Not proven uniform or in range: keep the existing indexed-array path.
+        texture.cbuf.has_index_cbuf = false;
+        // Prefer the actual structure stride when the guest offset is index * constant.
+        // This also prevents enumerating thousands of false handles for 192/304-byte records.
+        if (const auto strided = FindStridedIndex(texture.cbuf.dynamic_offset)) {
+            const u32 bound = StridedIndexBound(strided->index);
+            u32 count = BindlessDescriptorCountStrided(buffer_size, texture.cbuf.offset,
+                                                      strided->stride);
+            if (bound != 0) {
+                count = std::min(count, bound);
+            }
+            if (count == 0) {
+                throw NotImplementedException("Indexed handle is outside the constant buffer");
+            }
+            texture.cbuf.array_index = strided->index;
+            texture.cbuf.stride = strided->stride;
+            texture.cbuf.count = count;
+            continue;
+        }
         const u32 shift =
             DynamicDescriptorSizeShift(texture.cbuf, alignment_visiting, offset_alignments);
         texture.cbuf.size_shift = shift;
+        texture.cbuf.stride = 1U << shift;
         // Enumerate the entire buffer at this field's alignment phase. Guest U32 additions
         // can wrap and select valid handles before the original immediate base.
         const u32 phase = texture.cbuf.offset & ((1U << shift) - 1);
@@ -1149,7 +1319,7 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
         inst->ReplaceOpcode(IndexedInstruction(*inst));
 
         const auto& cbuf{texture_inst.cbuf};
-        const u32 size_shift{cbuf.size_shift};
+        const u32 stride{cbuf.stride != 0 ? cbuf.stride : DESCRIPTOR_SIZE};
         auto flags{inst->Flags<IR::TextureInstInfo>()};
         bool is_multisample{false};
         switch (inst->GetOpcode()) {
@@ -1224,7 +1394,7 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
                     .cbuf_index = cbuf.index,
                     .cbuf_offset = cbuf.offset,
                     .count = cbuf.count,
-                    .size_shift = size_shift,
+                    .stride = stride,
                 });
             } else {
                 index = descriptors.Add(ImageDescriptor{
@@ -1236,7 +1406,7 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
                     .cbuf_index = cbuf.index,
                     .cbuf_offset = cbuf.offset,
                     .count = cbuf.count,
-                    .size_shift = size_shift,
+                    .stride = stride,
                     .is_direct = cbuf.is_direct,
                 });
             }
@@ -1253,8 +1423,10 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
                     .secondary_cbuf_offset = cbuf.secondary_offset,
                     .secondary_shift_left = cbuf.secondary_shift_left,
                     .count = cbuf.count,
-                    .size_shift = size_shift,
+                    .stride = stride,
                     .handle_or_bits = cbuf.handle_or_bits,
+                    .mask = cbuf.mask,
+                    .secondary_mask = cbuf.secondary_mask,
                     .sources = texture_inst.sources,
                 });
             } else {
@@ -1270,9 +1442,15 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
                     .secondary_cbuf_offset = cbuf.secondary_offset,
                     .secondary_shift_left = cbuf.secondary_shift_left,
                     .count = cbuf.count,
-                    .size_shift = size_shift,
+                    .stride = stride,
                     .is_direct = cbuf.is_direct,
                     .handle_or_bits = cbuf.handle_or_bits,
+                    .has_index_cbuf = cbuf.has_index_cbuf,
+                    .index_cbuf_index = cbuf.index_cbuf_index,
+                    .index_cbuf_offset = cbuf.index_cbuf_offset,
+                    .index_shift = cbuf.index_shift,
+                    .mask = cbuf.mask,
+                    .secondary_mask = cbuf.secondary_mask,
                     .sources = texture_inst.sources,
                 });
             }
@@ -1327,9 +1505,12 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
         } else if (cbuf.count > 1) {
             const auto insert_point{IR::Block::InstructionList::s_iterator_to(*inst)};
             IR::IREmitter ir{*texture_inst.block, insert_point};
-            const IR::U32 shift{ir.Imm32(size_shift)};
-            inst->SetArg(0, ir.UMin(ir.ShiftRightLogical(cbuf.dynamic_offset, shift),
-                                    ir.Imm32(cbuf.count - 1)));
+            const IR::U32 element{!cbuf.array_index.IsEmpty()
+                                      ? cbuf.array_index
+                                      : IR::U32{ir.ShiftRightLogical(
+                                            cbuf.dynamic_offset,
+                                            ir.Imm32(cbuf.size_shift))}};
+            inst->SetArg(0, ir.UMin(element, ir.Imm32(cbuf.count - 1)));
         } else {
             inst->SetArg(0, IR::Value{});
         }
