@@ -73,3 +73,24 @@ instance at a time. The experimental package must not replace the reference.
 The two supplied Eden commit URLs returned HTTP 403 during this review; their
 exact diffs could not be independently retrieved. Related Eden source in the
 previously supplied archive was available, but is not proof of those commit IDs.
+
+## A/B packages built
+
+Both complete Windows Release runtimes compiled successfully with the same MSVC
+2022 toolchain. Both include the Vulkan and OpenGL renderer translation units.
+The candidate requires the separate helper commit above; the unmodified supplied
+patch fails to compile. Both packages opened the library UI in a smoke check.
+This does not establish in-game stability or an FPS/GPU-time comparison.
+
+Local packages:
+- `D:/Emulation/switch/NXDev/nxemu-lot2-ab/A-reference-42ef588`
+- `D:/Emulation/switch/NXDev/nxemu-lot2-ab/B-experimental-lot2`
+
+The candidate's application version string can still show the base `42ef588`
+because the project was configured before the experimental commits. The variant
+folder, `REVISION.txt`, and `SHA256.json` identify the actual packaged modules.
+The reference was rebuilt from the exact committed `42ef588ea0` source tree.
+
+Packaged graphics module SHA-256:
+- A: `826648C93FB4624446DE015C0B214F233A7445FB4E231AA13263208BD26562B1`
+- B: `2F7511DF071E13E8C1CAE60E5AD7F07A945FD726F580618E32C6B314C658D4FC`
