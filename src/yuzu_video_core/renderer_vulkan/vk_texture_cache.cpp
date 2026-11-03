@@ -2413,6 +2413,13 @@ void Framebuffer::CreateFramebuffer(TextureCacheRuntime& runtime,
     } else {
         renderpass_key.depth_format = PixelFormat::Invalid;
     }
+    // TIR: the raster/depth image has multiple samples, but every color target is 1x.
+    const bool mixed_samples = depth_buffer && depth_buffer->Samples() != VK_SAMPLE_COUNT_1_BIT &&
+        num_colors > 0 &&
+        std::ranges::all_of(color_buffers, [](const ImageView* color) {
+            return !color || color->Samples() == VK_SAMPLE_COUNT_1_BIT;
+        });
+    renderpass_key.resolve_color = mixed_samples;
     renderpass_key.samples = samples;
 
     renderpass = runtime.render_pass_cache.Get(renderpass_key);
@@ -2423,17 +2430,76 @@ void Framebuffer::CreateFramebuffer(TextureCacheRuntime& runtime,
 
     num_color_buffers = static_cast<u32>(num_colors);
     framebuffer_layers = static_cast<u32>(std::max(num_layers, 1));
-    std::copy(attachments.begin(), attachments.end(), framebuffer_attachments.begin());
+    if (mixed_samples) {
+        // Same order as RenderPassCache: MSAA color, depth, single-sample resolve color.
+        size_t attachment_index{};
+        for (size_t slot = 0; slot < NUM_RT; ++slot) {
+            if (!color_buffers[slot]) {
+                continue;
+            }
+            EnsureTirColorAttachment(slot);
+            framebuffer_attachments[attachment_index++] = *tir_color_attachments[slot].view;
+        }
+        framebuffer_attachments[attachment_index++] = attachments[num_colors];
+        std::copy_n(attachments.begin(), num_colors,
+                    framebuffer_attachments.begin() + attachment_index);
+    } else {
+        std::copy(attachments.begin(), attachments.end(), framebuffer_attachments.begin());
+    }
+    const u32 attachment_count = static_cast<u32>(attachments.size() +
+                                                  (mixed_samples ? num_colors : 0));
     framebuffer = runtime.device.GetLogical().CreateFramebuffer({
         .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
         .pNext = nullptr,
         .flags = 0,
         .renderPass = renderpass,
-        .attachmentCount = static_cast<u32>(attachments.size()),
-        .pAttachments = attachments.data(),
+        .attachmentCount = attachment_count,
+        .pAttachments = framebuffer_attachments.data(),
         .width = render_area.width,
         .height = render_area.height,
         .layers = framebuffer_layers,
+    });
+}
+
+void Framebuffer::EnsureTirColorAttachment(size_t slot) {
+    ScratchColorAttachment& scratch = tir_color_attachments[slot];
+    if (scratch.image) {
+        return;
+    }
+    const VkFormat format = MaxwellToVK::SurfaceFormat(
+        runtime_ptr->device, FormatType::Optimal, true, render_pass_key.color_formats[slot]).format;
+    scratch.image = runtime_ptr->memory_allocator.CreateTransientImage(VkImageCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = format,
+        .extent = {render_area.width, render_area.height, 1},
+        .mipLevels = 1,
+        .arrayLayers = framebuffer_layers,
+        .samples = samples,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = nullptr,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    });
+    scratch.view = runtime_ptr->device.GetLogical().CreateImageView(VkImageViewCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .image = *scratch.image,
+        .viewType = framebuffer_layers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D,
+        .format = format,
+        .components{},
+        .subresourceRange{
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = framebuffer_layers,
+        },
     });
 }
 
@@ -2520,7 +2586,7 @@ void Framebuffer::EnsureScratchColorAttachment(size_t slot) const {
         });
     };
 
-    scratch.image = create_image(samples);
+    scratch.image = create_image(render_pass_key.resolve_color ? VK_SAMPLE_COUNT_1_BIT : samples);
     scratch.view = create_view(*scratch.image);
 }
 
@@ -2542,7 +2608,8 @@ VkFramebuffer Framebuffer::HandleVariant(u32 color_scratch_mask) const {
         }
         EnsureScratchColorAttachment(slot);
         const ScratchColorAttachment& scratch = scratch_color_attachments[slot];
-        attachments[rt_map[slot]] = *scratch.view;
+        attachments[rt_map[slot] + (render_pass_key.resolve_color ? num_images : 0)] =
+            *scratch.view;
     }
 
     vk::Framebuffer variant = runtime_ptr->device.GetLogical().CreateFramebuffer({
@@ -2550,7 +2617,8 @@ VkFramebuffer Framebuffer::HandleVariant(u32 color_scratch_mask) const {
         .pNext = nullptr,
         .flags = 0,
         .renderPass = renderpass,
-        .attachmentCount = num_images,
+        .attachmentCount = num_images +
+            (render_pass_key.resolve_color ? num_color_buffers : 0),
         .pAttachments = attachments.data(),
         .width = render_area.width,
         .height = render_area.height,

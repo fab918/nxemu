@@ -188,6 +188,7 @@ RenderPassKey MakeRenderPassKey(const Device& device, const FixedPipelineState& 
         key.depth_format = PixelFormat::Invalid;
     }
     key.samples = device.SupportedSampleCount(MaxwellToVK::MsaaMode(state.msaa_mode));
+    key.resolve_color = state.tir_resolve_color != 0;
     return key;
 }
 

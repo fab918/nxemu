@@ -432,13 +432,16 @@ private:
     };
 
     void EnsureScratchColorAttachment(size_t slot) const;
+    void EnsureTirColorAttachment(size_t slot);
 
     // Framebuffers must be destroyed before the scratch views and images they reference.
     mutable std::array<ScratchColorAttachment, NUM_RT> scratch_color_attachments{};
+    // Owned by the framebuffer, so no global cache or GPU wait when sizes change.
+    std::array<ScratchColorAttachment, NUM_RT> tir_color_attachments{};
     mutable std::vector<std::pair<u32, vk::Framebuffer>> scratch_framebuffers;
     mutable std::vector<std::pair<u32, VkRenderPass>> scratch_renderpasses;
     TextureCacheRuntime* runtime_ptr{};
-    std::array<VkImageView, NUM_RT + 1> framebuffer_attachments{};
+    std::array<VkImageView, NUM_RT * 2 + 1> framebuffer_attachments{};
     u32 framebuffer_layers{1};
     u32 duplicate_color_attachment_mask{};
     std::array<u32, NUM_RT> color_attachment_alias_masks{};

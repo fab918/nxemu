@@ -114,10 +114,19 @@ void FixedPipelineState::RefreshFromRegisters(const Maxwell& regs,
                                   Maxwell::Tessellation::OutputPrimitives::Triangles_CW);
     patch_control_points_minus_one.Assign(regs.patch_vertices - 1);
     topology.Assign(topology_);
-    msaa_mode.Assign(regs.anti_alias_samples_mode);
+    const bool tir_raster =
+        regs.tir_mode == Maxwell::TIRMode::RasterNTargetM &&
+        regs.anti_alias_raster != Maxwell::AntiAliasRaster::Mode1x1;
+    msaa_mode.Assign(tir_raster
+                         ? static_cast<Tegra::Texture::MsaaMode>(regs.anti_alias_raster)
+                         : regs.anti_alias_samples_mode);
 
     const bool cached_dual_source_blend = dual_source_blend != 0;
     raw2 = 0;
+    tir_resolve_color.Assign(tir_raster && regs.zeta_enable != 0 &&
+                             regs.anti_alias_samples_mode == Tegra::Texture::MsaaMode::Msaa1x1
+                                 ? 1
+                                 : 0);
     dual_source_blend.Assign(cached_dual_source_blend);
     vertex_stride_workaround.Assign(features.has_vertex_stride_workaround &&
                                     !features.has_dynamic_vertex_input ? 1 : 0);

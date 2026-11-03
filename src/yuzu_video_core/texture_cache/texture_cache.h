@@ -2746,7 +2746,12 @@ ImageViewId TextureCache<P>::FindDepthBuffer(u32 clear_layer_count) {
     if (gpu_addr == 0) {
         return ImageViewId{};
     }
-    const ImageInfo info(regs.zeta, regs.zeta_size, regs.anti_alias_samples_mode);
+    auto depth_samples = regs.anti_alias_samples_mode;
+    if (regs.tir_mode == Tegra::Engines::Maxwell3D::Regs::TIRMode::RasterNTargetM &&
+        regs.anti_alias_raster != Tegra::Engines::Maxwell3D::Regs::AntiAliasRaster::Mode1x1) {
+        depth_samples = static_cast<Tegra::Texture::MsaaMode>(regs.anti_alias_raster);
+    }
+    const ImageInfo info(regs.zeta, regs.zeta_size, depth_samples);
     return FindRenderTargetView(info, gpu_addr,
                                 CanDiscardOnClear(info, false, 0, clear_layer_count));
 }
