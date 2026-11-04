@@ -3,6 +3,15 @@ function(nxemu_unit_test name)
     set_tests_properties(${name} PROPERTIES LABELS unit TIMEOUT 120)
 endfunction()
 
+# Header-level regressions for descriptor invalidation and sparse slot iteration.
+add_executable(test_gpu_cache_hotpaths gpu_cache_hotpaths/cache_hotpaths.cpp)
+target_include_directories(test_gpu_cache_hotpaths BEFORE PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/gpu_cache_hotpaths/stubs" "${CMAKE_SOURCE_DIR}/src")
+target_compile_features(test_gpu_cache_hotpaths PRIVATE cxx_std_20)
+target_compile_options(test_gpu_cache_hotpaths PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG> $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-UNDEBUG>)
+nxemu_unit_test(test_gpu_cache_hotpaths)
+
 # Standalone MME instruction semantics; includes the ARM64 interpreter shift rules.
 add_executable(test_macro_opcodes macro/macro_opcode.cpp)
 target_include_directories(test_macro_opcodes PRIVATE "${CMAKE_SOURCE_DIR}/src")
