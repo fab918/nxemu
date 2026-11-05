@@ -6,7 +6,10 @@
 #include "scaling_filters.h"
 #include <RmlUi/Core.h>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <common/path.h>
 #include <common/std_string.h>
 #include <nxemu-core/notification.h>
@@ -2351,9 +2354,34 @@ void MainWindow::MeasureGame()
     if (m_session.IsValid() && m_session.IsRunning())
     {
         IOperatingSystem & os = m_session.Modules().OperatingSystem();
-        m_longestMeasured = m_performance->Shown();
+        static std::FILE * perfCsv = [] {
+            const char * path = std::getenv("NXEMU_PERF_CSV");
+            std::FILE * file = path != nullptr ? std::fopen(path, "w") : nullptr;
+            if (file != nullptr)
+            {
+                std::fputs("ms,fps,frametime_ms,speed,longest_ms,shaders_building,steady_ms\n", file);
+            }
+            return file;
+        }();
+        m_longestMeasured = m_performance->Shown() || perfCsv != nullptr;
         os.MeasureGameFrames(m_longestMeasured);
         const PerfStatsResults stats = os.GetAndResetPerfStats();
+        if (perfCsv != nullptr && std::getenv("NXEMU_PERF_UNLOCK") != nullptr &&
+            SettingsStore::GetInstance().GetBool(NXOsSetting::UseSpeedLimit))
+        {
+            SettingsStore::GetInstance().SetBool(NXOsSetting::UseSpeedLimit, false);
+            m_session.FlushSettings();
+        }
+        if (perfCsv != nullptr && measured && !os.IsEmulationPaused())
+        {
+            static const auto start = std::chrono::steady_clock::now();
+            const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+            std::fprintf(perfCsv, "%lld,%.3f,%.3f,%.4f,%.3f,%d,%lld\n", static_cast<long long>(ms), stats.average_game_fps,
+                         stats.frametime * 1000.0, stats.emulation_speed, stats.longest_game_frame * 1000.0,
+                         static_cast<int>(m_session.Modules().Video().ShadersBuilding()),
+                         static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()));
+            std::fflush(perfCsv);
+        }
         if (measured && m_longestMeasured && !os.IsEmulationPaused())
         {
             m_performance->Add(stats, m_session.Modules().Video().ShadersBuilding(), !SettingsStore::GetInstance().GetBool(NXOsSetting::UseSpeedLimit));

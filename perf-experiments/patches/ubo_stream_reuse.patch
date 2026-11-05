@@ -1,0 +1,171 @@
+diff --git a/src/yuzu_video_core/buffer_cache/buffer_cache.h b/src/yuzu_video_core/buffer_cache/buffer_cache.h
+index 21cc23693e..9f42143054 100644
+--- a/src/yuzu_video_core/buffer_cache/buffer_cache.h
++++ b/src/yuzu_video_core/buffer_cache/buffer_cache.h
+@@ -1223,6 +1223,34 @@ void BufferCache<P>::BindHostGraphicsUniformBuffer(size_t stage, u32 index, u32
+             channel_state->fast_bound_uniform_buffers[stage] |= 1U << binding_index;
+             channel_state->uniform_buffer_binding_sizes[stage][binding_index] = size;
+         }
++        if constexpr (!IS_OPENGL) {
++            if (size <= DEFAULT_SKIP_CACHE_SIZE) {
++                // Most draws stream the same constants as the previous draw using the slot.
++                // Bind the earlier copy again instead of uploading another one.
++                StreamedUniform& last = streamed_uniforms[stage * NUM_GRAPHICS_UNIFORM_BUFFERS + index];
++                std::array<u8, DEFAULT_SKIP_CACHE_SIZE> data;
++                device_memory.ReadBlockUnsafe(device_addr, data.data(), size);
++                { static u64 t[2]; ++t[0]; // TEMP
++                  t[1] += last.size == size && std::memcmp(last.data.data(), data.data(), size) == 0;
++                  if ((t[0] & ((1ULL << 21) - 1)) == 0) LOG_INFO(HW_GPU, "TEMP stream same data {:.1f}%", 100.0 * t[1] / t[0]); }
++                { static u64 c[3]; // TEMP
++                  if (last.size == size && std::memcmp(last.data.data(), data.data(), size) == 0) {
++                      ++c[0]; if (false) c[1] += !runtime.TempCheck(last.offset, last.generation, data.data(), size);
++                      c[2] += last.generation == ~0ULL;
++                      if ((c[0] & ((1ULL << 18) - 1)) == 0) LOG_INFO(HW_GPU, "TEMP would-hit {} stale {} staging {}", c[0], c[1], c[2]);
++                  } }
++                if (last.size == size && std::memcmp(last.data.data(), data.data(), size) == 0 &&
++                    (runtime.temp_rewrite = nullptr, runtime.RebindUniformBuffer(last.offset, last.generation, size))) {
++                    return;
++                }
++                const std::span<u8> span =
++                    runtime.BindReusableUniformBuffer(size, last.offset, last.generation);
++                std::memcpy(span.data(), data.data(), size);
++                std::memcpy(last.data.data(), data.data(), size);
++                last.size = size;
++                return;
++            }
++        }
+         // Stream buffer path to avoid stalling on non-Nvidia drivers or Vulkan
+         const std::span<u8> span = runtime.BindMappedUniformBuffer(stage, binding_index, size);
+         device_memory.ReadBlockUnsafe(device_addr, span.data(), size);
+diff --git a/src/yuzu_video_core/buffer_cache/buffer_cache_base.h b/src/yuzu_video_core/buffer_cache/buffer_cache_base.h
+index fcfec14d22..48c09ef2f2 100644
+--- a/src/yuzu_video_core/buffer_cache/buffer_cache_base.h
++++ b/src/yuzu_video_core/buffer_cache/buffer_cache_base.h
+@@ -693,6 +693,15 @@ private:
+     Common::LeastRecentlyUsedCache<LRUItemParams> lru_cache;
+     u64 frame_tick = 0;
+     u64 total_used_memory = 0;
++
++    /// Last data streamed for each graphics uniform buffer slot
++    struct StreamedUniform {
++        u32 size = 0;
++        u64 offset = 0;
++        u64 generation = ~0ULL;
++        std::array<u8, DEFAULT_SKIP_CACHE_SIZE> data;
++    };
++    std::vector<StreamedUniform> streamed_uniforms{NUM_STAGES * NUM_GRAPHICS_UNIFORM_BUFFERS};
+     u64 minimum_memory = 0;
+     u64 critical_memory = 0;
+     BufferId inline_buffer_id;
+diff --git a/src/yuzu_video_core/renderer_vulkan/vk_buffer_cache.h b/src/yuzu_video_core/renderer_vulkan/vk_buffer_cache.h
+index 672c462e9c..bde683a2f5 100644
+--- a/src/yuzu_video_core/renderer_vulkan/vk_buffer_cache.h
++++ b/src/yuzu_video_core/renderer_vulkan/vk_buffer_cache.h
+@@ -227,6 +227,31 @@ public:
+         return ref.mapped_span;
+     }
+ 
++    /// Like BindMappedUniformBuffer, also returns where the data went so it can be bound again
++    std::span<u8> BindReusableUniformBuffer(u32 size, u64& offset, u64& generation) {
++        const StagingBufferRef ref = staging_pool.Request(size, MemoryUsage::Upload);
++        BindBuffer(ref.buffer, static_cast<u32>(ref.offset), size);
++        offset = ref.offset;
++        generation = ref.buffer == staging_pool.StreamBuf() ? staging_pool.StreamGeneration()
++                                                            : ~0ULL;
++        return ref.mapped_span;
++    }
++
++    const u8* temp_rewrite = nullptr; // TEMP
++    bool TempCheck(u64 offset, u64 generation, const u8* data, u32 size) { // TEMP
++        if (generation != staging_pool.StreamGeneration()) return true;
++        return std::memcmp(staging_pool.TempStreamSpan().data() + offset, data, size) == 0;
++    }
++    /// Binds data uploaded earlier by BindReusableUniformBuffer, if it is still there
++    bool RebindUniformBuffer(u64 offset, u64 generation, u32 size) {
++        if (!staging_pool.KeepStreamRangeAlive(generation, offset, size)) {
++            return false;
++        }
++        BindBuffer(staging_pool.StreamBuf(), static_cast<u32>(offset), size);
++        if (temp_rewrite) std::memcpy(staging_pool.TempStreamSpan().data() + offset, temp_rewrite, size); // TEMP
++        return true;
++    }
++
+     void BindUniformBuffer(VkBuffer buffer, u32 offset, u32 size) {
+         BindBuffer(buffer, offset, size);
+     }
+diff --git a/src/yuzu_video_core/renderer_vulkan/vk_staging_buffer_pool.cpp b/src/yuzu_video_core/renderer_vulkan/vk_staging_buffer_pool.cpp
+index 60ff6339d1..25b32e7883 100644
+--- a/src/yuzu_video_core/renderer_vulkan/vk_staging_buffer_pool.cpp
++++ b/src/yuzu_video_core/renderer_vulkan/vk_staging_buffer_pool.cpp
+@@ -123,6 +123,7 @@ StagingBufferRef StagingBufferPool::GetStreamBuffer(size_t size) {
+         used_iterator = 0;
+         iterator = 0;
+         free_iterator = size;
++        ++stream_generation;
+ 
+         if (AreRegionsActive(0, Region(size) + 1)) {
+             // The start of the buffer is still in use. Leave it unchecked, otherwise the next
+@@ -134,6 +135,9 @@ StagingBufferRef StagingBufferPool::GetStreamBuffer(size_t size) {
+     }
+     const size_t offset = iterator;
+     iterator = Common::AlignUp(iterator + size, MAX_ALIGNMENT);
++    { ++temp_allocs; // TEMP
++      for (auto& r : temp_ranges) if (r[2] + 1 == stream_generation + 1 && r[0] < offset + size && offset < r[0] + r[1]) ++temp_overlaps;
++      if ((temp_allocs & ((1ULL << 20) - 1)) == 0) LOG_INFO(Render_Vulkan, "TEMP stream allocs {} overlaps {} gen {} it {}", temp_allocs, temp_overlaps, stream_generation, iterator); }
+     return StagingBufferRef{
+         .buffer = *stream_buffer,
+         .offset = static_cast<VkDeviceSize>(offset),
+@@ -144,6 +148,22 @@ StagingBufferRef StagingBufferPool::GetStreamBuffer(size_t size) {
+     };
+ }
+ 
++bool StagingBufferPool::KeepStreamRangeAlive(u64 generation, VkDeviceSize offset, size_t size) {
++    if (generation != stream_generation) {
++        return false;
++    }
++    // Memory of this generation is only handed out again after a wrap, once the regions'
++    // sync ticks are reached
++    { bool f = false; for (auto& r : temp_ranges) if (r[0] == offset) { r = {offset, size, generation}; f = true; } // TEMP
++      if (!f) temp_ranges.push_back({offset, size, generation}); if (temp_ranges.size() > 4096) temp_ranges.erase(temp_ranges.begin(), temp_ranges.begin() + 2048); }
++    const u64 current_tick = scheduler.CurrentTick();
++    const size_t last_region = Region(offset + size - 1);
++    for (size_t region = Region(offset); region <= last_region; ++region) {
++        sync_ticks[region] = std::max(sync_ticks[region], current_tick);
++    }
++    return true;
++}
++
+ bool StagingBufferPool::AreRegionsActive(size_t region_begin, size_t region_end) const {
+     const u64 gpu_tick = scheduler.GetMasterSemaphore().KnownGpuTick();
+     return std::any_of(sync_ticks.begin() + region_begin, sync_ticks.begin() + region_end,
+diff --git a/src/yuzu_video_core/renderer_vulkan/vk_staging_buffer_pool.h b/src/yuzu_video_core/renderer_vulkan/vk_staging_buffer_pool.h
+index 9a2414019c..0b42f9042c 100644
+--- a/src/yuzu_video_core/renderer_vulkan/vk_staging_buffer_pool.h
++++ b/src/yuzu_video_core/renderer_vulkan/vk_staging_buffer_pool.h
+@@ -40,6 +40,16 @@ public:
+         return *stream_buffer;
+     }
+ 
++    std::span<u8> TempStreamSpan() const noexcept { return stream_pointer; } // TEMP
++    /// Counts how many times the stream buffer wrapped around
++    [[nodiscard]] u64 StreamGeneration() const noexcept {
++        return stream_generation;
++    }
++
++    /// Keeps a stream buffer range from this generation alive for the commands being recorded.
++    /// Returns false when the range may have been handed out again.
++    bool KeepStreamRangeAlive(u64 generation, VkDeviceSize offset, size_t size);
++
+     void TickFrame();
+ 
+ private:
+@@ -116,6 +126,9 @@ private:
+     size_t used_iterator = 0;
+     size_t free_iterator = 0;
+     std::array<u64, NUM_SYNCS> sync_ticks{};
++    u64 stream_generation = 0;
++    std::vector<std::array<u64, 3>> temp_ranges; // TEMP
++    u64 temp_overlaps = 0, temp_allocs = 0; // TEMP
+ 
+     StagingBuffersCache device_local_cache;
+     StagingBuffersCache upload_cache;

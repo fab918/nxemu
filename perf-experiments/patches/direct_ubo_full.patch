@@ -1,0 +1,401 @@
+diff --git a/src/yuzu_video_core/buffer_cache/buffer_cache.h b/src/yuzu_video_core/buffer_cache/buffer_cache.h
+index 21cc23693e..33dc96cb32 100644
+--- a/src/yuzu_video_core/buffer_cache/buffer_cache.h
++++ b/src/yuzu_video_core/buffer_cache/buffer_cache.h
+@@ -22,6 +22,9 @@ BufferCache<P>::BufferCache(Tegra::MaxwellDeviceMemoryManager& device_memory_, R
+     void(slot_buffers.insert(runtime, NullBufferParams{}));
+     gpu_modified_ranges.Clear();
+     inline_buffer_id = NULL_BUFFER_ID;
++    if constexpr (!IS_OPENGL) {
++        runtime.SetGuestMemory(device_memory.PhysicalBase(), device_memory.BackingSize());
++    }
+ 
+     if (!runtime.CanReportMemoryUsage()) {
+         minimum_memory = DEFAULT_EXPECTED_MEMORY;
+@@ -1189,6 +1192,20 @@ void BufferCache<P>::BindHostGraphicsUniformBuffer(size_t stage, u32 index, u32
+     const u32 size = std::min(binding.size, (*channel_state->uniform_buffer_sizes)[stage][index]);
+     Buffer& buffer = slot_buffers[binding.buffer_id];
+     TouchBuffer(buffer, binding.buffer_id);
++    if constexpr (!IS_OPENGL) {
++        // The GPU reads guest memory in place, like the console does. Data the emulated GPU
++        // wrote is excluded: it lives in host buffers, or it was written in command order
++        // (inline constant updates) and earlier draws must not see it.
++        static const bool temp_no_direct = std::getenv("NXEMU_NO_DIRECT_UBO") != nullptr; // TEMP
++        if (!temp_no_direct && binding.buffer_id != NULL_BUFFER_ID &&
++            !device_memory.AreGpuWrittenPages(device_addr, size) &&
++            !memory_tracker.IsRegionGpuModified(device_addr, size)) {
++            const u8* const host_pointer = device_memory.GetSpan(device_addr, size);
++            if (host_pointer && runtime.BindGuestUniformBuffer(host_pointer, size)) {
++                return;
++            }
++        }
++    }
+     bool stream_modified_uniform{};
+     if constexpr (!IS_OPENGL) {
+         // A CPU-written uniform range that an earlier draw of this frame uses cannot be
+diff --git a/src/yuzu_video_core/device_memory_manager.h b/src/yuzu_video_core/device_memory_manager.h
+index 6fbbed7666..7717eeb7be 100644
+--- a/src/yuzu_video_core/device_memory_manager.h
++++ b/src/yuzu_video_core/device_memory_manager.h
+@@ -132,6 +132,45 @@ public:
+         return flush_cache_filter.Filter(addr, size, requested);
+     }
+ 
++    /// Host address of the guest physical memory and its size
++    [[nodiscard]] uintptr_t PhysicalBase() const noexcept {
++        return physical_base;
++    }
++    [[nodiscard]] size_t BackingSize() const noexcept {
++        return backing_size;
++    }
++
++    /// Marks pages written by the emulated GPU, as opposed to the guest CPU. Such writes are
++    /// ordered with GPU commands, so earlier commands must not see them.
++    void MarkGpuWrittenPages(DAddr address, size_t size) noexcept {
++        if (size == 0) {
++            return;
++        }
++        const size_t last = (address + size - 1) >> page_bits;
++        for (size_t page = address >> page_bits; page <= last; ++page) {
++            auto& word = gpu_written_pages[page / 64];
++            const u64 bit = 1ULL << (page % 64);
++            if ((word.load(std::memory_order_relaxed) & bit) == 0) {
++                word.fetch_or(bit, std::memory_order_relaxed);
++            }
++        }
++    }
++
++    /// Whether the emulated GPU ever wrote one of the pages of a range
++    [[nodiscard]] bool AreGpuWrittenPages(DAddr address, size_t size) const noexcept {
++        if (size == 0) {
++            return false;
++        }
++        const size_t last = (address + size - 1) >> page_bits;
++        for (size_t page = address >> page_bits; page <= last; ++page) {
++            if (gpu_written_pages[page / 64].load(std::memory_order_relaxed) &
++                (1ULL << (page % 64))) {
++                return true;
++            }
++        }
++        return false;
++    }
++
+     static constexpr size_t AS_BITS = Traits::device_virtual_bits;
+ 
+ private:
+@@ -175,6 +214,8 @@ private:
+     std::unique_ptr<DeviceMemoryManagerAllocator<Traits>> impl;
+ 
+     const uintptr_t physical_base;
++    const size_t backing_size;
++    std::unique_ptr<std::atomic<u64>[]> gpu_written_pages;
+     DeviceInterface* device_inter;
+     Common::VirtualBuffer<u32> compressed_physical_ptr;
+     Common::VirtualBuffer<u32> compressed_device_addr;
+diff --git a/src/yuzu_video_core/fence_manager.h b/src/yuzu_video_core/fence_manager.h
+index c6120f98c8..93b96c95be 100644
+--- a/src/yuzu_video_core/fence_manager.h
++++ b/src/yuzu_video_core/fence_manager.h
+@@ -3,6 +3,8 @@
+ 
+ #pragma once
+ 
++#include <cstdlib>
++
+ #include <algorithm>
+ #include <atomic>
+ #include <condition_variable>
+@@ -193,11 +195,13 @@ private:
+         // delayed signal requires Normal to defer this completion signal. Where pending
+         // readbacks fault on CPU access, a readback alone does not either.
+         const bool unprotected_flush = should_flush && !buffer_cache.PendingDownloadsProtected();
+-        const bool delay_fence = force_delay || Settings::IsGpuReadbackExact() ||
++        // TEMP: wait for the host GPU before every guest-visible completion
++        static const bool temp_host_sync = std::getenv("NXEMU_HOST_SYNC_FENCES") != nullptr;
++        const bool delay_fence = temp_host_sync || force_delay || Settings::IsGpuReadbackExact() ||
+                                  unprotected_flush || pending_delayed_fences != 0;
+ 
+         const bool can_complete_stub_inline =
+-            allow_stub_fast_path && delay_fence && !should_flush && fences.empty() &&
++            !temp_host_sync && allow_stub_fast_path && delay_fence && !should_flush && fences.empty() &&
+             pending_operations.empty() && !fence_in_flight;
+ 
+         if (can_complete_stub_inline) {
+@@ -233,7 +237,7 @@ private:
+             return true;
+         }
+ 
+-        TFence new_fence = CreateFence(!should_flush);
++        TFence new_fence = CreateFence(!should_flush && !temp_host_sync);
+         if (delay_fence && func) {
+             uncommitted_operations.emplace_back(std::move(func));
+         }
+diff --git a/src/yuzu_video_core/host1x/gpu_device_memory_manager.cpp b/src/yuzu_video_core/host1x/gpu_device_memory_manager.cpp
+index c35c7b41ba..8640837ba6 100644
+--- a/src/yuzu_video_core/host1x/gpu_device_memory_manager.cpp
++++ b/src/yuzu_video_core/host1x/gpu_device_memory_manager.cpp
+@@ -193,6 +193,8 @@ struct DeviceMemoryManagerAllocator
+ template <typename Traits>
+ DeviceMemoryManager<Traits>::DeviceMemoryManager(const IDeviceMemory & device_memory_) :
+     physical_base{reinterpret_cast<const uintptr_t>(device_memory_.BackingBasePointer())},
++    backing_size{device_memory_.BackingSize()},
++    gpu_written_pages{std::make_unique<std::atomic<u64>[]>((device_as_size >> page_bits) / 64)},
+     device_inter{nullptr}, compressed_physical_ptr(device_as_size >> DEVICE_PAGEBITS),
+     compressed_device_addr(Common::AlignUp(device_memory_.BackingSize(), DEVICE_PAGESIZE) >> DEVICE_PAGEBITS),
+     cpu_backing_address(device_as_size >> DEVICE_PAGEBITS)
+diff --git a/src/yuzu_video_core/memory_manager.cpp b/src/yuzu_video_core/memory_manager.cpp
+index cc135d01f6..adea09b103 100644
+--- a/src/yuzu_video_core/memory_manager.cpp
++++ b/src/yuzu_video_core/memory_manager.cpp
+@@ -631,6 +631,7 @@ void MemoryManager::WriteBlockImpl(GPUVAddr gpu_dest_addr, const void * src_buff
+         {
+             rasterizer->InvalidateRegion(dev_addr_base, copy_amount, which);
+         }
++        memory.MarkGpuWrittenPages(dev_addr_base, copy_amount);
+         // A delayed readback can complete after the guest memory was unmapped at shutdown.
+         if (u8 * physical = memory.GetPointer<u8>(dev_addr_base))
+         {
+@@ -645,6 +646,7 @@ void MemoryManager::WriteBlockImpl(GPUVAddr gpu_dest_addr, const void * src_buff
+         {
+             rasterizer->InvalidateRegion(dev_addr_base, copy_amount, which);
+         }
++        memory.MarkGpuWrittenPages(dev_addr_base, copy_amount);
+         if (!IsBigPageContinuous(page_index)) [[unlikely]]
+         {
+             memory.WriteBlockUnsafe(dev_addr_base, src_buffer, copy_amount);
+diff --git a/src/yuzu_video_core/renderer_vulkan/vk_buffer_cache.cpp b/src/yuzu_video_core/renderer_vulkan/vk_buffer_cache.cpp
+index 327bb1cca6..c35a183076 100644
+--- a/src/yuzu_video_core/renderer_vulkan/vk_buffer_cache.cpp
++++ b/src/yuzu_video_core/renderer_vulkan/vk_buffer_cache.cpp
+@@ -10,6 +10,7 @@
+ #include <vector>
+ 
+ #include "yuzu_video_core/renderer_vulkan/vk_buffer_cache.h"
++#include "yuzu_common/div_ceil.h"
+ #include "yuzu_common/readback_reference.h"
+ #include "yuzu_shader_recompiler/backend/spirv/emit_spirv.h"
+ 
+@@ -388,6 +389,123 @@ void BufferCacheRuntime::NotifyVertexBufferStride(
+     dirty[Dirty::VertexInput] = true;
+ }
+ 
++BufferCacheRuntime::~BufferCacheRuntime() {
++    const auto& dld = device.GetDispatchLoader();
++    const VkDevice logical = *device.GetLogical();
++    for (const GuestMemoryChunk& chunk : guest_chunks) {
++        if (chunk.buffer != VK_NULL_HANDLE) {
++            dld.vkDestroyBuffer(logical, chunk.buffer, nullptr);
++        }
++        if (chunk.memory != VK_NULL_HANDLE) {
++            dld.vkFreeMemory(logical, chunk.memory, nullptr);
++        }
++    }
++}
++
++void BufferCacheRuntime::SetGuestMemory(uintptr_t base, size_t size) {
++    if (!device.IsExtExternalMemoryHostSupported() || base % 4096 != 0 || size == 0) {
++        return;
++    }
++    guest_memory_base = base;
++    guest_memory_size = size;
++    guest_chunks.resize(Common::DivCeil(size, GUEST_CHUNK_SIZE));
++    uniform_buffer_alignment = device.GetUniformBufferAlignment();
++}
++
++bool BufferCacheRuntime::BindGuestUniformBuffer(const u8* host_pointer, u32 size) {
++    const uintptr_t offset = reinterpret_cast<uintptr_t>(host_pointer) - guest_memory_base;
++    const size_t index = offset >> GUEST_CHUNK_BITS;
++    if (guest_chunks.empty() || size == 0 || offset >= guest_memory_size ||
++        offset % uniform_buffer_alignment != 0 || ((offset + size - 1) >> GUEST_CHUNK_BITS) != index) {
++        return false;
++    }
++    VkBuffer buffer = guest_chunks[index].buffer;
++    if (buffer == VK_NULL_HANDLE) {
++        buffer = ImportGuestChunk(index);
++        if (buffer == VK_NULL_HANDLE) {
++            return false;
++        }
++    }
++    BindBuffer(buffer, static_cast<u32>(offset & (GUEST_CHUNK_SIZE - 1)), size);
++    return true;
++}
++
++VkBuffer BufferCacheRuntime::ImportGuestChunk(size_t index) {
++    GuestMemoryChunk& chunk = guest_chunks[index];
++    if (chunk.failed) {
++        return VK_NULL_HANDLE;
++    }
++    chunk.failed = true;
++    const auto& dld = device.GetDispatchLoader();
++    const VkDevice logical = *device.GetLogical();
++    void* const pointer = reinterpret_cast<void*>(guest_memory_base + (index << GUEST_CHUNK_BITS));
++    const VkDeviceSize size =
++        std::min<VkDeviceSize>(GUEST_CHUNK_SIZE, guest_memory_size - (index << GUEST_CHUNK_BITS));
++
++    VkMemoryHostPointerPropertiesEXT host_properties{
++        .sType = VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT,
++        .pNext = nullptr,
++        .memoryTypeBits = 0,
++    };
++    if (dld.vkGetMemoryHostPointerPropertiesEXT(
++            logical, VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT, pointer,
++            &host_properties) != VK_SUCCESS) {
++        LOG_WARNING(Render_Vulkan, "Guest memory cannot be imported, uniform buffers are copied");
++        return VK_NULL_HANDLE;
++    }
++    const VkExternalMemoryBufferCreateInfo external_info{
++        .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO,
++        .pNext = nullptr,
++        .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT,
++    };
++    const VkBufferCreateInfo buffer_ci{
++        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
++        .pNext = &external_info,
++        .flags = 0,
++        .size = size,
++        .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
++                 VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
++                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
++        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
++        .queueFamilyIndexCount = 0,
++        .pQueueFamilyIndices = nullptr,
++    };
++    VkBuffer buffer = VK_NULL_HANDLE;
++    if (dld.vkCreateBuffer(logical, &buffer_ci, nullptr, &buffer) != VK_SUCCESS) {
++        return VK_NULL_HANDLE;
++    }
++    const VkMemoryRequirements requirements = device.GetLogical().GetBufferMemoryRequirements(buffer);
++    const u32 type_bits = requirements.memoryTypeBits & host_properties.memoryTypeBits;
++    if (type_bits == 0) {
++        dld.vkDestroyBuffer(logical, buffer, nullptr);
++        return VK_NULL_HANDLE;
++    }
++    const VkImportMemoryHostPointerInfoEXT import_info{
++        .sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT,
++        .pNext = nullptr,
++        .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT,
++        .pHostPointer = pointer,
++    };
++    const VkMemoryAllocateInfo allocate_info{
++        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
++        .pNext = &import_info,
++        .allocationSize = size,
++        .memoryTypeIndex = static_cast<u32>(std::countr_zero(type_bits)),
++    };
++    VkDeviceMemory memory = VK_NULL_HANDLE;
++    if (dld.vkAllocateMemory(logical, &allocate_info, nullptr, &memory) != VK_SUCCESS ||
++        dld.vkBindBufferMemory(logical, buffer, memory, 0) != VK_SUCCESS) {
++        if (memory != VK_NULL_HANDLE) {
++            dld.vkFreeMemory(logical, memory, nullptr);
++        }
++        dld.vkDestroyBuffer(logical, buffer, nullptr);
++        LOG_WARNING(Render_Vulkan, "Failed to import guest memory chunk {}", index);
++        return VK_NULL_HANDLE;
++    }
++    chunk = {.memory = memory, .buffer = buffer, .failed = false};
++    return buffer;
++}
++
+ BufferCacheRuntime::BufferCacheRuntime(const Device& device_, MemoryAllocator& memory_allocator_,
+                                        Scheduler& scheduler_, StagingBufferPool& staging_pool_,
+                                        GuestDescriptorQueue& guest_descriptor_queue_,
+diff --git a/src/yuzu_video_core/renderer_vulkan/vk_buffer_cache.h b/src/yuzu_video_core/renderer_vulkan/vk_buffer_cache.h
+index 672c462e9c..b745176993 100644
+--- a/src/yuzu_video_core/renderer_vulkan/vk_buffer_cache.h
++++ b/src/yuzu_video_core/renderer_vulkan/vk_buffer_cache.h
+@@ -94,9 +94,17 @@ public:
+                                 GuestDescriptorQueue& guest_descriptor_queue,
+                                 ComputePassDescriptorQueue& compute_pass_descriptor_queue,
+                                 DescriptorPool& descriptor_pool);
++    ~BufferCacheRuntime();
+ 
+     void TickFrame(Common::SlotVector<Buffer>& slot_buffers) noexcept;
+ 
++    /// Lets uniform buffers be read by the GPU straight from guest memory
++    void SetGuestMemory(uintptr_t base, size_t size);
++
++    /// Binds a uniform buffer in place in guest memory. Returns false when the range cannot be
++    /// bound this way, for example when the driver cannot import that memory.
++    bool BindGuestUniformBuffer(const u8* host_pointer, u32 size);
++
+     /// Notes that the commands being recorded write to a buffer.
+     void MarkHostWrite(const Buffer& buffer);
+ 
+@@ -252,6 +260,16 @@ private:
+     void ReserveNullBuffer();
+     vk::Buffer CreateNullBuffer();
+ 
++    /// Guest memory is imported in chunks, when a binding first needs one
++    static constexpr size_t GUEST_CHUNK_BITS = 26;
++    static constexpr size_t GUEST_CHUNK_SIZE = 1ULL << GUEST_CHUNK_BITS;
++    struct GuestMemoryChunk {
++        VkDeviceMemory memory = VK_NULL_HANDLE;
++        VkBuffer buffer = VK_NULL_HANDLE;
++        bool failed = false;
++    };
++    VkBuffer ImportGuestChunk(size_t index);
++
+     const Device& device;
+     MemoryAllocator& memory_allocator;
+     Scheduler& scheduler;
+@@ -280,6 +298,11 @@ private:
+     DescriptorPool& readback_descriptor_pool;
+     bool differential_readback_enabled{true};
+     bool has_readback_references{};
++
++    uintptr_t guest_memory_base{};
++    size_t guest_memory_size{};
++    std::vector<GuestMemoryChunk> guest_chunks;
++    VkDeviceSize uniform_buffer_alignment{};
+ };
+ 
+ struct BufferCacheParams {
+diff --git a/src/yuzu_video_core/vulkan_common/vulkan_device.h b/src/yuzu_video_core/vulkan_common/vulkan_device.h
+index 6b00e2e9bd..485a01b57c 100644
+--- a/src/yuzu_video_core/vulkan_common/vulkan_device.h
++++ b/src/yuzu_video_core/vulkan_common/vulkan_device.h
+@@ -70,7 +70,7 @@ VK_DEFINE_HANDLE(VmaAllocator)
+ #define FOR_EACH_VK_EXTENSION(EXTENSION)                                                           \
+     EXTENSION(EXT, CONDITIONAL_RENDERING, conditional_rendering)                                   \
+     EXTENSION(EXT, CONSERVATIVE_RASTERIZATION, conservative_rasterization)                         \
+-    EXTENSION(EXT, DEPTH_RANGE_UNRESTRICTED, depth_range_unrestricted)                             \
++    EXTENSION(EXT, DEPTH_RANGE_UNRESTRICTED, depth_range_unrestricted)                                 EXTENSION(EXT, EXTERNAL_MEMORY_HOST, external_memory_host)                                     \
+     EXTENSION(EXT, MEMORY_BUDGET, memory_budget)                                                   \
+     EXTENSION(EXT, ROBUSTNESS_2, robustness_2)                                                     \
+     EXTENSION(EXT, SAMPLER_FILTER_MINMAX, sampler_filter_minmax)                                   \
+@@ -655,6 +655,11 @@ public:
+         return extensions.custom_border_color;
+     }
+ 
++    /// Returns true if the device supports VK_EXT_external_memory_host.
++    bool IsExtExternalMemoryHostSupported() const {
++        return extensions.external_memory_host;
++    }
++
+     /// Returns true if the device supports VK_EXT_extended_dynamic_state.
+     bool IsExtExtendedDynamicStateSupported() const {
+         return extensions.extended_dynamic_state;
+diff --git a/src/yuzu_video_core/vulkan_common/vulkan_wrapper.cpp b/src/yuzu_video_core/vulkan_common/vulkan_wrapper.cpp
+index bce7105b46..a374181fbe 100644
+--- a/src/yuzu_video_core/vulkan_common/vulkan_wrapper.cpp
++++ b/src/yuzu_video_core/vulkan_common/vulkan_wrapper.cpp
+@@ -205,6 +205,7 @@ void Load(VkDevice device, DeviceDispatch& dld) noexcept {
+     X(vkFreeDescriptorSets);
+     X(vkFreeMemory);
+     X(vkGetBufferMemoryRequirements2);
++    X(vkGetMemoryHostPointerPropertiesEXT);
+     X(vkGetDeviceQueue);
+     X(vkGetEventStatus);
+     X(vkGetFenceStatus);
+diff --git a/src/yuzu_video_core/vulkan_common/vulkan_wrapper.h b/src/yuzu_video_core/vulkan_common/vulkan_wrapper.h
+index b71cd32731..58cf514935 100644
+--- a/src/yuzu_video_core/vulkan_common/vulkan_wrapper.h
++++ b/src/yuzu_video_core/vulkan_common/vulkan_wrapper.h
+@@ -311,6 +311,7 @@ struct DeviceDispatch : InstanceDispatch {
+     PFN_vkGetMemoryFdKHR vkGetMemoryFdKHR{};
+ #ifdef _WIN32
+     PFN_vkGetMemoryWin32HandleKHR vkGetMemoryWin32HandleKHR{};
++    PFN_vkGetMemoryHostPointerPropertiesEXT vkGetMemoryHostPointerPropertiesEXT{};
+ #endif
+     PFN_vkGetPipelineExecutablePropertiesKHR vkGetPipelineExecutablePropertiesKHR{};
+     PFN_vkGetPipelineExecutableStatisticsKHR vkGetPipelineExecutableStatisticsKHR{};

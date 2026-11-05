@@ -1,0 +1,128 @@
+diff --git a/src/nxemu-os/core/hle/kernel/physical_core.cpp b/src/nxemu-os/core/hle/kernel/physical_core.cpp
+index 1de5a580a9..61e0a48b05 100644
+--- a/src/nxemu-os/core/hle/kernel/physical_core.cpp
++++ b/src/nxemu-os/core/hle/kernel/physical_core.cpp
+@@ -8,6 +8,9 @@
+ #include "core/hle/kernel/k_process.h"
+ #include "core/hle/kernel/k_thread.h"
+ #include "core/hle/kernel/kernel.h"
++#include <chrono>
++#include <cstdlib>
++#include <immintrin.h>
+ #include "core/hle/kernel/physical_core.h"
+ #include "core/hle/kernel/svc.h"
+ 
+@@ -237,6 +240,24 @@ void PhysicalCore::LogBacktrace()
+ 
+ void PhysicalCore::Idle()
+ {
++    { // TEMP: NXEMU_IDLE_SPIN_US polls for an interrupt before sleeping
++        static const long long spin_us = [] {
++            const char* value = std::getenv("NXEMU_IDLE_SPIN_US");
++            return value ? std::atoll(value) : 0LL;
++        }();
++        if (spin_us > 0) {
++            const auto end = std::chrono::steady_clock::now() + std::chrono::microseconds(spin_us);
++            for (u32 i = 0;; ++i) {
++                if (m_is_interrupted.load(std::memory_order_acquire)) {
++                    return;
++                }
++                _mm_pause();
++                if ((i & 63) == 63 && std::chrono::steady_clock::now() >= end) {
++                    break;
++                }
++            }
++        }
++    }
+     std::unique_lock lk{m_guard};
+     m_on_interrupt.wait(lk, [this] {
+         return m_is_interrupted.load(std::memory_order_acquire);
+diff --git a/src/nxemu-os/core/hle/service/nvnflinger/buffer_queue_producer.cpp b/src/nxemu-os/core/hle/service/nvnflinger/buffer_queue_producer.cpp
+index d6846579c9..2b98a15fc0 100644
+--- a/src/nxemu-os/core/hle/service/nvnflinger/buffer_queue_producer.cpp
++++ b/src/nxemu-os/core/hle/service/nvnflinger/buffer_queue_producer.cpp
+@@ -430,6 +430,16 @@ Status BufferQueueProducer::AttachBuffer(s32* out_slot,
+ 
+ Status BufferQueueProducer::QueueBuffer(s32 slot, const QueueBufferInput& input,
+                                         QueueBufferOutput* output) {
++    // TEMP causal test: NXEMU_GUEST_SPIN_US delays the guest thread that presents
++    static const long long spin_us = [] {
++        const char* value = std::getenv("NXEMU_GUEST_SPIN_US");
++        return value ? std::atoll(value) : 0LL;
++    }();
++    if (spin_us > 0) {
++        const auto end = std::chrono::steady_clock::now() + std::chrono::microseconds(spin_us);
++        while (std::chrono::steady_clock::now() < end) {
++        }
++    }
+     s64 timestamp{};
+     bool is_auto_timestamp{};
+     Common::Rectangle<s32> crop;
+diff --git a/src/yuzu_video_core/fence_manager.h b/src/yuzu_video_core/fence_manager.h
+index c6120f98c8..5121cbd29a 100644
+--- a/src/yuzu_video_core/fence_manager.h
++++ b/src/yuzu_video_core/fence_manager.h
+@@ -193,8 +193,9 @@ private:
+         // delayed signal requires Normal to defer this completion signal. Where pending
+         // readbacks fault on CPU access, a readback alone does not either.
+         const bool unprotected_flush = should_flush && !buffer_cache.PendingDownloadsProtected();
+-        const bool delay_fence = force_delay || Settings::IsGpuReadbackExact() ||
+-                                 unprotected_flush || pending_delayed_fences != 0;
++        static const bool temp_no_delay = std::getenv("NXEMU_NO_DELAY") != nullptr; // TEMP
++        const bool delay_fence = force_delay || (!temp_no_delay && (Settings::IsGpuReadbackExact() ||
++                                 unprotected_flush || pending_delayed_fences != 0));
+ 
+         const bool can_complete_stub_inline =
+             allow_stub_fast_path && delay_fence && !should_flush && fences.empty() &&
+@@ -233,6 +234,9 @@ private:
+             return true;
+         }
+ 
++        { static u64 c[6]; ++c[0]; c[1] += delay_fence; c[2] += force_delay; c[3] += unprotected_flush; // TEMP
++          c[4] += pending_delayed_fences != 0; c[5] += should_flush && func != nullptr;
++          if ((c[0] & 4095) == 0) LOG_INFO(HW_GPU, "TEMP fences {} delayed {} force {} unprot_flush {} chained {} sync_with_flush {}", c[0], c[1], c[2], c[3], c[4], c[5]); }
+         TFence new_fence = CreateFence(!should_flush);
+         if (delay_fence && func) {
+             uncommitted_operations.emplace_back(std::move(func));
+diff --git a/src/yuzu_video_core/renderer_vulkan/vk_rasterizer.cpp b/src/yuzu_video_core/renderer_vulkan/vk_rasterizer.cpp
+index 17427b75f1..f827571ae2 100644
+--- a/src/yuzu_video_core/renderer_vulkan/vk_rasterizer.cpp
++++ b/src/yuzu_video_core/renderer_vulkan/vk_rasterizer.cpp
+@@ -337,6 +337,20 @@ void RasterizerVulkan::DrawVtgAsCompute(const GraphicsPipeline* pipeline) {
+ }
+ 
+ void RasterizerVulkan::Draw(bool is_indexed, u32 instance_count) {
++    { // TEMP: NXEMU_DRAW_SPIN_NS adds busy work to every draw
++        static const long long spin_ns = [] {
++            const char* value = std::getenv("NXEMU_DRAW_SPIN_NS");
++            return value ? std::atoll(value) : 0LL;
++        }();
++        static u64 temp_draws = 0; static auto temp_t0 = std::chrono::steady_clock::now();
++        if ((++temp_draws & ((1 << 18) - 1)) == 0) { const auto now = std::chrono::steady_clock::now();
++            LOG_INFO(Render_Vulkan, "TEMP draws/s {:.0f}", (1 << 18) / std::chrono::duration<double>(now - temp_t0).count()); temp_t0 = now; }
++        if (spin_ns > 0) {
++            const auto end = std::chrono::steady_clock::now() + std::chrono::nanoseconds(spin_ns);
++            while (std::chrono::steady_clock::now() < end) {
++            }
++        }
++    }
+     vtg_instance_count = instance_count;
+     PrepareDraw(is_indexed, [this, is_indexed, instance_count](const GraphicsPipeline* pipeline) {
+         if (pipeline->IsVtgAsCompute()) {
+@@ -1165,6 +1179,16 @@ RasterizerVulkan::FrameDraws RasterizerVulkan::TakeFrameDraws() {
+ }
+ 
+ void RasterizerVulkan::TickFrame() {
++    // TEMP causal test: NXEMU_GPU_SPIN_US adds busy work per frame on the GPU thread
++    static const long long spin_us = [] {
++        const char* value = std::getenv("NXEMU_GPU_SPIN_US");
++        return value ? std::atoll(value) : 0LL;
++    }();
++    if (spin_us > 0) {
++        const auto end = std::chrono::steady_clock::now() + std::chrono::microseconds(spin_us);
++        while (std::chrono::steady_clock::now() < end) {
++        }
++    }
+     pipeline_cache.RecordDiagnosticFrame();
+     draw_counter = 0;
+     fence_manager.TickFrame();

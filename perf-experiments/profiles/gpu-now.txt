@@ -1,0 +1,742 @@
+===== thread 37648: 2511 samples
+-- self
+ 18.8%  ntdll!ZwWaitForAlertByThreadId
+  5.3%  nxemu-video!Tegra::DmaPusher::ProcessCommands
+  2.4%  ntdll!NtAlertThreadByThreadId
+  2.2%  nxemu-video!Vulkan::PushImageDescriptors
+  2.2%  nxemu-video!memcpy
+  2.1%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::TouchBuffer
+  1.9%  ntdll!RtlReleaseSRWLockExclusive
+  1.7%  nxemu-video!Tegra::DmaPusher::CallMethod
+  1.6%  nxemu-video!VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::ForEachModifiedRange<0,1,`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer'::`2'::<lambda_2> &>
+  1.5%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostVertexBuffers
+  1.4%  nxemu-video!memcmp
+  1.4%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec>
+  1.4%  nxemu-video!Tegra::Engines::Maxwell3D::PushMethodRun
+  1.3%  ntdll!RtlAcquireSRWLockExclusive
+  1.3%  nxemu-video!``Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleImageSpec>'::`2'::<lambda_2>::operator()'::`2'::<lambda_2>::operator()<Shader::TextureDescriptor>
+  1.3%  nxemu-video!Tegra::MacroEngine::Execute
+  1.2%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsUniformBuffer
+  1.2%  nxemu-video!Tegra::Engines::Maxwell3D::ProcessDirtyRegisters
+  1.0%  nxemu-video!VideoCommon::UsageTracker::Track
+  1.0%  nxemu-video!Tegra::MemoryManager::GpuToCpuAddress
+  1.0%  nxemu-video!Vulkan::GuestRecipeInputCache<Vulkan::GuestInputHash>::Find
+  1.0%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BufferOperations<`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::DoUpdateGraphicsBuffers'::`2'::<lambda_1> >
+  1.0%  nxemu-video!Tegra::Engines::Maxwell3D::ProcessMacro
+  0.9%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::UpdateRenderTargets
+  0.9%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer
+  0.9%  nxemu-video!memcpy_repmovs
+  0.9%  nxemu-video!`VideoCommon::TextureCache<Vulkan::TextureCacheParams>::CheckFeedbackLoop'::`2'::<lambda_1>::operator()
+  0.9%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::UpdateVertexBuffers
+  0.8%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec>
+  0.8%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::PrepareImage
+  0.8%  nxemu-video!Vulkan::RasterizerVulkan::UpdateDynamicStates
+  0.8%  ntdll!RtlAllocateHeap
+  0.7%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::RunGarbageCollector
+  0.6%  nxemu-video!mtx_do_lock
+  0.6%  nxemu-video!memset
+  0.6%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::UpdateIndexBuffer
+  0.6%  nxemu-video!Tegra::DmaPusher::Step
+  0.6%  nxemu-video!std::_Hash<std::_Umap_traits<VideoCommon::RenderTargets,Common::SlotId,std::_Uhash_compare<VideoCommon::RenderTargets,std::hash<VideoCommon::RenderTargets>,std::equal_to<VideoCommon::RenderTargets> >,std::allocator<std::pair<VideoCommon::RenderTargets const ,Common::SlotId> >,0> >::_Find_last<VideoCommon::RenderTargets>
+  0.6%  nxemu-video!Vulkan::RasterizerVulkan::BindGraphicsUniformBuffer
+  0.6%  nxemu-video!VideoCommon::UsageTracker::TrackPage
+  0.6%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::SynchronizeAliases
+  0.6%  nxemu-video!VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::IteratePages<1,`VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::IsRegionCpuModified'::`2'::<lambda_1> >
+  0.6%  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::GetPointer<unsigned char>
+  0.5%  nxemu-video!std::_Uhash_compare<VideoCommon::RenderTargets,std::hash<VideoCommon::RenderTargets>,std::equal_to<VideoCommon::RenderTargets> >::operator()<VideoCommon::RenderTargets>
+  0.5%  nxemu-video!`VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::ForEachModifiedRange<0,1,`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer'::`2'::<lambda_2> &>'::`2'::<lambda_2>::operator()
+  0.5%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> >
+  0.5%  nxemu-video!Tegra::Engines::Maxwell3D::CallMethod
+  0.5%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::ForEachCPUPage<`VideoCommon::TextureCache<Vulkan::TextureCacheParams>::ForEachImageInRegion<`VideoCommon::TextureCache<Vulkan::TextureCacheParams>::FindImage'::`2'::<lambda_1> const &>'::`2'::<lambda_1> >
+  0.5%  nxemu-video!VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::IteratePages<0,`VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::IsRegionGpuModified'::`2'::<lambda_1> >
+  0.5%  nxemu-video!Tegra::MemoryManager::IsContinuousRange
+  0.5%  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::GetSpan
+  0.4%  nxemu-video!Vulkan::RasterizerVulkan::RefreshVertexInput
+  0.4%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureDraw
+  0.4%  nxemu-video!Vulkan::FixedPipelineState::RefreshFromRegisters
+  0.4%  nxemu-video!VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::IterateCache<1,`VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::InvalidateRegion'::`2'::<lambda_1> >
+  0.4%  nxemu-video!VideoCommon::HostBindings<OpenGL::Buffer>::~HostBindings<OpenGL::Buffer>
+  0.4%  nxemu-video!Tegra::Engines::DrawManager::ProcessMethodCall
+  0.4%  nxemu-video!`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1>::operator()
+  0.4%  nxemu-video!Vulkan::Device::IsFormatSupported
+  0.4%  nxemu-video!VideoCommon::UsageTracker::IsPageUsed
+-- self lines
+  2.1%  buffer_cache.h:1986  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCachePara
+  1.5%  dma_pusher.cpp:314  nxemu-video!Tegra::DmaPusher::ProcessCommands
+  1.0%  pipeline_helper.h:425  nxemu-video!Vulkan::PushImageDescriptors
+  1.0%  word_manager.h:319  nxemu-video!VideoCommon::WordManager<Core::DeviceMemoryManag
+  1.0%  buffer_cache_base.h:395  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCachePara
+  0.9%  memcpy.asm:50  nxemu-video!memcpy_repmovs
+  0.8%  vk_graphics_pipeline.cpp:887  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::
+  0.8%  maxwell_3d.cpp:398  nxemu-video!Tegra::Engines::Maxwell3D::PushMethodRun
+  0.8%  vk_graphics_pipeline.cpp:786  nxemu-video!``Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan
+  0.7%  texture_cache.h:324  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCachePa
+  0.7%  dma_pusher.cpp:243  nxemu-video!Tegra::DmaPusher::ProcessCommands
+  0.7%  texture_cache_base.h:340  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCachePa
+  0.6%  dma_pusher.cpp:225  nxemu-video!Tegra::DmaPusher::ProcessCommands
+  0.6%  buffer_cache.h:1597  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCachePara
+  0.6%  dma_pusher.cpp:364  nxemu-video!Tegra::DmaPusher::CallMethod
+  0.5%  xhash:143  nxemu-video!std::_Uhash_compare<VideoCommon::RenderTargets,s
+  0.5%  texture_cache.h:3703  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCachePa
+  0.5%  vk_rasterizer.cpp:800  nxemu-video!Vulkan::RasterizerVulkan::BindGraphicsUniformBuf
+  0.5%  texture_cache.h:464  nxemu-video!`VideoCommon::TextureCache<Vulkan::TextureCacheP
+  0.5%  memory_manager.cpp:386  nxemu-video!Tegra::MemoryManager::GpuToCpuAddress
+  0.5%  maxwell_3d.cpp:447  nxemu-video!Tegra::Engines::Maxwell3D::ProcessDirtyRegisters
+  0.4%  buffer_cache.h:1567  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCachePara
+  0.4%  vk_graphics_pipeline.cpp:797  nxemu-video!``Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan
+  0.4%  memory_tracker_base.h:204  nxemu-video!VideoCommon::MemoryTrackerBase<Core::DeviceMemor
+  0.4%  buffer_cache.h:1263  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCachePara
+  0.4%  buffer_cache.h:1124  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCachePara
+  0.4%  vulkan_device.cpp:993  nxemu-video!Vulkan::Device::IsFormatSupported
+  0.4%  vk_rasterizer.cpp:349  nxemu-video!`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1
+  0.4%  query_cache_base.h:154  nxemu-video!VideoCommon::QueryCacheBase<Vulkan::QueryCachePa
+  0.4%  macro.cpp:78  nxemu-video!Tegra::MacroEngine::Execute
+  0.4%  gpu_device_memory_manager.cpp:458  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTr
+  0.3%  xhash:1596  nxemu-video!std::_Hash<std::_Umap_traits<VideoCommon::Render
+  0.3%  vk_graphics_pipeline.cpp:875  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::
+  0.3%  usage_tracker.h:104  nxemu-video!VideoCommon::UsageTracker::TrackPage
+  0.3%  texture_cache.h:775  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCachePa
+  0.3%  memory_tracker_base.h:192  nxemu-video!VideoCommon::MemoryTrackerBase<Core::DeviceMemor
+  0.3%  maxwell_3d.cpp:381  nxemu-video!Tegra::Engines::Maxwell3D::PushMethodRun
+  0.3%  macro.cpp:74  nxemu-video!Tegra::MacroEngine::Execute
+  0.3%  dma_pusher.cpp:223  nxemu-video!Tegra::DmaPusher::ProcessCommands
+  0.3%  device_memory_manager.h:132  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTr
+  0.3%  buffer_cache.h:2016  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCachePara
+  0.3%  usage_tracker.h:43  nxemu-video!VideoCommon::UsageTracker::Track
+  0.3%  usage_tracker.h:107  nxemu-video!VideoCommon::UsageTracker::IsPageUsed
+  0.3%  texture_cache.h:937  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCachePa
+  0.3%  pipeline_helper.h:413  nxemu-video!Vulkan::PushImageDescriptors
+  0.3%  memory.cpp:1106  nxemu-os!Core::Memory::Memory::Impl::ScanMarks<``Core::Memor
+  0.3%  gpu_device_memory_manager.cpp:405  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTr
+  0.3%  dma_pusher.cpp:254  nxemu-video!Tegra::DmaPusher::ProcessCommands
+  0.3%  buffer_cache.h:1596  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCachePara
+  0.3%  buffer_cache.h:1175  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCachePara
+  0.3%  buffer_cache.h:1116  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCachePara
+  0.2%  vk_rasterizer.cpp:2020  nxemu-video!Vulkan::RasterizerVulkan::RefreshVertexInput
+  0.2%  usage_tracker.h:61  nxemu-video!VideoCommon::UsageTracker::Track
+  0.2%  texture_cache.h:779  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCachePa
+  0.2%  system_modules.cpp:129  nxemu!SystemModules::Impl::OperatingSystem
+  0.2%  memory_manager.cpp:898  nxemu-video!Tegra::MemoryManager::IsContinuousRange
+  0.2%  memory_manager.cpp:617  nxemu-video!Tegra::MemoryManager::ReadBlockUnsafe
+  0.2%  memcpy.asm:248  nxemu-video!memcpy
+  0.2%  memcmp.asm:136  nxemu-video!memcmp
+  0.2%  maxwell_3d.cpp:442  nxemu-video!Tegra::Engines::Maxwell3D::ProcessDirtyRegisters
+  0.2%  maxwell_3d.cpp:271  nxemu-video!Tegra::Engines::Maxwell3D::ProcessMacro
+  0.2%  macro.cpp:147  nxemu-video!Tegra::MacroEngine::Execute
+  0.2%  guest_recipe_input_cache.h:90  nxemu-video!Vulkan::GuestRecipeInputCache<Vulkan::GuestInput
+  0.2%  draw_manager.cpp:14  nxemu-video!Tegra::Engines::DrawManager::ProcessMethodCall
+  0.2%  dma_pusher.cpp:357  nxemu-video!Tegra::DmaPusher::CallMethod
+  0.2%  dma_pusher.cpp:356  nxemu-video!Tegra::DmaPusher::CallMethod
+  0.2%  cbuf_size_dependencies.h:98  nxemu-video!Vulkan::GraphicsCbufSizeState<5,18>::Refresh<`Vu
+  0.2%  buffer_cache.h:1196  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCachePara
+  0.2%  xtree:1235  nxemu-video!std::_Tree<std::_Tset_traits<boost::icl::discret
+  0.2%  word_manager.h:323  nxemu-video!`VideoCommon::WordManager<Core::DeviceMemoryMana
+  0.2%  word_manager.h:314  nxemu-video!VideoCommon::WordManager<Core::DeviceMemoryManag
+  0.2%  vk_scheduler.h:206  nxemu-video!Vulkan::Scheduler::CommandChunk::Record<`Vulkan:
+  0.2%  vk_rasterizer.cpp:1419  nxemu-video!Vulkan::RasterizerVulkan::UpdateDynamicStates
+  0.2%  usage_tracker.h:103  nxemu-video!VideoCommon::UsageTracker::TrackPage
+  0.2%  texture_cache.h:433  nxemu-video!`VideoCommon::TextureCache<Vulkan::TextureCacheP
+  0.2%  pipeline_helper.h:381  nxemu-video!Vulkan::PushImageDescriptors
+  0.2%  mutex.cpp:79  nxemu-video!mtx_do_lock
+  0.2%  memory_manager.cpp:662  nxemu-video!Tegra::MemoryManager::WriteBlockImpl<0>
+  0.2%  memory_manager.cpp:531  nxemu-video!Tegra::MemoryManager::MemoryOperation<1,`Tegra::
+  0.2%  memory_manager.cpp:422  nxemu-video!Tegra::MemoryManager::Read<unsigned int>
+  0.2%  memory_manager.cpp:400  nxemu-video!Tegra::MemoryManager::GpuToCpuAddress
+  0.2%  maxwell_3d.cpp:466  nxemu-video!Tegra::Engines::Maxwell3D::ProcessMethodCall
+  0.2%  maxwell_3d.cpp:441  nxemu-video!Tegra::Engines::Maxwell3D::ProcessDirtyRegisters
+  0.2%  maxwell_3d.cpp:260  nxemu-video!Tegra::Engines::Maxwell3D::ProcessMacro
+  0.2%  macro_hle.cpp:150  nxemu-video!Tegra::`anonymous namespace'::HLE_DrawIndexedInd
+  0.2%  macro.cpp:72  nxemu-video!Tegra::MacroEngine::Execute
+  0.2%  guest_recipe_input_cache.h:91  nxemu-video!Vulkan::GuestRecipeInputCache<Vulkan::GuestInput
+  0.2%  dma_pusher.cpp:383  nxemu-video!Tegra::DmaPusher::CallMethod
+  0.2%  dma_pusher.cpp:333  nxemu-video!Tegra::DmaPusher::ProcessCommands
+  0.2%  decoders.cpp:88  nxemu-video!Tegra::Texture::`anonymous namespace'::SwizzleIm
+  0.2%  buffer_cache.h:1999  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCachePara
+  0.2%  buffer_cache.h:1822  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCachePara
+  0.2%  xhash:1589  nxemu-video!std::_Hash<std::_Umap_traits<VideoCommon::Render
+  0.2%  word_manager.h:319  nxemu-video!`VideoCommon::WordManager<Core::DeviceMemoryMana
+  0.2%  word_manager.h:230  nxemu-video!VideoCommon::WordManager<Core::DeviceMemoryManag
+  0.2%  vk_rasterizer.cpp:2035  nxemu-video!Vulkan::RasterizerVulkan::RefreshVertexInput
+  0.2%  vk_rasterizer.cpp:1915  nxemu-video!Vulkan::RasterizerVulkan::UpdateBlending
+  0.2%  vk_query_cache.cpp:765  nxemu-video!Vulkan::`anonymous namespace'::TFBCounterStreame
+  0.2%  vk_graphics_pipeline.cpp:1908  nxemu-video!Vulkan::GraphicsPipeline::ConfigureDraw
+  0.2%  vk_graphics_pipeline.cpp:1007  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::
+  0.2%  vk_buffer_cache.cpp:762  nxemu-video!Vulkan::BufferCacheRuntime::BindIndexBuffer
+  0.2%  vector.hpp:1617  nxemu-video!boost::container::vector<unsigned int,boost::con
+  0.2%  texture_cache.h:776  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCachePa
+  0.2%  texture_cache.h:3628  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCachePa
+  0.2%  texture_cache.h:2072  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCachePa
+  0.2%  shader_cache.cpp:156  nxemu-video!VideoCommon::ShaderCache::InvalidatePagesInRegio
+  0.2%  memory_manager.cpp:853  nxemu-video!Tegra::MemoryManager::IsContinuousRange
+  0.2%  memory_manager.cpp:401  nxemu-video!Tegra::MemoryManager::GpuToCpuAddress
+  0.2%  memory_manager.cpp:1023  nxemu-video!Tegra::MemoryManager::FlushCaching
+  0.2%  memcpy.asm:93  nxemu-video!memcpy
+  0.2%  memcpy.asm:349  nxemu-video!memcpy
+  0.2%  memcpy.asm:306  nxemu-video!memcpy
+  0.2%  memcpy.asm:305  nxemu-video!memcpy
+  0.2%  memcpy.asm:116  nxemu-video!memcpy
+  0.2%  memcmp.asm:133  nxemu-video!memcmp
+  0.2%  macro_hle.cpp:422  nxemu-video!Tegra::`anonymous namespace'::HLE_C713C83D8F63CC
+  0.2%  macro.cpp:71  nxemu-video!Tegra::MacroEngine::Execute
+  0.2%  guest_recipe_input_cache.h:119  nxemu-video!Vulkan::GuestRecipeInputCache<Vulkan::GuestInput
+  0.2%  gpu_device_memory_manager.cpp:462  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTr
+  0.2%  gpu.cpp:891  nxemu-video!Tegra::GPU::IsPoweredOn
+-- inclusive
+ 83.0%  nxemu-video!thread_start<unsigned int (__cdecl*)(void *),1>
+ 83.0%  nxemu-video!std::thread::_Invoke<std::tuple<void (__cdecl*)(std::stop_token,Tegra::GPU &,VideoCore::RendererBase &,Core::Frontend::GraphicsContext &,Tegra::Control::Scheduler &,VideoCommon::GPUThread::SynchState &),std::stop_token,std::reference_wrapper<Tegra::GPU>,std::reference_wrapper<VideoCore::RendererBase>,std::reference_wrapper<Core::Frontend::GraphicsContext>,std::reference_wrapper<Tegra::Control::Scheduler>,std::reference_wrapper<VideoCommon::GPUThread::SynchState> >,0,1,2,3,4,5,6>
+ 83.0%  nxemu-video!VideoCommon::GPUThread::RunThread
+ 83.0%  ntdll!RtlUserThreadStart
+ 83.0%  KERNEL32!BaseThreadInitThunk
+ 63.6%  nxemu-video!Tegra::DmaPusher::DispatchCalls
+ 63.6%  nxemu-video!Tegra::Control::Scheduler::Push
+ 63.0%  nxemu-video!Tegra::DmaPusher::Step
+ 60.2%  nxemu-video!Tegra::DmaPusher::ProcessCommands
+ 53.7%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> >
+ 53.7%  nxemu-video!Vulkan::RasterizerVulkan::Draw
+ 44.4%  nxemu-video!Tegra::Engines::Maxwell3D::ProcessMacro
+ 42.3%  nxemu-video!Tegra::MacroEngine::Execute
+ 41.9%  nxemu-video!Tegra::Engines::Maxwell3D::CallMultiMethod
+ 23.3%  nxemu-video!Tegra::Engines::Maxwell3D::CallMethod
+ 23.1%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec>
+ 20.0%  nxemu-video!Tegra::`anonymous namespace'::HLE_DrawIndexedIndirect<0>::Execute
+ 19.8%  nxemu-video!Tegra::`anonymous namespace'::HLE_DrawIndexedIndirect<0>::Fallback
+ 19.2%  nxemu-video!Tegra::`anonymous namespace'::HLE_DrawIndexedIndirect<1>::Fallback
+ 19.0%  ntdll!RtlSleepConditionVariableSRW
+ 18.8%  ntdll!ZwWaitForAlertByThreadId
+ 18.2%  nxemu-video!Common::SPSCQueue<VideoCommon::GPUThread::CommandDataContainer,4096>::PopWait<`VideoCommon::GPUThread::RunThread'::`6'::<lambda_1> >
+ 18.2%  nxemu-video!std::condition_variable_any::wait<std::unique_lock<std::mutex>,`Common::SPSCQueue<VideoCommon::GPUThread::CommandDataContainer,4096>::PopWait<`VideoCommon::GPUThread::RunThread'::`6'::<lambda_1> >'::`3'::<lambda_1> >
+ 18.2%  nxemu-video!_Cnd_wait
+ 18.2%  KERNELBASE!SleepConditionVariableSRW
+ 17.1%  JIT
+ 15.4%  nxemu-video!Tegra::Engines::DrawManager::DrawEnd
+ 14.5%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec>
+ 10.2%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostStageBuffers
+  8.7%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsUniformBuffers
+  8.4%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsUniformBuffer
+  7.1%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGeometryBuffers
+  4.9%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostVertexBuffers
+  4.3%  nxemu-video!Vulkan::PipelineCache::CurrentGraphicsPipeline
+  4.1%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer
+  3.9%  nxemu-video!Vulkan::PipelineCache::LookupGraphicsPipeline
+  3.8%  nxemu-video!Vulkan::RasterizerVulkan::UpdateDynamicStates
+  3.7%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::UpdateRenderTargets
+  3.7%  nxemu-video!Tegra::MemoryManager::FlushCaching
+  3.5%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::UpdateGraphicsBuffers
+  3.4%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BufferOperations<`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::DoUpdateGraphicsBuffers'::`2'::<lambda_1> >
+  3.3%  nxemu-video!mtx_do_lock
+  3.0%  nxemu-video!Vulkan::RasterizerVulkan::InnerInvalidation
+  2.8%  nxemu-video!Tegra::DmaPusher::CallMethod
+  2.6%  nxemu-video!Vulkan::Scheduler::DispatchWork
+  2.5%  nxemu-video!VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::ForEachModifiedRange<0,1,`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer'::`2'::<lambda_2> &>
+  2.4%  ntdll!NtAlertThreadByThreadId
+  2.3%  nxemu-video!Vulkan::RasterizerVulkan::RefreshVertexInput
+  2.3%  nxemu-video!std::condition_variable_any::notify_all
+  2.3%  nxemu-video!_Cnd_broadcast
+  2.3%  nxemu-video!Tegra::Engines::Maxwell3D::ProcessMethodCall
+  2.3%  ntdll!RtlWakeAllConditionVariable
+  2.3%  nxemu-video!Vulkan::PushImageDescriptors
+  2.2%  nxemu-video!Tegra::Engines::Maxwell3D::PushMethodRun
+  2.2%  nxemu-video!memcpy
+  2.2%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::TouchBuffer
+  2.1%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureDraw
+  2.1%  ntdll!RtlAcquireSRWLockExclusive
+  2.0%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostIndexBuffer
+  2.0%  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::ReadBlockUnsafe
+  2.0%  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::WalkBlock<`Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::ReadBlockUnsafe'::`2'::<lambda_1>,`Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::ReadBlockUnsafe'::`2'::<lambda_2>,`Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::ReadBlockUnsafe'::`2'::<lambda_3> >
+  1.9%  nxemu-video!_Mtx_unlock
+  1.9%  ntdll!RtlReleaseSRWLockExclusive
+  1.8%  nxemu-video!``Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleImageSpec>'::`2'::<lambda_2>::operator()'::`2'::<lambda_2>::operator()<Shader::TextureDescriptor>
+  1.7%  nxemu-video!VideoCommon::UsageTracker::Track
+  1.6%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::PrepareImage
+  1.6%  nxemu-video!Vulkan::GuestPipelineRecorder::ObserveChangedState
+  1.5%  nxemu-video!Vulkan::BufferCacheRuntime::BindVertexBuffers
+  1.5%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::FillImageViews<0>
+  1.5%  nxemu-video!Vulkan::GuestRecipeInputCache<Vulkan::GuestInputHash>::Find
+  1.4%  nxemu-video!memcmp
+  1.4%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::VisitImageView
+  1.4%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::UpdateIndexBuffer
+  1.4%  nxemu-video!Tegra::MemoryManager::FlushRegion
+  1.3%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsStorageBuffers
+  1.3%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::GetFramebufferId
+  1.2%  nxemu-video!Tegra::Engines::Maxwell3D::ProcessDirtyRegisters
+  1.2%  nxemu-os!Core::System::GatherGPUDirtyMemory
+  1.2%  nxemu-video!`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsStorageBuffers'::`2'::<lambda_1>::operator()
+  1.2%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::RescaleRenderTargets
+  1.2%  nxemu-video!std::_Hash<std::_Umap_traits<VideoCommon::RenderTargets,Common::SlotId,std::_Uhash_compare<VideoCommon::RenderTargets,std::hash<VideoCommon::RenderTargets>,std::equal_to<VideoCommon::RenderTargets> >,std::allocator<std::pair<VideoCommon::RenderTargets const ,Common::SlotId> >,0> >::_Try_emplace<VideoCommon::RenderTargets const &>
+  1.2%  nxemu-video!Vulkan::RendererVulkan::Composite
+  1.2%  nxemu-video!Vulkan::RasterizerVulkan::FlushRegionImpl
+  1.2%  nxemu-video!Vulkan::RasterizerVulkan::FlushRegion
+  1.2%  nxemu-video!Vulkan::GraphicsPipeline::Next
+  1.2%  nxemu-video!VideoCommon::CompositeRequestQueue::Composite<`Tegra::GPU::Impl::ProcessPendingComposite'::`2'::<lambda_1> >
+  1.2%  nxemu-video!VideoCommon::CompositeRequest::Composite<`Tegra::GPU::Impl::ProcessPendingComposite'::`2'::<lambda_1> >
+  1.2%  nxemu-video!Tegra::GPU::ProcessPendingComposite
+  1.1%  nxemu-video!Tegra::Engines::Puller::CallPullerMethod
+  1.1%  nxemu-video!Vulkan::RasterizerVulkan::TickFrame
+  1.0%  nxemu-video!Tegra::MemoryManager::GpuToCpuAddress
+  1.0%  nxemu-os!Core::Memory::Memory::HarvestCpuWrites
+  0.9%  nxemu-video!`VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::ForEachModifiedRange<0,1,`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer'::`2'::<lambda_2> &>'::`2'::<lambda_2>::operator()
+  0.9%  nxemu-video!Tegra::Engines::Maxwell3D::ProcessCBBind
+  0.9%  nxemu-video!memcpy_repmovs
+  0.9%  nxemu-video!`VideoCommon::TextureCache<Vulkan::TextureCacheParams>::CheckFeedbackLoop'::`2'::<lambda_1>::operator()
+  0.9%  nxemu-video!Vulkan::RasterizerVulkan::DispatchCompute
+  0.9%  nxemu-video!Vulkan::RasterizerVulkan::Clear
+  0.9%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::UpdateVertexBuffers
+  0.9%  nxemu-video!Tegra::Engines::KeplerCompute::CallMethod
+  0.8%  nxemu-video!VideoCommon::DescriptorTable<Tegra::Texture::TICEntry>::Read
+  0.8%  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::UpdatePagesCachedCount
+  0.8%  nxemu-video!std::_Hash<std::_Umap_traits<unsigned __int64,enum Tegra::Engines::Maxwell3D::HLEReplacementAttributeType,std::_Uhash_compare<unsigned __int64,std::hash<unsigned __int64>,std::equal_to<unsigned __int64> >,std::allocator<std::pair<unsigned __int64 const ,enum Tegra::Engines::Maxwell3D::HLEReplacementAttributeType> >,0> >::emplace<unsigned __int64 const &,enum Tegra::Engines::Maxwell3D::HLEReplacementAttributeType &>
+  0.8%  nxemu-video!operator new
+  0.8%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::TickFrame
+  0.8%  nxemu-video!Tegra::MemoryManager::WriteBlockCached
+  0.8%  nxemu-video!Tegra::MemoryManager::Read<unsigned int>
+  0.8%  nxemu-video!Tegra::Engines::Maxwell3D::SetHLEReplacementAttributeType
+  0.8%  nxemu-video!_malloc_base
+  0.8%  nxemu-video!Vulkan::RasterizerVulkan::BindGraphicsUniformBuffer
+  0.8%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::SynchronizeAliases
+  0.8%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::RunGarbageCollector
+  0.8%  nxemu-video!VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::MarkRegionAsCpuModified
+  0.8%  ntdll!RtlAllocateHeap
+  0.7%  nxemu-video!Vulkan::ComputePipeline::Configure
+  0.7%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::FindRenderTargetView
+  0.7%  nxemu-video!Common::RangeSet<unsigned __int64>::Add
+  0.7%  nxemu-video!std::vector<unsigned int,std::allocator<unsigned int> >::_Insert_counted_range<unsigned int const *>
+  0.7%  nxemu-video!Vulkan::RasterizerVulkan::SignalReference
+  0.7%  nxemu-video!VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::IterateWords<`VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::ChangeRegionState<0,1>'::`2'::<lambda_1> >
+  0.7%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::FindImage
+  0.7%  nxemu-video!VideoCommon::FenceManager<Vulkan::FenceManagerParams>::SubmitFence
+  0.7%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::MappedUploadMemory
+  0.6%  nxemu-video!Vulkan::MaxwellToVK::VertexFormat
+  0.6%  nxemu-video!Vulkan::BufferCacheRuntime::ShouldStreamUniformBuffer
+  0.6%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::MarkWrittenBuffer
+  0.6%  nxemu-video!Tegra::MemoryManager::IsContinuousRange
+  0.6%  nxemu-os!Core::Memory::Memory::Impl::HandleRasterizerWrite
+  0.6%  nxemu-video!memset
+  0.6%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::RefreshContents
+  0.6%  nxemu-video!VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::IterateCache<1,`VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::InvalidateRegion'::`2'::<lambda_1> >
+  0.6%  nxemu-video!std::_Hash<std::_Umap_traits<VideoCommon::RenderTargets,Common::SlotId,std::_Uhash_compare<VideoCommon::RenderTargets,std::hash<VideoCommon::RenderTargets>,std::equal_to<VideoCommon::RenderTargets> >,std::allocator<std::pair<VideoCommon::RenderTargets const ,Common::SlotId> >,0> >::_Find_last<VideoCommon::RenderTargets>
+  0.6%  nxemu-video!VideoCommon::UsageTracker::TrackPage
+  0.6%  nxemu-video!VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::IteratePages<1,`VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::IsRegionCpuModified'::`2'::<lambda_1> >
+  0.6%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindGraphicsStorageBuffer
+  0.6%  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::GetPointer<unsigned char>
+  0.5%  nxemu-video!std::_Uhash_compare<VideoCommon::RenderTargets,std::hash<VideoCommon::RenderTargets>,std::equal_to<VideoCommon::RenderTargets> >::operator()<VideoCommon::RenderTargets>
+  0.5%  nxemu-video!`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1>::operator()
+  0.5%  nxemu-video!Vulkan::Buffer::IsRegionUsed
+  0.5%  nxemu-video!VideoManager::HandleRasterizerWrite
+  0.5%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::ForEachCPUPage<`VideoCommon::TextureCache<Vulkan::TextureCacheParams>::ForEachImageInRegion<`VideoCommon::TextureCache<Vulkan::TextureCacheParams>::FindImage'::`2'::<lambda_1> const &>'::`2'::<lambda_1> >
+  0.5%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::WriteMemory
+  0.5%  nxemu-video!Tegra::MemoryManager::WriteBlockImpl<0>
+  0.5%  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::GetSpan
+  0.5%  nxemu-video!std::_Hash<std::_Umap_traits<unsigned __int64,enum Tegra::Engines::Maxwell3D::HLEReplacementAttributeType,std::_Uhash_compare<unsigned __int64,std::hash<unsigned __int64>,std::equal_to<unsigned __int64> >,std::allocator<std::pair<unsigned __int64 const ,enum Tegra::Engines::Maxwell3D::HLEReplacementAttributeType> >,0> >::clear
+  0.5%  nxemu-video!`VideoManager::HandleRasterizerWrite'::`2'::<lambda_1>::operator()
+  0.5%  nxemu-video!_free_base
+  0.5%  nxemu-video!_Mtx_trylock
+  0.5%  nxemu-video!Vulkan::RasterizerVulkan::OnCPUWrite
+  0.5%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::GetGraphicsSamplerId
+-- stacks
+ 18.2%  ntdll!ZwWaitForAlertByThreadId <- ntdll!RtlSleepConditionVariableSRW <- KERNELBASE!SleepConditionVariableSRW <- nxemu-video!_Cnd_wait <- nxemu-video!std::condition_variable_any::wait<std::unique_lock<std::mutex>,`Common::SPSCQueue<VideoCommon::GPUThread::CommandDataContainer,4096>::PopWait<`VideoCommon::GPUThread::RunThread'::`6'::<lambda_1> >'::`3'::<lambda_1> > <- nxemu-video!Common::SPSCQueue<VideoCommon::GPUThread::CommandDataContainer,4096>::PopWait<`VideoCommon::GPUThread::RunThread'::`6'::<lambda_1> > <- nxemu-video!VideoCommon::GPUThread::RunThread <- nxemu-video!std::thread::_Invoke<std::tuple<void (__cdecl*)(std::stop_token,Tegra::GPU &,VideoCore::RendererBase &,Core::Frontend::GraphicsContext &,Tegra::Control::Scheduler &,VideoCommon::GPUThread::SynchState &),std::stop_token,std::reference_wrapper<Tegra::GPU>,std::reference_wrapper<VideoCore::RendererBase>,std::reference_wrapper<Core::Frontend::GraphicsContext>,std::reference_wrapper<Tegra::Control::Scheduler>,std::reference_wrapper<VideoCommon::GPUThread::SynchState> >,0,1,2,3,4,5,6> <- nxemu-video!thread_start<unsigned int (__cdecl*)(void *),1> <- KERNEL32!BaseThreadInitThunk <- ntdll!RtlUserThreadStart
+  5.3%  nxemu-video!Tegra::DmaPusher::ProcessCommands <- nxemu-video!Tegra::DmaPusher::Step <- nxemu-video!Tegra::DmaPusher::DispatchCalls <- nxemu-video!Tegra::Control::Scheduler::Push <- nxemu-video!VideoCommon::GPUThread::RunThread <- nxemu-video!std::thread::_Invoke<std::tuple<void (__cdecl*)(std::stop_token,Tegra::GPU &,VideoCore::RendererBase &,Core::Frontend::GraphicsContext &,Tegra::Control::Scheduler &,VideoCommon::GPUThread::SynchState &),std::stop_token,std::reference_wrapper<Tegra::GPU>,std::reference_wrapper<VideoCore::RendererBase>,std::reference_wrapper<Core::Frontend::GraphicsContext>,std::reference_wrapper<Tegra::Control::Scheduler>,std::reference_wrapper<VideoCommon::GPUThread::SynchState> >,0,1,2,3,4,5,6> <- nxemu-video!thread_start<unsigned int (__cdecl*)(void *),1> <- KERNEL32!BaseThreadInitThunk <- ntdll!RtlUserThreadStart
+  1.7%  nxemu-video!Tegra::DmaPusher::CallMethod <- nxemu-video!Tegra::DmaPusher::ProcessCommands <- nxemu-video!Tegra::DmaPusher::Step <- nxemu-video!Tegra::DmaPusher::DispatchCalls <- nxemu-video!Tegra::Control::Scheduler::Push <- nxemu-video!VideoCommon::GPUThread::RunThread <- nxemu-video!std::thread::_Invoke<std::tuple<void (__cdecl*)(std::stop_token,Tegra::GPU &,VideoCore::RendererBase &,Core::Frontend::GraphicsContext &,Tegra::Control::Scheduler &,VideoCommon::GPUThread::SynchState &),std::stop_token,std::reference_wrapper<Tegra::GPU>,std::reference_wrapper<VideoCore::RendererBase>,std::reference_wrapper<Core::Frontend::GraphicsContext>,std::reference_wrapper<Tegra::Control::Scheduler>,std::reference_wrapper<VideoCommon::GPUThread::SynchState> >,0,1,2,3,4,5,6> <- nxemu-video!thread_start<unsigned int (__cdecl*)(void *),1> <- KERNEL32!BaseThreadInitThunk <- ntdll!RtlUserThreadStart
+  1.4%  nxemu-video!Tegra::Engines::Maxwell3D::PushMethodRun <- nxemu-video!Tegra::DmaPusher::ProcessCommands <- nxemu-video!Tegra::DmaPusher::Step <- nxemu-video!Tegra::DmaPusher::DispatchCalls <- nxemu-video!Tegra::Control::Scheduler::Push <- nxemu-video!VideoCommon::GPUThread::RunThread <- nxemu-video!std::thread::_Invoke<std::tuple<void (__cdecl*)(std::stop_token,Tegra::GPU &,VideoCore::RendererBase &,Core::Frontend::GraphicsContext &,Tegra::Control::Scheduler &,VideoCommon::GPUThread::SynchState &),std::stop_token,std::reference_wrapper<Tegra::GPU>,std::reference_wrapper<VideoCore::RendererBase>,std::reference_wrapper<Core::Frontend::GraphicsContext>,std::reference_wrapper<Tegra::Control::Scheduler>,std::reference_wrapper<VideoCommon::GPUThread::SynchState> >,0,1,2,3,4,5,6> <- nxemu-video!thread_start<unsigned int (__cdecl*)(void *),1> <- KERNEL32!BaseThreadInitThunk <- ntdll!RtlUserThreadStart
+  0.9%  nxemu-video!Vulkan::PushImageDescriptors <- nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> <- nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > <- nxemu-video!Vulkan::RasterizerVulkan::Draw <- nxemu-video!Tegra::Engines::DrawManager::DrawEnd <- nxemu-video!Tegra::Engines::Maxwell3D::CallMethod <- JIT <- JIT <- JIT <- JIT <- JIT <- JIT
+-- edges
+ 83.0%  nxemu-video!thread_start<unsigned int (__cdecl*)(void *),1> -> nxemu-video!std::thread::_Invoke<std::tuple<void (__cdecl*)(std::stop_token,Tegra::GPU &,VideoCore::RendererBase &,Core::Frontend::GraphicsContext &,Tegra::Control::Scheduler &,VideoCommon::GPUThread::SynchState &),std::stop_token,std::reference_wrapper<Tegra::GPU>,std::reference_wrapper<VideoCore::RendererBase>,std::reference_wrapper<Core::Frontend::GraphicsContext>,std::reference_wrapper<Tegra::Control::Scheduler>,std::reference_wrapper<VideoCommon::GPUThread::SynchState> >,0,1,2,3,4,5,6>
+ 83.0%  nxemu-video!std::thread::_Invoke<std::tuple<void (__cdecl*)(std::stop_token,Tegra::GPU &,VideoCore::RendererBase &,Core::Frontend::GraphicsContext &,Tegra::Control::Scheduler &,VideoCommon::GPUThread::SynchState &),std::stop_token,std::reference_wrapper<Tegra::GPU>,std::reference_wrapper<VideoCore::RendererBase>,std::reference_wrapper<Core::Frontend::GraphicsContext>,std::reference_wrapper<Tegra::Control::Scheduler>,std::reference_wrapper<VideoCommon::GPUThread::SynchState> >,0,1,2,3,4,5,6> -> nxemu-video!VideoCommon::GPUThread::RunThread
+ 83.0%  ntdll!RtlUserThreadStart -> KERNEL32!BaseThreadInitThunk
+ 83.0%  KERNEL32!BaseThreadInitThunk -> nxemu-video!thread_start<unsigned int (__cdecl*)(void *),1>
+ 63.6%  nxemu-video!VideoCommon::GPUThread::RunThread -> nxemu-video!Tegra::Control::Scheduler::Push
+ 63.6%  nxemu-video!Tegra::Control::Scheduler::Push -> nxemu-video!Tegra::DmaPusher::DispatchCalls
+ 63.0%  nxemu-video!Tegra::DmaPusher::DispatchCalls -> nxemu-video!Tegra::DmaPusher::Step
+ 60.2%  nxemu-video!Tegra::DmaPusher::Step -> nxemu-video!Tegra::DmaPusher::ProcessCommands
+ 53.6%  nxemu-video!Vulkan::RasterizerVulkan::Draw -> nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> >
+ 42.3%  nxemu-video!Tegra::Engines::Maxwell3D::ProcessMacro -> nxemu-video!Tegra::MacroEngine::Execute
+ 41.9%  nxemu-video!Tegra::DmaPusher::ProcessCommands -> nxemu-video!Tegra::Engines::Maxwell3D::CallMultiMethod
+ 41.7%  nxemu-video!Tegra::Engines::Maxwell3D::CallMultiMethod -> nxemu-video!Tegra::Engines::Maxwell3D::ProcessMacro
+ 23.1%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec>
+ 20.0%  nxemu-video!Tegra::MacroEngine::Execute -> nxemu-video!Tegra::`anonymous namespace'::HLE_DrawIndexedIndirect<0>::Execute
+ 19.8%  nxemu-video!Tegra::`anonymous namespace'::HLE_DrawIndexedIndirect<0>::Execute -> nxemu-video!Tegra::`anonymous namespace'::HLE_DrawIndexedIndirect<0>::Fallback
+ 19.6%  nxemu-video!Tegra::`anonymous namespace'::HLE_DrawIndexedIndirect<0>::Fallback -> nxemu-video!Vulkan::RasterizerVulkan::Draw
+ 19.2%  nxemu-video!Tegra::MacroEngine::Execute -> nxemu-video!Tegra::`anonymous namespace'::HLE_DrawIndexedIndirect<1>::Fallback
+ 18.8%  ntdll!RtlSleepConditionVariableSRW -> ntdll!ZwWaitForAlertByThreadId
+ 18.4%  nxemu-video!Tegra::`anonymous namespace'::HLE_DrawIndexedIndirect<1>::Fallback -> nxemu-video!Vulkan::RasterizerVulkan::Draw
+ 18.2%  nxemu-video!VideoCommon::GPUThread::RunThread -> nxemu-video!Common::SPSCQueue<VideoCommon::GPUThread::CommandDataContainer,4096>::PopWait<`VideoCommon::GPUThread::RunThread'::`6'::<lambda_1> >
+ 18.2%  nxemu-video!Common::SPSCQueue<VideoCommon::GPUThread::CommandDataContainer,4096>::PopWait<`VideoCommon::GPUThread::RunThread'::`6'::<lambda_1> > -> nxemu-video!std::condition_variable_any::wait<std::unique_lock<std::mutex>,`Common::SPSCQueue<VideoCommon::GPUThread::CommandDataContainer,4096>::PopWait<`VideoCommon::GPUThread::RunThread'::`6'::<lambda_1> >'::`3'::<lambda_1> >
+ 18.2%  nxemu-video!std::condition_variable_any::wait<std::unique_lock<std::mutex>,`Common::SPSCQueue<VideoCommon::GPUThread::CommandDataContainer,4096>::PopWait<`VideoCommon::GPUThread::RunThread'::`6'::<lambda_1> >'::`3'::<lambda_1> > -> nxemu-video!_Cnd_wait
+ 18.2%  nxemu-video!_Cnd_wait -> KERNELBASE!SleepConditionVariableSRW
+ 18.2%  KERNELBASE!SleepConditionVariableSRW -> ntdll!RtlSleepConditionVariableSRW
+ 17.1%  JIT -> JIT
+ 16.8%  JIT -> nxemu-video!Tegra::Engines::Maxwell3D::CallMethod
+ 15.4%  nxemu-video!Tegra::Engines::Maxwell3D::CallMethod -> nxemu-video!Tegra::Engines::DrawManager::DrawEnd
+ 15.4%  nxemu-video!Tegra::Engines::DrawManager::DrawEnd -> nxemu-video!Vulkan::RasterizerVulkan::Draw
+ 14.5%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec>
+  8.7%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostStageBuffers -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsUniformBuffers
+  8.4%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsUniformBuffers -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsUniformBuffer
+  6.5%  nxemu-video!Tegra::DmaPusher::ProcessCommands -> nxemu-video!Tegra::Engines::Maxwell3D::CallMethod
+  5.7%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostStageBuffers
+  4.9%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGeometryBuffers -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostVertexBuffers
+  4.8%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGeometryBuffers
+  4.5%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec> -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostStageBuffers
+  4.3%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!Vulkan::PipelineCache::CurrentGraphicsPipeline
+  3.9%  nxemu-video!Vulkan::PipelineCache::CurrentGraphicsPipeline -> nxemu-video!Vulkan::PipelineCache::LookupGraphicsPipeline
+  3.8%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!Vulkan::RasterizerVulkan::UpdateDynamicStates
+  3.7%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!Tegra::MemoryManager::FlushCaching
+  3.4%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::UpdateGraphicsBuffers -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BufferOperations<`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::DoUpdateGraphicsBuffers'::`2'::<lambda_1> >
+  3.1%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer
+  3.0%  nxemu-video!Tegra::MemoryManager::FlushCaching -> nxemu-video!Vulkan::RasterizerVulkan::InnerInvalidation
+  2.8%  nxemu-video!Tegra::DmaPusher::ProcessCommands -> nxemu-video!Tegra::DmaPusher::CallMethod
+  2.7%  nxemu-video!Tegra::Engines::Maxwell3D::CallMethod -> nxemu-video!Tegra::Engines::Maxwell3D::ProcessMacro
+  2.5%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer -> nxemu-video!VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::ForEachModifiedRange<0,1,`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer'::`2'::<lambda_2> &>
+  2.3%  nxemu-video!Vulkan::RasterizerVulkan::UpdateDynamicStates -> nxemu-video!Vulkan::RasterizerVulkan::RefreshVertexInput
+  2.3%  nxemu-video!std::condition_variable_any::notify_all -> nxemu-video!_Cnd_broadcast
+  2.3%  nxemu-video!_Cnd_broadcast -> ntdll!RtlWakeAllConditionVariable
+  2.3%  nxemu-video!Vulkan::Scheduler::DispatchWork -> nxemu-video!std::condition_variable_any::notify_all
+  2.3%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec> -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGeometryBuffers
+  2.3%  nxemu-video!Tegra::Engines::Maxwell3D::CallMethod -> nxemu-video!Tegra::Engines::Maxwell3D::ProcessMethodCall
+  2.3%  ntdll!RtlWakeAllConditionVariable -> ntdll!NtAlertThreadByThreadId
+  2.2%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsUniformBuffer -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer
+  2.2%  nxemu-video!Tegra::DmaPusher::ProcessCommands -> nxemu-video!Tegra::Engines::Maxwell3D::PushMethodRun
+  2.2%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::UpdateGraphicsBuffers
+  2.1%  nxemu-video!mtx_do_lock -> ntdll!RtlAcquireSRWLockExclusive
+  2.0%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::UpdateRenderTargets
+  2.0%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGeometryBuffers -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostIndexBuffer
+  2.0%  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::ReadBlockUnsafe -> nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::WalkBlock<`Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::ReadBlockUnsafe'::`2'::<lambda_1>,`Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::ReadBlockUnsafe'::`2'::<lambda_2>,`Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::ReadBlockUnsafe'::`2'::<lambda_3> >
+  1.8%  nxemu-video!_Mtx_unlock -> ntdll!RtlReleaseSRWLockExclusive
+  1.6%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> -> nxemu-video!Vulkan::GraphicsPipeline::ConfigureDraw
+  1.6%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::UpdateRenderTargets -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::PrepareImage
+  1.6%  nxemu-video!Vulkan::PipelineCache::LookupGraphicsPipeline -> nxemu-video!Vulkan::GuestPipelineRecorder::ObserveChangedState
+  1.5%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostVertexBuffers -> nxemu-video!Vulkan::BufferCacheRuntime::BindVertexBuffers
+  1.5%  nxemu-video!Vulkan::GuestPipelineRecorder::ObserveChangedState -> nxemu-video!Vulkan::GuestRecipeInputCache<Vulkan::GuestInputHash>::Find
+  1.4%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BufferOperations<`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::DoUpdateGraphicsBuffers'::`2'::<lambda_1> > -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::UpdateIndexBuffer
+  1.4%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsUniformBuffer -> nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::ReadBlockUnsafe
+  1.4%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::FillImageViews<0> -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::VisitImageView
+  1.4%  nxemu-video!Tegra::DmaPusher::Step -> nxemu-video!Tegra::MemoryManager::FlushRegion
+  1.3%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> -> nxemu-video!Vulkan::PushImageDescriptors
+  1.3%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec> -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::UpdateGraphicsBuffers
+  1.3%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostStageBuffers -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsStorageBuffers
+  1.3%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsUniformBuffer -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::TouchBuffer
+  1.2%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureDraw -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::GetFramebufferId
+  1.2%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::UpdateRenderTargets -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::RescaleRenderTargets
+  1.2%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsStorageBuffers -> nxemu-video!`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsStorageBuffers'::`2'::<lambda_1>::operator()
+  1.2%  nxemu-video!Vulkan::RasterizerVulkan::FlushRegion -> nxemu-video!Vulkan::RasterizerVulkan::FlushRegionImpl
+  1.2%  nxemu-video!Vulkan::PipelineCache::LookupGraphicsPipeline -> nxemu-video!Vulkan::GraphicsPipeline::Next
+  1.2%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::GetFramebufferId -> nxemu-video!std::_Hash<std::_Umap_traits<VideoCommon::RenderTargets,Common::SlotId,std::_Uhash_compare<VideoCommon::RenderTargets,std::hash<VideoCommon::RenderTargets>,std::equal_to<VideoCommon::RenderTargets> >,std::allocator<std::pair<VideoCommon::RenderTargets const ,Common::SlotId> >,0> >::_Try_emplace<VideoCommon::RenderTargets const &>
+  1.2%  nxemu-video!VideoCommon::GPUThread::RunThread -> nxemu-video!Tegra::GPU::ProcessPendingComposite
+  1.2%  nxemu-video!VideoCommon::CompositeRequestQueue::Composite<`Tegra::GPU::Impl::ProcessPendingComposite'::`2'::<lambda_1> > -> nxemu-video!VideoCommon::CompositeRequest::Composite<`Tegra::GPU::Impl::ProcessPendingComposite'::`2'::<lambda_1> >
+  1.2%  nxemu-video!VideoCommon::CompositeRequest::Composite<`Tegra::GPU::Impl::ProcessPendingComposite'::`2'::<lambda_1> > -> nxemu-video!Vulkan::RendererVulkan::Composite
+  1.2%  nxemu-video!Tegra::MemoryManager::FlushRegion -> nxemu-video!Vulkan::RasterizerVulkan::FlushRegion
+  1.2%  nxemu-video!Tegra::GPU::ProcessPendingComposite -> nxemu-video!VideoCommon::CompositeRequestQueue::Composite<`Tegra::GPU::Impl::ProcessPendingComposite'::`2'::<lambda_1> >
+  1.1%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> -> nxemu-video!``Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleImageSpec>'::`2'::<lambda_2>::operator()'::`2'::<lambda_2>::operator()<Shader::TextureDescriptor>
+  1.1%  nxemu-video!Tegra::DmaPusher::CallMethod -> nxemu-video!Tegra::Engines::Puller::CallPullerMethod
+  1.1%  nxemu-video!Vulkan::RendererVulkan::Composite -> nxemu-video!Vulkan::RasterizerVulkan::TickFrame
+  1.1%  nxemu-video!Tegra::Engines::Maxwell3D::ProcessMethodCall -> nxemu-os!Core::System::GatherGPUDirtyMemory
+  1.0%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec> -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::UpdateRenderTargets
+  1.0%  nxemu-video!Vulkan::RasterizerVulkan::RefreshVertexInput -> nxemu-video!Vulkan::Scheduler::DispatchWork
+  1.0%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec> -> nxemu-video!Vulkan::PushImageDescriptors
+  1.0%  nxemu-os!Core::System::GatherGPUDirtyMemory -> nxemu-os!Core::Memory::Memory::HarvestCpuWrites
+  0.9%  nxemu-video!VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::ForEachModifiedRange<0,1,`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer'::`2'::<lambda_2> &> -> nxemu-video!`VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::ForEachModifiedRange<0,1,`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer'::`2'::<lambda_2> &>'::`2'::<lambda_2>::operator()
+  0.9%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BufferOperations<`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::DoUpdateGraphicsBuffers'::`2'::<lambda_1> > -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::UpdateVertexBuffers
+  0.9%  nxemu-video!Tegra::Engines::Maxwell3D::PushMethodRun -> nxemu-video!Tegra::Engines::Maxwell3D::ProcessDirtyRegisters
+  0.9%  nxemu-video!Tegra::Engines::KeplerCompute::CallMethod -> nxemu-video!Vulkan::RasterizerVulkan::DispatchCompute
+  0.9%  nxemu-video!Tegra::DmaPusher::ProcessCommands -> nxemu-video!Tegra::Engines::KeplerCompute::CallMethod
+  0.9%  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::WalkBlock<`Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::ReadBlockUnsafe'::`2'::<lambda_1>,`Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::ReadBlockUnsafe'::`2'::<lambda_2>,`Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::ReadBlockUnsafe'::`2'::<lambda_3> > -> nxemu-video!memcpy_repmovs
+  0.8%  nxemu-video!Vulkan::GraphicsPipeline::Next -> nxemu-video!memcmp
+  0.8%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec> -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::FillImageViews<0>
+  0.8%  nxemu-video!Tegra::Engines::Maxwell3D::CallMethod -> nxemu-video!Tegra::Engines::Maxwell3D::ProcessCBBind
+  0.8%  nxemu-video!Vulkan::RasterizerVulkan::TickFrame -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::TickFrame
+  0.8%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!_Mtx_unlock
+  0.8%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostVertexBuffers -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer
+  0.8%  nxemu-video!Tegra::`anonymous namespace'::HLE_DrawIndexedIndirect<1>::Fallback -> nxemu-video!Tegra::Engines::Maxwell3D::SetHLEReplacementAttributeType
+  0.8%  nxemu-video!Tegra::Engines::Maxwell3D::SetHLEReplacementAttributeType -> nxemu-video!std::_Hash<std::_Umap_traits<unsigned __int64,enum Tegra::Engines::Maxwell3D::HLEReplacementAttributeType,std::_Uhash_compare<unsigned __int64,std::hash<unsigned __int64>,std::equal_to<unsigned __int64> >,std::allocator<std::pair<unsigned __int64 const ,enum Tegra::Engines::Maxwell3D::HLEReplacementAttributeType> >,0> >::emplace<unsigned __int64 const &,enum Tegra::Engines::Maxwell3D::HLEReplacementAttributeType &>
+  0.8%  ntdll!RtlAcquireSRWLockExclusive -> ntdll!RtlSleepConditionVariableSRW
+  0.8%  nxemu-video!operator new -> nxemu-video!_malloc_base
+  0.8%  nxemu-video!_malloc_base -> ntdll!RtlAllocateHeap
+  0.8%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::TickFrame -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::RunGarbageCollector
+  0.8%  nxemu-video!Tegra::Engines::Maxwell3D::ProcessMethodCall -> nxemu-video!Tegra::MemoryManager::WriteBlockCached
+  0.8%  nxemu-video!Tegra::Engines::Maxwell3D::ProcessCBBind -> nxemu-video!Vulkan::RasterizerVulkan::BindGraphicsUniformBuffer
+  0.8%  ntdll!RtlAllocateHeap -> ntdll!RtlAllocateHeap
+  0.7%  nxemu-video!Vulkan::RasterizerVulkan::DispatchCompute -> nxemu-video!Vulkan::ComputePipeline::Configure
+  0.7%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec> -> nxemu-video!``Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleImageSpec>'::`2'::<lambda_2>::operator()'::`2'::<lambda_2>::operator()<Shader::TextureDescriptor>
+  0.7%  nxemu-video!Vulkan::BufferCacheRuntime::BindVertexBuffers -> nxemu-video!Vulkan::Scheduler::DispatchWork
+  0.7%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::RescaleRenderTargets -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::FindRenderTargetView
+  0.7%  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::WalkBlock<`Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::ReadBlockUnsafe'::`2'::<lambda_1>,`Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::ReadBlockUnsafe'::`2'::<lambda_2>,`Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::ReadBlockUnsafe'::`2'::<lambda_3> > -> nxemu-video!memcpy
+  0.7%  nxemu-video!std::_Hash<std::_Umap_traits<unsigned __int64,enum Tegra::Engines::Maxwell3D::HLEReplacementAttributeType,std::_Uhash_compare<unsigned __int64,std::hash<unsigned __int64>,std::equal_to<unsigned __int64> >,std::allocator<std::pair<unsigned __int64 const ,enum Tegra::Engines::Maxwell3D::HLEReplacementAttributeType> >,0> >::emplace<unsigned __int64 const &,enum Tegra::Engines::Maxwell3D::HLEReplacementAttributeType &> -> nxemu-video!operator new
+  0.7%  nxemu-video!Vulkan::RasterizerVulkan::SignalReference -> nxemu-video!VideoCommon::FenceManager<Vulkan::FenceManagerParams>::SubmitFence
+  0.7%  nxemu-video!Vulkan::RasterizerVulkan::Clear -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::UpdateRenderTargets
+  0.7%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::FillImageViews<0>
+  0.7%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::FindRenderTargetView -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::FindImage
+  0.7%  nxemu-video!VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::MarkRegionAsCpuModified -> nxemu-video!VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::IterateWords<`VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::ChangeRegionState<0,1>'::`2'::<lambda_1> >
+  0.7%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::MappedUploadMemory
+  0.7%  nxemu-video!Tegra::Engines::Maxwell3D::ProcessMacro -> nxemu-video!std::vector<unsigned int,std::allocator<unsigned int> >::_Insert_counted_range<unsigned int const *>
+  0.6%  nxemu-video!Vulkan::RasterizerVulkan::RefreshVertexInput -> nxemu-video!Vulkan::MaxwellToVK::VertexFormat
+  0.6%  nxemu-video!Vulkan::RasterizerVulkan::InnerInvalidation -> nxemu-video!mtx_do_lock
+  0.6%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostVertexBuffers -> nxemu-video!VideoCommon::UsageTracker::Track
+  0.6%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsUniformBuffer -> nxemu-video!Vulkan::BufferCacheRuntime::ShouldStreamUniformBuffer
+  0.6%  nxemu-os!Core::Memory::Memory::HarvestCpuWrites -> nxemu-os!Core::Memory::Memory::Impl::HandleRasterizerWrite
+  0.6%  nxemu-video!Vulkan::RasterizerVulkan::InnerInvalidation -> nxemu-video!VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::IterateCache<1,`VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::InvalidateRegion'::`2'::<lambda_1> >
+  0.6%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::PrepareImage -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::SynchronizeAliases
+  0.6%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::MarkWrittenBuffer -> nxemu-video!Common::RangeSet<unsigned __int64>::Add
+  0.6%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::MappedUploadMemory -> nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::ReadBlockUnsafe
+  0.6%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostIndexBuffer -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::TouchBuffer
+  0.6%  nxemu-video!Tegra::Engines::Puller::CallPullerMethod -> nxemu-video!Vulkan::RasterizerVulkan::SignalReference
+  0.6%  nxemu-video!std::_Hash<std::_Umap_traits<VideoCommon::RenderTargets,Common::SlotId,std::_Uhash_compare<VideoCommon::RenderTargets,std::hash<VideoCommon::RenderTargets>,std::equal_to<VideoCommon::RenderTargets> >,std::allocator<std::pair<VideoCommon::RenderTargets const ,Common::SlotId> >,0> >::_Try_emplace<VideoCommon::RenderTargets const &> -> nxemu-video!std::_Hash<std::_Umap_traits<VideoCommon::RenderTargets,Common::SlotId,std::_Uhash_compare<VideoCommon::RenderTargets,std::hash<VideoCommon::RenderTargets>,std::equal_to<VideoCommon::RenderTargets> >,std::allocator<std::pair<VideoCommon::RenderTargets const ,Common::SlotId> >,0> >::_Find_last<VideoCommon::RenderTargets>
+  0.6%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> -> nxemu-video!`VideoCommon::TextureCache<Vulkan::TextureCacheParams>::CheckFeedbackLoop'::`2'::<lambda_1>::operator()
+  0.6%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec> -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindGraphicsStorageBuffer
+  0.6%  nxemu-video!VideoCommon::UsageTracker::Track -> nxemu-video!VideoCommon::UsageTracker::TrackPage
+  0.6%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsUniformBuffer -> nxemu-video!VideoCommon::UsageTracker::Track
+  0.6%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsUniformBuffer -> nxemu-video!VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::IteratePages<1,`VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::IsRegionCpuModified'::`2'::<lambda_1> >
+  0.5%  nxemu-video!std::_Hash<std::_Umap_traits<VideoCommon::RenderTargets,Common::SlotId,std::_Uhash_compare<VideoCommon::RenderTargets,std::hash<VideoCommon::RenderTargets>,std::equal_to<VideoCommon::RenderTargets> >,std::allocator<std::pair<VideoCommon::RenderTargets const ,Common::SlotId> >,0> >::_Try_emplace<VideoCommon::RenderTargets const &> -> nxemu-video!std::_Uhash_compare<VideoCommon::RenderTargets,std::hash<VideoCommon::RenderTargets>,std::equal_to<VideoCommon::RenderTargets> >::operator()<VideoCommon::RenderTargets>
+  0.5%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1>::operator()
+  0.5%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> -> nxemu-video!Tegra::MemoryManager::Read<unsigned int>
+  0.5%  nxemu-video!Vulkan::BufferCacheRuntime::ShouldStreamUniformBuffer -> nxemu-video!Vulkan::Buffer::IsRegionUsed
+  0.5%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::FindImage -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::ForEachCPUPage<`VideoCommon::TextureCache<Vulkan::TextureCacheParams>::ForEachImageInRegion<`VideoCommon::TextureCache<Vulkan::TextureCacheParams>::FindImage'::`2'::<lambda_1> const &>'::`2'::<lambda_1> >
+  0.5%  nxemu-video!Tegra::MemoryManager::WriteBlockCached -> nxemu-video!Tegra::MemoryManager::WriteBlockImpl<0>
+  0.5%  nxemu-video!Tegra::DmaPusher::Step -> nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::GetSpan
+  0.5%  nxemu-os!Core::Memory::Memory::Impl::HandleRasterizerWrite -> nxemu-video!VideoManager::HandleRasterizerWrite
+  0.5%  nxemu-video!std::vector<unsigned int,std::allocator<unsigned int> >::_Insert_counted_range<unsigned int const *> -> nxemu-video!memcpy
+  0.5%  nxemu-video!`VideoManager::HandleRasterizerWrite'::`2'::<lambda_1>::operator() -> nxemu-video!Vulkan::RasterizerVulkan::OnCPUWrite
+  0.5%  nxemu-video!`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsStorageBuffers'::`2'::<lambda_1>::operator() -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer
+  0.5%  nxemu-video!_Mtx_trylock -> nxemu-video!mtx_do_lock
+  0.5%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!_Mtx_trylock
+  0.5%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec> -> nxemu-video!Vulkan::GraphicsPipeline::ConfigureDraw
+  0.5%  nxemu-video!Vulkan::ComputePipeline::Configure -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostComputeBuffers
+  0.5%  nxemu-video!VideoManager::HandleRasterizerWrite -> nxemu-video!`VideoManager::HandleRasterizerWrite'::`2'::<lambda_1>::operator()
+  0.5%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::VisitImageView -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::RefreshContents
+  0.5%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostIndexBuffer -> nxemu-video!VideoCommon::UsageTracker::Track
+  0.5%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindGraphicsStorageBuffer -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::StorageBufferBinding
+  0.5%  nxemu-video!Tegra::MacroEngine::Execute -> nxemu-video!std::_Hash<std::_Umap_traits<unsigned __int64,enum Tegra::Engines::Maxwell3D::HLEReplacementAttributeType,std::_Uhash_compare<unsigned __int64,std::hash<unsigned __int64>,std::equal_to<unsigned __int64> >,std::allocator<std::pair<unsigned __int64 const ,enum Tegra::Engines::Maxwell3D::HLEReplacementAttributeType> >,0> >::clear
+  0.5%  nxemu-video!Tegra::DmaPusher::DispatchCalls -> nxemu-video!Tegra::GPU::IsPoweredOn
+  0.4%  nxemu-video!``Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleImageSpec>'::`2'::<lambda_2>::operator()'::`2'::<lambda_2>::operator()<Shader::TextureDescriptor> -> nxemu-video!Shader::TextureDescriptor::TextureDescriptor
+  0.4%  nxemu-video!`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsStorageBuffers'::`2'::<lambda_1>::operator() -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::MarkWrittenBuffer
+  0.4%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!mtx_do_lock
+  0.4%  nxemu-video!Vulkan::RasterizerVulkan::FlushRegionImpl -> nxemu-video!mtx_do_lock
+  0.4%  nxemu-video!Vulkan::PipelineCache::LookupGraphicsPipeline -> nxemu-video!Vulkan::FixedPipelineState::Refresh
+  0.4%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::GetGraphicsSamplerId -> nxemu-video!VideoCommon::DescriptorTable<Tegra::Texture::TICEntry>::Read
+  0.4%  nxemu-video!Tegra::`anonymous namespace'::HLE_MultiLayerClear::Execute -> nxemu-video!Vulkan::RasterizerVulkan::Clear
+  0.4%  nxemu-video!Tegra::MacroEngine::Execute -> nxemu-video!Tegra::`anonymous namespace'::HLE_MultiLayerClear::Execute
+  0.4%  nxemu-video!Tegra::Engines::Maxwell3D::CallMethod -> nxemu-video!Vulkan::RasterizerVulkan::Clear
+  0.4%  nxemu-video!Common::RangeSet<unsigned __int64>::Add -> nxemu-video!std::_Tree<std::_Tset_traits<boost::icl::discrete_interval<unsigned __int64,std::less>,boost::icl::exclusive_less_than<boost::icl::discrete_interval<unsigned __int64,std::less> >,boost::fast_pool_allocator<boost::icl::discrete_interval<unsigned __int64,std::less>,boost::default_user_allocator_new_delete,std::mutex,1024,2048>,0> >::insert<0,0>
+  0.4%  nxemu-video!std::_Hash<std::_Umap_traits<unsigned __int64,enum Tegra::Engines::Maxwell3D::HLEReplacementAttributeType,std::_Uhash_compare<unsigned __int64,std::hash<unsigned __int64>,std::equal_to<unsigned __int64> >,std::allocator<std::pair<unsigned __int64 const ,enum Tegra::Engines::Maxwell3D::HLEReplacementAttributeType> >,0> >::clear -> nxemu-video!_free_base
+  0.4%  nxemu-video!`VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::ForEachModifiedRange<0,1,`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer'::`2'::<lambda_2> &>'::`2'::<lambda_2>::operator() -> nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::UpdatePagesCachedCount
+  0.4%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!Vulkan::Scheduler::DispatchWork
+  0.4%  nxemu-video!Vulkan::RasterizerVulkan::InnerInvalidation -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::WriteMemory
+  0.4%  nxemu-video!Vulkan::PipelineCache::LookupGraphicsPipeline -> nxemu-video!VideoCommon::ShaderCache::RefreshStages
+  0.4%  nxemu-video!Vulkan::FixedPipelineState::Refresh -> nxemu-video!Vulkan::FixedPipelineState::RefreshFromRegisters
+  0.4%  nxemu-video!VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::IterateWords<`VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::ChangeRegionState<0,1>'::`2'::<lambda_1> > -> nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::UpdatePagesCachedCount
+  0.4%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::VisitImageView -> nxemu-video!VideoCommon::DescriptorTable<Tegra::Texture::TICEntry>::Read
+  0.4%  nxemu-video!VideoCommon::DescriptorTable<Tegra::Texture::TICEntry>::Read -> nxemu-video!Tegra::MemoryManager::ReadBlockUnsafe
+  0.4%  nxemu-video!Tegra::Engines::Maxwell3D::CallMethod -> nxemu-video!Tegra::Engines::DrawManager::ProcessMethodCall
+  0.4%  nxemu-video!mtx_do_lock -> ntdll!RtlTryAcquireSRWLockExclusive
+  0.4%  nxemu-video!_free_base -> ntdll!RtlFreeHeap
+  0.4%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!Vulkan::RasterizerVulkan::HandleTransformFeedback
+  0.4%  nxemu-video!Vulkan::RasterizerVulkan::InnerInvalidation -> nxemu-video!_Mtx_unlock
+  0.4%  nxemu-video!Vulkan::RasterizerVulkan::FlushRegionImpl -> nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::FilterFlushCaches
+  0.4%  nxemu-video!Vulkan::MaxwellToVK::VertexFormat -> nxemu-video!Vulkan::Device::GetSupportedFormat
+  0.4%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::GetGraphicsSamplerId
+  0.4%  nxemu-video!Vulkan::Device::GetSupportedFormat -> nxemu-video!Vulkan::Device::IsFormatSupported
+  0.4%  nxemu-video!Vulkan::Buffer::IsRegionUsed -> nxemu-video!VideoCommon::UsageTracker::IsPageUsed
+  0.4%  nxemu-video!VideoCommon::UnswizzleImage -> nxemu-video!Tegra::Texture::UnswizzleTexture
+  0.4%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::UploadImageContents<Vulkan::StagingBufferRef> -> nxemu-video!VideoCommon::UnswizzleImage
+  0.4%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::RefreshContents -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::UploadImageContents<Vulkan::StagingBufferRef>
+  0.4%  nxemu-video!VideoCommon::FenceManager<Vulkan::FenceManagerParams>::SubmitFence -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::CommitAsyncFlushesHigh
+  0.4%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostVertexBuffers -> nxemu-video!VideoCommon::HostBindings<OpenGL::Buffer>::~HostBindings<OpenGL::Buffer>
+  0.4%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostIndexBuffer -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer
+  0.4%  nxemu-video!Tegra::Texture::`anonymous namespace'::Swizzle<0> -> nxemu-video!Tegra::Texture::`anonymous namespace'::SwizzleImpl<0,16>
+  0.4%  nxemu-video!Tegra::Texture::UnswizzleTexture -> nxemu-video!Tegra::Texture::`anonymous namespace'::Swizzle<0>
+  0.4%  nxemu-video!Tegra::MemoryManager::FlushCaching -> nxemu-video!Tegra::MemoryManager::GetSubmappedRangeImpl<0>
+  0.4%  nxemu-video!Tegra::Engines::Puller::CallPullerMethod -> nxemu-video!VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::CounterReport
+  0.4%  nxemu-video!Tegra::Engines::Maxwell3D::CallMethod -> nxemu-video!Vulkan::RasterizerVulkan::WaitForIdle
+  0.4%  nxemu-video!Tegra::DmaPusher::Step -> nxemu-video!Tegra::MemoryManager::GetSpan
+  0.3%  nxemu-video!Vulkan::RasterizerVulkan::InnerInvalidation -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::WriteMemory
+  0.3%  nxemu-video!Vulkan::RasterizerVulkan::InnerInvalidation -> nxemu-video!VideoCommon::ShaderCache::InvalidateRegions
+  0.3%  nxemu-video!Vulkan::RasterizerVulkan::InnerInvalidation -> nxemu-video!VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::MarkRegionAsCpuModified
+  0.3%  nxemu-video!Vulkan::PipelineCache::LookupGraphicsPipeline -> nxemu-video!Vulkan::GraphicsCbufSizeState<5,18>::Refresh<`Vulkan::PipelineCache::LookupGraphicsPipeline'::`2'::<lambda_1> >
+  0.3%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec> -> nxemu-video!`VideoCommon::TextureCache<Vulkan::TextureCacheParams>::CheckFeedbackLoop'::`2'::<lambda_1>::operator()
+  0.3%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::WriteMemory -> nxemu-video!VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::IteratePages<0,`VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::IsRegionGpuModified'::`2'::<lambda_1> >
+  0.3%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::UpdateIndexBuffer -> nxemu-video!Tegra::MemoryManager::IsContinuousRange
+  0.3%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostIndexBuffer -> nxemu-video!Vulkan::BufferCacheRuntime::BindIndexBuffer
+  0.3%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostComputeBuffers -> nxemu-video!`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostComputeStorageBuffers'::`2'::<lambda_1>::operator()
+  0.3%  nxemu-video!Tegra::GPU::IsPoweredOn -> nxemu!SystemModules::Impl::OperatingSystem
+  0.3%  nxemu-video!Vulkan::RasterizerVulkan::OnCPUWrite -> nxemu-video!VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::MarkRegionAsCpuModified
+  0.3%  nxemu-video!Vulkan::GuestRecipeInputCache<Vulkan::GuestInputHash>::Find -> nxemu-video!Common::CityHash64
+  0.3%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureDraw -> nxemu-video!Vulkan::Scheduler::RequestRenderpass
+  0.3%  nxemu-video!VideoCommon::ShaderCache::RefreshStages -> nxemu-video!VideoCommon::ShaderCache::TryGet
+  0.3%  nxemu-video!VideoCommon::DescriptorTable<Tegra::Texture::TICEntry>::Read -> nxemu-video!memcmp
+  0.3%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::UpdateIndexBuffer -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::FindBuffer
+  0.3%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsUniformBuffer -> nxemu-video!Vulkan::StagingBufferPool::Request
+  0.3%  nxemu-video!Tegra::MemoryManager::Read<unsigned int> -> nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::GetPointer<unsigned char>
+  0.3%  nxemu-video!Tegra::Engines::Upload::State::ProcessData -> nxemu-video!Vulkan::RasterizerVulkan::AccelerateInlineToMemory
+  0.3%  nxemu-video!Tegra::Engines::Upload::State::ProcessData -> nxemu-video!Tegra::Engines::Upload::State::ProcessData
+  0.3%  nxemu-video!Tegra::DmaPusher::ProcessCommands -> nxemu-video!Tegra::Engines::Upload::State::ProcessData
+  0.3%  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::UpdatePagesCachedCount -> nxemu-video!Common::ScopedRangeLock::ScopedRangeLock
+  0.3%  nxemu-os!Core::Memory::Memory::HarvestCpuWrites -> nxemu-os!Core::Memory::Memory::Impl::ScanMarks<``Core::Memory::Memory::Impl::HarvestCpuWrites'::`2'::<lambda_1>::operator()'::`2'::<lambda_1> >
+  0.2%  nxemu-video!Vulkan::StagingBufferPool::Request -> nxemu-video!Vulkan::StagingBufferPool::GetStreamBuffer
+  0.2%  nxemu-video!Vulkan::RasterizerVulkan::WaitForIdle -> nxemu-video!VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::NotifyWFI
+  0.2%  nxemu-video!Vulkan::RasterizerVulkan::UpdateDynamicStates -> nxemu-video!Vulkan::RasterizerVulkan::UpdateViewportsState
+  0.2%  nxemu-video!Vulkan::RasterizerVulkan::UpdateDynamicStates -> nxemu-video!Vulkan::RasterizerVulkan::UpdateBlending
+  0.2%  nxemu-video!Vulkan::RasterizerVulkan::TickFrame -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::TickFrame
+  0.2%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!Vulkan::RasterizerVulkan::FlushWork
+  0.2%  nxemu-video!Vulkan::RasterizerVulkan::FlushRegionImpl -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::DownloadBufferMemory
+  0.2%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::SynchronizeGraphicsDescriptors
+  0.2%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec> -> nxemu-video!Tegra::MemoryManager::Read<unsigned int>
+  0.2%  nxemu-video!Vulkan::BufferCacheRuntime::TickFrame -> nxemu-video!memset
+  0.2%  nxemu-video!Vulkan::BufferCacheRuntime::BindVertexBuffers -> nxemu-video!VideoCommon::HostBindings<Vulkan::Buffer>::HostBindings<Vulkan::Buffer>
+  0.2%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::WriteMemory -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::ForEachCPUPage<`VideoCommon::TextureCache<Vulkan::TextureCacheParams>::ForEachImageInRegion<`VideoCommon::TextureCache<Vulkan::TextureCacheParams>::WriteMemory'::`2'::<lambda_1> >'::`2'::<lambda_1> >
+  0.2%  nxemu-video!VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::NotifyWFI -> nxemu-video!VideoCommon::GuestStreamer<Vulkan::QueryCacheParams>::SyncWrites
+  0.2%  nxemu-video!VideoCommon::HostBindings<Vulkan::Buffer>::HostBindings<Vulkan::Buffer> -> nxemu-video!boost::container::small_vector<unsigned __int64,32,void,void>::small_vector<unsigned __int64,32,void,void>
+  0.2%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::TickFrame -> nxemu-video!Vulkan::BufferCacheRuntime::TickFrame
+  0.2%  nxemu-video!Tegra::`anonymous namespace'::HLE_DrawArraysIndirect<0>::Fallback -> nxemu-video!Vulkan::RasterizerVulkan::Draw
+  0.2%  nxemu-video!Tegra::`anonymous namespace'::HLE_DrawArraysIndirect<0>::Execute -> nxemu-video!Tegra::`anonymous namespace'::HLE_DrawArraysIndirect<0>::Fallback
+  0.2%  nxemu-video!Tegra::MacroEngine::Execute -> nxemu-video!Tegra::`anonymous namespace'::HLE_DrawArraysIndirect<0>::Execute
+  0.2%  nxemu-video!Tegra::Engines::Maxwell3D::ProcessMacro -> nxemu-video!memset
+  0.2%  nxemu-video!mtx_do_lock -> KERNEL32!GetCurrentThreadId
+  0.2%  nxemu-video!boost::container::small_vector<unsigned __int64,32,void,void>::small_vector<unsigned __int64,32,void,void> -> nxemu-video!memcpy
+  0.2%  nxemu-video!`Vulkan::RasterizerVulkan::RefreshVertexInput'::`2'::<lambda_2>::<lambda_2> -> nxemu-video!memcpy
+  0.2%  nxemu-video!`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostComputeStorageBuffers'::`2'::<lambda_1>::operator() -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::MarkWrittenBuffer
+  0.2%  nxemu-video!Vulkan::Scheduler::SubmitExecution -> nxemu-video!Vulkan::Scheduler::DispatchWork
+  0.2%  nxemu-video!Vulkan::Scheduler::Flush -> nxemu-video!Vulkan::Scheduler::SubmitExecution
+  0.2%  nxemu-video!Vulkan::Scheduler::DispatchWork -> nxemu-video!mtx_do_lock
+  0.2%  nxemu-video!Vulkan::RasterizerVulkan::RefreshVertexInput -> nxemu-video!Vulkan::Scheduler::CommandChunk::Record<`Vulkan::Scheduler::Record<`Vulkan::RasterizerVulkan::RefreshVertexInput'::`2'::<lambda_2> >'::`2'::<lambda_1> >
+  0.2%  nxemu-video!Vulkan::RasterizerVulkan::BindGraphicsUniformBuffer -> nxemu-video!Tegra::MemoryManager::GpuToCpuAddress
+  0.2%  nxemu-video!Vulkan::MaxwellToVK::VertexFormat -> nxemu-video!`Vulkan::MaxwellToVK::VertexFormat'::`2'::<lambda_1>::operator()
+  0.2%  nxemu-video!Vulkan::GuestRecipeInputCache<Vulkan::GuestInputHash>::Find -> nxemu-video!memcmp
+  0.2%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::RescaleRenderTargets -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::BindRenderTarget
+  0.2%  nxemu-video!VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::IterateCache<1,`VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::InvalidateRegion'::`2'::<lambda_1> > -> nxemu-video!mtx_do_lock
+  0.2%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::UpdateIndexBuffer -> nxemu-video!Tegra::MemoryManager::GpuToCpuAddress
+  0.2%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::StorageBufferBinding -> nxemu-video!Tegra::MemoryManager::Read<unsigned __int64>
+  0.2%  nxemu-video!Tegra::MemoryManager::WriteBlockImpl<0> -> nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::GetPointer<unsigned char>
+  0.2%  nxemu-video!Tegra::MemoryManager::Read<unsigned int> -> nxemu-video!Tegra::MemoryManager::GpuToCpuAddress
+  0.2%  nxemu-video!Tegra::MemoryManager::GetSubmappedRangeImpl<0> -> nxemu-video!Tegra::MemoryManager::MemoryOperation<1,`Tegra::MemoryManager::GetSubmappedRangeImpl<0>'::`2'::<lambda_2> const &,`Tegra::MemoryManager::GetSubmappedRangeImpl<0>'::`2'::<lambda_1> const &,`Tegra::MemoryManager::GetSubmappedRangeImpl<0>'::`2'::<lambda_4> &>
+  0.2%  nxemu-video!Tegra::Engines::Maxwell3D::ProcessMacro -> nxemu-video!std::vector<std::pair<unsigned __int64,unsigned __int64>,std::allocator<std::pair<unsigned __int64,unsigned __int64> > >::emplace_back<unsigned __int64 &,unsigned int &>
+  0.2%  nxemu-video!Tegra::Engines::Maxwell3D::CallMethod -> nxemu-video!Tegra::Engines::Maxwell3D::ProcessDirtyRegisters
+  0.2%  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::UpdatePagesCachedCount -> nxemu-os!Core::Memory::Memory::Impl::RasterizerMarkRegionCached
+  0.2%  nxemu-video!Common::ScopedRangeLock::ScopedRangeLock -> nxemu-video!mtx_do_lock
+  0.2%  nxemu-video!Common::RangeSet<unsigned __int64>::Add -> nxemu-video!boost::icl::segmental::join_under<boost::icl::interval_set<unsigned __int64,std::less,boost::icl::discrete_interval<unsigned __int64,std::less>,Common::`anonymous namespace'::RangeSetsAllocator> >
+  0.2%  nxemu-video!std::_Tree<std::_Tset_traits<boost::icl::discrete_interval<unsigned __int64,std::less>,boost::icl::exclusive_less_than<boost::icl::discrete_interval<unsigned __int64,std::less> >,boost::fast_pool_allocator<boost::icl::discrete_interval<unsigned __int64,std::less>,boost::default_user_allocator_new_delete,std::mutex,1024,2048>,0> >::insert<0,0> -> nxemu-video!boost::fast_pool_allocator<std::_Tree_node<boost::icl::discrete_interval<unsigned __int64,std::less>,void *>,boost::default_user_allocator_new_delete,std::mutex,1024,2048>::allocate
+  0.2%  nxemu-video!Vulkan::UpdateDescriptorQueue::Acquire -> nxemu-video!Vulkan::DescriptorPayload<Vulkan::DescriptorUpdateEntry,131072,8>::Acquire<`Vulkan::UpdateDescriptorQueue::Acquire'::`2'::<lambda_1>,`Vulkan::UpdateDescriptorQueue::Acquire'::`2'::<lambda_2> >
+  0.2%  nxemu-video!Vulkan::Scheduler::CommandChunk::Record<`Vulkan::Scheduler::Record<`Vulkan::RasterizerVulkan::RefreshVertexInput'::`2'::<lambda_2> >'::`2'::<lambda_1> > -> nxemu-video!`Vulkan::RasterizerVulkan::RefreshVertexInput'::`2'::<lambda_2>::<lambda_2>
+  0.2%  nxemu-video!Vulkan::RasterizerVulkan::UpdateDynamicStates -> nxemu-video!Vulkan::RasterizerVulkan::UpdateScissorsState
+  0.2%  nxemu-video!Vulkan::RasterizerVulkan::HandleTransformFeedback -> nxemu-video!Vulkan::`anonymous namespace'::TFBCounterStreamer::PauseCounter
+  0.2%  nxemu-video!Vulkan::RasterizerVulkan::HandleTransformFeedback -> nxemu-video!VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::CounterEnable
+  0.2%  nxemu-video!Vulkan::RasterizerVulkan::FlushWork -> nxemu-video!Vulkan::Scheduler::Flush
+  0.2%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> -> nxemu-video!boost::container::vector<unsigned int,boost::container::small_vector_allocator<unsigned int,boost::container::new_allocator<void>,void>,void>::resize
+  0.2%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> -> nxemu-video!Vulkan::UpdateDescriptorQueue::Acquire
+  0.2%  nxemu-video!Vulkan::BufferCacheRuntime::BindVertexBuffers -> nxemu-video!Vulkan::Scheduler::CommandChunk::Record<`Vulkan::Scheduler::Record<`Vulkan::BufferCacheRuntime::BindVertexBuffers'::`33'::<lambda_2> >'::`2'::<lambda_1> >
+  0.2%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::VisitImageView -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::SynchronizeAliases
+  0.2%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::SynchronizeAliases -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::CopyImage
+  0.2%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::RescaleRenderTargets -> nxemu-video!VideoCommon::TextureCache<OpenGL::TextureCacheParams>::CanDiscardOnClear
+  0.2%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::CopyImage -> nxemu-video!Vulkan::TextureCacheRuntime::CopyImage
+  0.2%  nxemu-video!VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::CounterReport -> nxemu-video!VideoCommon::GuestStreamer<Vulkan::QueryCacheParams>::WriteCounter
+  0.2%  nxemu-video!VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::CounterReport -> nxemu-video!Tegra::GPU::GetTicks
+  0.2%  nxemu-video!VideoCommon::GuestStreamer<Vulkan::QueryCacheParams>::SyncWrites -> nxemu-video!Vulkan::QueryCacheRuntime::SyncValues<VideoCommon::SyncValuesStruct>
+  0.2%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::StorageBufferBinding -> nxemu-video!Tegra::MemoryManager::GpuToCpuAddress
+  0.2%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BufferOperations<`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::DoUpdateGraphicsBuffers'::`2'::<lambda_1> > -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::UpdateTextureBuffers
+  0.2%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsUniformBuffer -> nxemu-video!VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::IteratePages<0,`VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::IsRegionGpuModified'::`2'::<lambda_1> >
+  0.2%  nxemu-video!Tegra::MemoryManager::GetSpan -> nxemu-video!Tegra::MemoryManager::IsContinuousRange
+  0.2%  nxemu-video!Tegra::MemoryManager::GetSpan -> nxemu-video!Tegra::MemoryManager::GpuToCpuAddress
+  0.2%  nxemu-video!Tegra::MacroEngine::Execute -> nxemu-video!Tegra::`anonymous namespace'::HLE_DrawIndexedIndirect<1>::Execute
+  0.2%  nxemu-video!Tegra::MacroEngine::Execute -> nxemu-video!Tegra::`anonymous namespace'::HLE_C713C83D8F63CCF3::Execute
+  0.2%  nxemu-video!Tegra::DmaPusher::ProcessCommands -> nxemu-video!Tegra::Engines::Maxwell3D::ProcessDirtyRegisters
+  0.2%  nxemu-video!Shader::TextureDescriptor::TextureDescriptor -> nxemu-video!std::vector<Shader::TextureHandleSource,std::allocator<Shader::TextureHandleSource> >::vector<Shader::TextureHandleSource,std::allocator<Shader::TextureHandleSource> >
+  0.1%  nxemu-video!``Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleImageSpec>'::`2'::<lambda_2>::operator()'::`2'::<lambda_2>::operator()<Shader::TextureDescriptor> -> nxemu-video!```Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec>'::`2'::<lambda_2>::operator()'::`2'::<lambda_3>::operator()<Shader::TextureDescriptor>'::`2'::<lambda_1>::operator()
+  0.1%  nxemu-video!`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1>::operator() -> nxemu-video!Vulkan::Scheduler::DispatchWork
+  0.1%  nxemu-video!`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGraphicsStorageBuffers'::`2'::<lambda_1>::operator() -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::TouchBuffer
+  0.1%  nxemu-video!_Cnd_signal -> ntdll!RtlWakeConditionVariable
+  0.1%  nxemu-video!Vulkan::TextureCacheRuntime::CopyImage -> nxemu-video!Vulkan::Scheduler::DispatchWork
+  0.1%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!Vulkan::QueryCacheRuntime::ResumeHostConditionalRendering
+  0.1%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!Vulkan::GraphicsPipeline::Configure
+  0.1%  nxemu-video!Vulkan::RasterizerVulkan::OnCPUWrite -> nxemu-video!_Mtx_unlock
+  0.1%  nxemu-video!Vulkan::RasterizerVulkan::AccelerateInlineToMemory -> nxemu-video!VideoCommon::MemoryTrackerBase<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits> >::MarkRegionAsCpuModified
+  0.1%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> -> nxemu-video!boost::container::vector<Common::SlotId,boost::container::small_vector_allocator<Common::SlotId,boost::container::new_allocator<void>,void>,void>::assign<boost::container::vec_iterator<Common::SlotId *,0> >
+  0.1%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec> -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::GetGraphicsSamplerId
+  0.1%  nxemu-video!Vulkan::BufferCacheRuntime::BindVertexBuffers -> nxemu-video!__chkstk
+  0.1%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::PrepareImage -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::RefreshContents
+  0.1%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::PrepareImage -> nxemu-video!VideoCommon::TextureCache<OpenGL::TextureCacheParams>::UpdateNativeReadTracking
+  0.1%  nxemu-video!VideoCommon::ShaderCache::InvalidateRegions -> nxemu-video!mtx_do_lock
+  0.1%  nxemu-video!VideoCommon::ShaderCache::InvalidateRegions -> nxemu-video!VideoCommon::ShaderCache::InvalidatePagesInRegion
+  0.1%  nxemu-video!VideoCommon::GuestStreamer<Vulkan::QueryCacheParams>::WriteCounter -> nxemu-video!VideoCommon::SimpleStreamer<VideoCommon::GuestQuery>::BuildQuery<bool &,unsigned __int64 &,unsigned __int64,VideoCommon::GuestQuery>
+  0.1%  nxemu-video!VideoCommon::FenceManager<Vulkan::FenceManagerParams>::SubmitFence -> nxemu-video!_Cnd_signal
+  0.1%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::ForEachEnabledBit<`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostComputeUniformBuffers'::`2'::<lambda_1> > -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer
+  0.1%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::CommitAsyncFlushesHigh -> nxemu-video!boost::icl::interval_base_set<boost::icl::interval_set<unsigned __int64,std::less,boost::icl::discrete_interval<unsigned __int64,std::less>,Common::`anonymous namespace'::RangeSetsAllocator>,unsigned __int64,std::less,boost::icl::discrete_interval<unsigned __int64,std::less>,Common::`anonymous namespace'::RangeSetsAllocator>::subtract
+  0.1%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::CommitAsyncFlushesHigh -> nxemu-video!Common::RangeSet<unsigned __int64>::Add
+  0.1%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostVertexBuffers -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::TouchBuffer
+  0.1%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostComputeBuffers -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::ForEachEnabledBit<`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostComputeUniformBuffers'::`2'::<lambda_1> >
+  0.1%  nxemu-video!Tegra::`anonymous namespace'::HLE_DrawIndexedIndirect<0>::Fallback -> nxemu-video!Tegra::Engines::DrawManager::DrawIndex
+  0.1%  nxemu-video!Tegra::MemoryManager::WriteBlockImpl<0> -> nxemu-video!memcpy
+  0.1%  nxemu-video!Tegra::MemoryManager::WriteBlockCached -> nxemu-video!`VideoCommon::InvalidationAccumulator::Add'::`2'::<lambda_1>::operator()
+  0.1%  nxemu-video!Tegra::MemoryManager::ReadBlockUnsafe -> nxemu-video!memcpy
+  0.1%  nxemu-video!Tegra::MemoryManager::Read<unsigned __int64> -> nxemu-video!Tegra::MemoryManager::GpuToCpuAddress
+  0.1%  nxemu-video!Tegra::MemoryManager::GetSubmappedRangeImpl<0> -> nxemu-video!boost::container::dtl::construct_type<std::pair<unsigned __int64,unsigned __int64>,std::pair<unsigned __int64,unsigned __int64> const >
+  0.1%  nxemu-video!Tegra::MacroEngine::Execute -> nxemu-video!Tegra::`anonymous namespace'::HLE_D7333D26E0A93EDE::Execute
+  0.1%  nxemu-video!Tegra::MacroEngine::Execute -> nxemu-video!Tegra::`anonymous namespace'::HLE_BindShader::Execute
+  0.1%  nxemu-video!Tegra::Engines::Puller::CallPullerMethod -> nxemu-os!Core::System::GatherGPUDirtyMemory
+  0.1%  nxemu-video!Tegra::Engines::Maxwell3D::ProcessQueryCondition -> nxemu-video!Vulkan::RasterizerVulkan::AccelerateConditionalRendering
+  0.1%  nxemu-video!Tegra::Engines::Maxwell3D::CallMethod -> nxemu-video!Tegra::Engines::Maxwell3D::ProcessQueryCondition
+  0.1%  nxemu-video!Tegra::DmaPusher::ProcessCommands -> nxemu-video!Tegra::Engines::Maxwell3D::PushMethod
+  0.1%  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::UpdatePagesCachedCount -> nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::GetRegisteredProcess
+  0.1%  nxemu-os!_Mtx_unlock -> ntdll!RtlReleaseSRWLockExclusive
+  0.1%  nxemu-os!Core::System::GatherGPUDirtyMemory -> nxemu-video!Vulkan::RasterizerVulkan::OnCacheInvalidation
+  0.1%  ntdll!RtlWakeConditionVariable -> ntdll!NtAlertThreadByThreadId
+  0.1%  nxemu-video!boost::icl::segmental::join_under<boost::icl::interval_set<unsigned __int64,std::less,boost::icl::discrete_interval<unsigned __int64,std::less>,Common::`anonymous namespace'::RangeSetsAllocator> > -> nxemu-video!std::_Tree<std::_Tset_traits<boost::icl::discrete_interval<unsigned __int64,std::less>,boost::icl::exclusive_less_than<boost::icl::discrete_interval<unsigned __int64,std::less> >,boost::fast_pool_allocator<boost::icl::discrete_interval<unsigned __int64,std::less>,boost::default_user_allocator_new_delete,std::mutex,1024,2048>,0> >::lower_bound
+  0.1%  nxemu-video!boost::fast_pool_allocator<std::_Tree_node<boost::icl::discrete_interval<unsigned __int64,std::less>,void *>,boost::default_user_allocator_new_delete,std::mutex,1024,2048>::allocate -> nxemu-video!mtx_do_lock
+  0.1%  nxemu-video!boost::container::small_vector_base<VkBuffer_T *,void,void>::small_vector_base<VkBuffer_T *,void,void><boost::container::small_vector_allocator<VkBuffer_T *,boost::container::new_allocator<void>,void> > -> nxemu-video!memcpy
+  0.1%  nxemu-video!`VideoCommon::TextureCache<OpenGL::TextureCacheParams>::CanDiscardOnClear'::`2'::<lambda_1>::operator() -> nxemu-video!Tegra::MemoryManager::IsContinuousRange
+  0.1%  nxemu-video!`VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostComputeStorageBuffers'::`2'::<lambda_1>::operator() -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer
+  0.1%  nxemu-video!Vulkan::`anonymous namespace'::SamplesStreamer::StartCounter -> nxemu-video!Vulkan::`anonymous namespace'::SamplesStreamer::ReserveHostQuery
+  0.1%  nxemu-video!Vulkan::Scheduler::RequestRenderpass -> nxemu-video!Vulkan::`anonymous namespace'::SamplesStreamer::StartCounter
+  0.1%  nxemu-video!Vulkan::Scheduler::RequestRenderpass -> nxemu-video!Vulkan::Framebuffer::HandleVariant
+  0.1%  nxemu-video!Vulkan::Scheduler::DispatchWork -> nxemu-video!_Mtx_unlock
+  0.1%  nxemu-video!Vulkan::Scheduler::CommandChunk::Record<`Vulkan::Scheduler::Record<`Vulkan::BufferCacheRuntime::BindVertexBuffers'::`33'::<lambda_2> >'::`2'::<lambda_1> > -> nxemu-video!VideoCommon::HostBindings<Vulkan::Buffer>::HostBindings<Vulkan::Buffer>
+  0.1%  nxemu-video!Vulkan::RasterizerVulkan::WaitForIdle -> nxemu-video!mtx_do_lock
+  0.1%  nxemu-video!Vulkan::RasterizerVulkan::RefreshVertexInput -> nxemu-video!`Vulkan::RasterizerVulkan::RefreshVertexInput'::`2'::<lambda_2>::<lambda_2>
+  0.1%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!Vulkan::PipelineCache::BuiltPipeline
+  0.1%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::MarkRenderTargetsWritten
+  0.1%  nxemu-video!Vulkan::RasterizerVulkan::PrepareDraw<`Vulkan::RasterizerVulkan::Draw'::`2'::<lambda_1> > -> nxemu-video!VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::CounterEnable
+  0.1%  nxemu-video!Vulkan::RasterizerVulkan::OnCacheInvalidation -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::WriteMemory
+  0.1%  nxemu-video!Vulkan::RasterizerVulkan::OnCPUWrite -> nxemu-video!VideoCommon::ShaderCache::InvalidateRegion
+  0.1%  nxemu-video!Vulkan::RasterizerVulkan::DispatchCompute -> nxemu-video!Vulkan::PipelineCache::CurrentComputePipeline
+  0.1%  nxemu-video!Vulkan::RasterizerVulkan::Clear -> nxemu-video!Vulkan::RasterizerVulkan::FlushWork
+  0.1%  nxemu-video!Vulkan::RasterizerVulkan::AccelerateConditionalRendering -> nxemu-video!VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::AccelerateHostConditionalRendering
+  0.1%  nxemu-video!Vulkan::QueryCacheRuntime::SyncValues<VideoCommon::SyncValuesStruct> -> nxemu-video!_Mtx_unlock
+  0.1%  nxemu-video!Vulkan::QueryCacheRuntime::SyncValues<VideoCommon::SyncValuesStruct> -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::ObtainCPUBuffer
+  0.1%  nxemu-video!Vulkan::QueryCacheRuntime::HostConditionalRenderingCompareValues -> nxemu-video!mtx_do_lock
+  0.1%  nxemu-video!Vulkan::PushImageDescriptors -> nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::IsRescaling
+  0.1%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleVertexFragmentSpec> -> nxemu-video!VideoCommon::BufferCache<OpenGL::BufferCacheParams>::UnbindGraphicsTextureBuffers
+  0.1%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureImpl<Vulkan::`anonymous namespace'::SimpleStorageSpec> -> nxemu-video!boost::container::vector<Common::SlotId,boost::container::small_vector_allocator<Common::SlotId,boost::container::new_allocator<void>,void>,void>::resize
+  0.1%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureDraw -> nxemu-video!Vulkan::Scheduler::DispatchWork
+  0.1%  nxemu-video!Vulkan::GraphicsPipeline::ConfigureDraw -> nxemu-video!Vulkan::Scheduler::CommandChunk::Record<`Vulkan::Scheduler::Record<`Vulkan::GraphicsPipeline::ConfigureDraw'::`23'::<lambda_4> >'::`2'::<lambda_1> >
+  0.1%  nxemu-video!Vulkan::BufferCacheRuntime::BindVertexBuffers -> nxemu-video!boost::container::small_vector_base<VkBuffer_T *,void,void>::small_vector_base<VkBuffer_T *,void,void><boost::container::small_vector_allocator<VkBuffer_T *,boost::container::new_allocator<void>,void> >
+  0.1%  nxemu-video!VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::IterateWords<`VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::ChangeRegionState<0,1>'::`2'::<lambda_1> > -> nxemu-video!VideoCommon::WordManager<Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>,16>::UpdateCpuWorkWord
+  0.1%  nxemu-video!VideoCommon::UsageTracker::Track -> nxemu-video!memset
+  0.1%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::VisitImageView -> nxemu-video!Common::LeastRecentlyUsedCache<VideoCommon::BufferCache<Vulkan::BufferCacheParams>::LRUItemParams>::Detach
+  0.1%  nxemu-video!VideoCommon::TextureCache<Vulkan::TextureCacheParams>::RescaleRenderTargets -> nxemu-video!Vulkan::Image::ScaleDown
+  0.1%  nxemu-video!VideoCommon::TextureCache<OpenGL::TextureCacheParams>::CanDiscardOnClear -> nxemu-video!`VideoCommon::TextureCache<OpenGL::TextureCacheParams>::CanDiscardOnClear'::`2'::<lambda_1>::operator()
+  0.1%  nxemu-video!VideoCommon::TextureCache<OpenGL::TextureCacheParams>::CanDiscardOnClear -> nxemu-video!Tegra::MemoryManager::IsContinuousRange
+  0.1%  nxemu-video!VideoCommon::ShaderCache::TryGet -> nxemu-video!mtx_do_lock
+  0.1%  nxemu-video!VideoCommon::ShaderCache::TryGet -> nxemu-video!_Mtx_unlock
+  0.1%  nxemu-video!VideoCommon::ShaderCache::InvalidateRegions -> nxemu-video!_Mtx_unlock
+  0.1%  nxemu-video!VideoCommon::ShaderCache::InvalidateRegion -> nxemu-video!VideoCommon::ShaderCache::InvalidatePagesInRegion
+  0.1%  nxemu-video!VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::CounterReport -> nxemu-video!Vulkan::RasterizerVulkan::SignalReference
+  0.1%  nxemu-video!VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::AccelerateHostConditionalRendering -> nxemu-video!Vulkan::QueryCacheRuntime::HostConditionalRenderingCompareValues
+  0.1%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::ObtainCPUBuffer -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::SynchronizeBuffer
+  0.1%  nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostGeometryBuffers -> nxemu-video!VideoCommon::BufferCache<Vulkan::BufferCacheParams>::BindHostTransformFeedbackBuffers
+  0.1%  nxemu-video!Tegra::`anonymous namespace'::HLE_BindShader::Execute -> nxemu-video!Tegra::Engines::Maxwell3D::ProcessCBBind
+  0.1%  nxemu-video!Tegra::MemoryManager::Read<unsigned __int64> -> nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::GetPointer<unsigned char>
+  0.1%  nxemu-video!Tegra::MemoryManager::IsContinuousRange -> nxemu-video!Tegra::ContinuousRangeCache::Remember
+  0.1%  nxemu-video!Tegra::MemoryManager::IsContinuousRange -> nxemu-video!Tegra::ContinuousRangeCache::ContainsStableMapping
+  0.1%  nxemu-video!Tegra::GPU::GetTicks -> nxemu-os!OSManager::GetGPUTicks
+  0.1%  nxemu-video!Tegra::GPU::GetTicks -> nxemu-os!Core::Timing::CoreTiming::GetGPUTicks
+  0.1%  nxemu-video!Tegra::Engines::Maxwell3D::ProcessMethodCall -> nxemu-video!VideoCommon::QueryCacheBase<Vulkan::QueryCacheParams>::CounterReport
+  0.1%  nxemu-video!Tegra::Engines::Maxwell3D::ProcessMacro -> nxemu-video!Tegra::Engines::DrawManager::DrawDeferred
+  0.1%  nxemu-video!Tegra::ContinuousRangeCache::Remember -> nxemu-video!Tegra::ContinuousRangeCache::Contains
+  0.1%  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::UpdatePagesCachedCount -> nxemu-video!mtx_do_lock
+  0.1%  nxemu-video!Core::DeviceMemoryManager<Tegra::MaxwellDeviceTraits>::GetRegisteredProcess -> nxemu-video!mtx_do_lock
+  0.1%  nxemu-os!Core::Timing::CoreTiming::GetGPUTicks -> nxemu-os!Core::Timing::SharedCpuClock::Now
+  0.1%  nxemu-os!Core::System::GatherGPUDirtyMemory -> nxemu-os!_Mtx_unlock
+  0.1%  nxemu-os!Core::Memory::Memory::Impl::RasterizerMarkRegionCached -> nxemu-os!Core::Memory::UseWriteTrackMap
+  0.1%  nxemu-os!Core::Memory::Memory::Impl::HandleRasterizerWrite -> nxemu-os!Core::Memory::Memory::Impl::GetPointerFromRasterizerCachedMemory
+  0.1%  JIT -> nxemu-video!Tegra::`anonymous namespace'::Send
+  0.0%  nxemu-video!std::vector<VideoCommon::ShaderProfile::`anonymous namespace'::SourceFile const *,std::allocator<VideoCommon::ShaderProfile::`anonymous namespace'::SourceFile const *> >::~vector<VideoCommon::ShaderProfile::`anonymous namespace'::SourceFile const *,std::allocator<VideoCommon::ShaderProfile::`anonymous namespace'::SourceFile const *> > -> nxemu-video!_free_base
+  0.0%  nxemu-video!std::deque<unsigned __int64,std::allocator<unsigned __int64> >::push_back -> nxemu-video!std::deque<std::unique_ptr<FFmpeg::Frame,std::default_delete<FFmpeg::Frame> >,std::allocator<std::unique_ptr<FFmpeg::Frame,std::default_delete<FFmpeg::Frame> > > >::_Growmap
+  0.0%  nxemu-video!std::deque<std::unique_ptr<FFmpeg::Frame,std::default_delete<FFmpeg::Frame> >,std::allocator<std::unique_ptr<FFmpeg::Frame,std::default_delete<FFmpeg::Frame> > > >::_Growmap -> nxemu-video!operator new
+  0.0%  nxemu-video!std::_Tree<std::_Tset_traits<boost::icl::discrete_interval<unsigned __int64,std::less>,boost::icl::exclusive_less_than<boost::icl::discrete_interval<unsigned __int64,std::less> >,boost::fast_pool_allocator<boost::icl::discrete_interval<unsigned __int64,std::less>,boost::default_user_allocator_new_delete,std::mutex,1024,2048>,0> >::insert<0,0> -> nxemu-video!std::_Tree_val<std::_Tree_simple_types<std::pair<std::basic_string<char,std::char_traits<char>,std::allocator<char> > const ,std::filesystem::path> > >::_Insert_node
+  0.0%  nxemu-video!std::_Tree<std::_Tset_traits<boost::icl::discrete_interval<unsigned __int64,std::less>,boost::icl::exclusive_less_than<boost::icl::discrete_interval<unsigned __int64,std::less> >,boost::fast_pool_allocator<boost::icl::discrete_interval<unsigned __int64,std::less>,boost::default_user_allocator_new_delete,std::mutex,1024,2048>,0> >::_Erase_unchecked -> nxemu-video!_Mtx_unlock
+

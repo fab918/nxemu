@@ -1,0 +1,1144 @@
+diff --git a/src/nxemu-os/core/cpu_manager.cpp b/src/nxemu-os/core/cpu_manager.cpp
+index c523484930..becfbf3b0a 100644
+--- a/src/nxemu-os/core/cpu_manager.cpp
++++ b/src/nxemu-os/core/cpu_manager.cpp
+@@ -193,6 +193,10 @@ void CpuManager::RunThread(std::stop_token token, std::size_t core) {
+     }
+     Common::SetCurrentThreadName(name.c_str());
+     Common::SetCurrentThreadPriority(Common::ThreadPriority::Critical);
++    if (is_multicore && core < 4) {
++        Common::PlaceCurrentThread(
++            static_cast<Common::DedicatedThread>(static_cast<u32>(Common::DedicatedThread::GuestCore0) + core));
++    }
+     auto& data = core_data[core];
+     data.host_context = Common::Fiber::ThreadToFiber();
+ 
+diff --git a/src/nxemu-os/core/memory.cpp b/src/nxemu-os/core/memory.cpp
+index 6920dc1835..d60c9222ba 100644
+--- a/src/nxemu-os/core/memory.cpp
++++ b/src/nxemu-os/core/memory.cpp
+@@ -4,6 +4,7 @@
+ 
+ #include <algorithm>
+ #include <array>
++#include <atomic>
+ #include <cstring>
+ #include <chrono>
+ #include <cstdio>
+@@ -13,7 +14,9 @@
+ #include <mutex>
+ #include <span>
+ #include <map>
++#include <memory>
+ #include <thread>
++#include <unordered_map>
+ #include <vector>
+ 
+ #include "yuzu_common/yuzu_assert.h"
+@@ -615,10 +618,28 @@ struct Memory::Impl {
+         std::scoped_lock nce_lock{nce_write_mutex};
+ #endif
+ 
++#if !defined(__APPLE__)
++        std::scoped_lock read_cached_lock{read_cached_mutex};
++        if (current_page_table->fastmem_arena && cached && !LegacyReadTracking() &&
++            g_settings->GetBool(NXVideoSetting::EnableReactiveFlushing))
++        {
++            // Write tracking only, except on pages holding GPU-written image data that was
++            // not downloaded yet: a CPU read must fault there to download it.
++            ProtectCachedRegion(vaddr, size);
++        }
++        else if (current_page_table->fastmem_arena)
++#else
+         if (current_page_table->fastmem_arena)
++#endif
+         {
+             Common::MemoryPermission perm{};
++#if defined(__APPLE__)
+             bool deny_reads = cached && g_settings->GetBool(NXVideoSetting::EnableReactiveFlushing);
++#else
++            // TEMP A/B: NXEMU_READ_TRACKING_ALL restores read protection on every cached page
++            const bool deny_reads = cached && LegacyReadTracking() &&
++                                    g_settings->GetBool(NXVideoSetting::EnableReactiveFlushing);
++#endif
+ #if defined(__APPLE__)
+             // Buffer caches only need write tracking. Texture readback protection is applied
+             // separately below, including when a texture overlaps an already cached buffer.
+@@ -931,6 +952,192 @@ struct Memory::Impl {
+         context.impl->gpu_dirty_managers[context.core].CollectExact(address, size);
+     }
+ 
++#if !defined(__APPLE__)
++    // Pages holding GPU-written image data that was not downloaded yet. Counted per guest
++    // page, since several images can share a page. The bitmap lets CPU reads of cached
++    // pages skip the GPU when nothing on the page needs a download.
++    struct FreeBits
++    {
++        void operator()(u64 * bits) const
++        {
++            std::free(bits);
++        }
++    };
++
++    static bool LegacyReadTracking()
++    {
++        static const bool legacy = std::getenv("NXEMU_READ_TRACKING_ALL") != nullptr;
++        return legacy;
++    }
++
++    u64 * ReadCachedBits()
++    {
++        u64 * bits = read_cached_bits.load(std::memory_order_relaxed);
++        if (bits == nullptr)
++        {
++            // calloc gets zeroed pages from the system, only the touched ones use memory
++            const size_t pages = current_page_table->pointers.size();
++            bits = static_cast<u64 *>(std::calloc((pages + 63) / 64, sizeof(u64)));
++            if (bits == nullptr)
++            {
++                return nullptr;
++            }
++            read_cached_storage.reset(bits);
++            read_cached_page_count = pages;
++            read_cached_bits.store(bits, std::memory_order_release);
++        }
++        return bits;
++    }
++
++    bool IsReadCachedPage(u64 page) const
++    {
++        u64 * const bits = read_cached_bits.load(std::memory_order_acquire);
++        if (bits == nullptr)
++        {
++            return false;
++        }
++        if (page >= read_cached_page_count)
++        {
++            return true;
++        }
++        return ((std::atomic_ref<u64>(bits[page / 64]).load(std::memory_order_acquire) >> (page % 64)) & 1) != 0;
++    }
++
++    bool IsRegionReadCached(u64 vaddr, u64 size) const
++    {
++        if (read_cached_bits.load(std::memory_order_acquire) == nullptr)
++        {
++            return false;
++        }
++        const u64 end = (vaddr + std::max<u64>(size, 1) - 1) >> YUZU_PAGEBITS;
++        for (u64 page = vaddr >> YUZU_PAGEBITS; page <= end; ++page)
++        {
++            if (IsReadCachedPage(page))
++            {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    // Caller holds read_cached_mutex. The region becomes cached: deny writes everywhere and
++    // reads only on pages that need a download.
++    void ProtectCachedRegion(u64 vaddr, u64 size)
++    {
++        const u64 end = Common::AlignUp(vaddr + size, YUZU_PAGESIZE);
++        u64 begin = Common::AlignDown(vaddr, YUZU_PAGESIZE);
++        const auto permission = [&](u64 page) {
++            return IsReadCachedPage(page >> YUZU_PAGEBITS) ? Common::MemoryPermission{}
++                                                           : Common::MemoryPermission::Read;
++        };
++        auto current = permission(begin);
++        for (u64 page = begin + YUZU_PAGESIZE; page < end; page += YUZU_PAGESIZE)
++        {
++            const auto next = permission(page);
++            if (next != current)
++            {
++                buffer->Protect(begin, page - begin, current);
++                begin = page;
++                current = next;
++            }
++        }
++        if (begin < end)
++        {
++            buffer->Protect(begin, end - begin, current);
++        }
++    }
++
++    void RasterizerMarkRegionReadCached(u64 vaddr, u64 size, s32 delta)
++    {
++        if (size == 0 || delta == 0 || !AddressSpaceContains(*current_page_table, vaddr, size))
++        {
++            return;
++        }
++        std::scoped_lock lk{read_cached_mutex};
++        u64 * const bits = ReadCachedBits();
++        if (bits == nullptr)
++        {
++            return;
++        }
++        const bool protect = current_page_table->fastmem_arena && !LegacyReadTracking() &&
++                             g_settings->GetBool(NXVideoSetting::EnableReactiveFlushing);
++        u64 run_begin{}, run_end{};
++        Common::MemoryPermission run_perm{};
++        const auto flush = [&] {
++            if (run_begin != run_end)
++            {
++                buffer->Protect(run_begin, run_end - run_begin, run_perm);
++            }
++            run_begin = run_end = 0;
++        };
++        const u64 end = Common::AlignUp(vaddr + size, YUZU_PAGESIZE);
++        for (u64 page = Common::AlignDown(vaddr, YUZU_PAGESIZE); page < end; page += YUZU_PAGESIZE)
++        {
++            const u64 index = page >> YUZU_PAGEBITS;
++            bool was_cached{};
++            bool now_cached{};
++            auto it = read_cached_counts.find(index);
++            if (delta > 0)
++            {
++                was_cached = it != read_cached_counts.end();
++                if (!was_cached)
++                {
++                    it = read_cached_counts.emplace(index, 0).first;
++                }
++                it->second += static_cast<u32>(delta);
++                now_cached = true;
++            }
++            else if (it != read_cached_counts.end())
++            {
++                was_cached = true;
++                if (it->second <= static_cast<u32>(-delta))
++                {
++                    read_cached_counts.erase(it);
++                }
++                else
++                {
++                    it->second -= static_cast<u32>(-delta);
++                    now_cached = true;
++                }
++            }
++            if (was_cached == now_cached || index >= read_cached_page_count)
++            {
++                flush();
++                continue;
++            }
++            std::atomic_ref<u64> word(bits[index / 64]);
++            const u64 bit = u64{1} << (index % 64);
++            if (now_cached)
++            {
++                word.fetch_or(bit, std::memory_order_release);
++            }
++            else
++            {
++                word.fetch_and(~bit, std::memory_order_release);
++            }
++            if (protect && current_page_table->pointers[index].Type() == Common::PageType::RasterizerCachedMemory)
++            {
++                const auto perm = now_cached ? Common::MemoryPermission{} : Common::MemoryPermission::Read;
++                if (run_begin != run_end && (run_end != page || run_perm != perm))
++                {
++                    flush();
++                }
++                if (run_begin == run_end)
++                {
++                    run_begin = page;
++                    run_perm = perm;
++                }
++                run_end = page + YUZU_PAGESIZE;
++            }
++            else
++            {
++                flush();
++            }
++        }
++        flush();
++    }
++#endif
++
+ #if defined(__APPLE__)
+     // Caller holds nce_write_mutex. Apply each contiguous permission run once, and never
+     // temporarily expose GPU-dirty pages while changing buffer write tracking.
+@@ -1324,6 +1531,13 @@ struct Memory::Impl {
+             system.GetVideo().HandleRasterizerDownload(p, size, request);
+             return false;
+         }
++#else
++        // Only GPU-written image data needs a download before the CPU reads it. Other cached
++        // pages are tracked for writes only.
++        if (!LegacyReadTracking() && !IsRegionReadCached(v_address, size))
++        {
++            return false;
++        }
+ #endif
+         const size_t core = system.GetCurrentHostThreadID();
+         RasterizerDownloadArea & area = rasterizer_read_areas[core];
+@@ -1386,6 +1600,14 @@ struct Memory::Impl {
+     std::span<Core::GPUDirtyMemoryManager> gpu_dirty_managers;
+     std::mutex sys_core_guard;
+ 
++#if !defined(__APPLE__)
++    std::mutex read_cached_mutex;
++    std::unordered_map<u64, u32> read_cached_counts;
++    std::unique_ptr<u64[], FreeBits> read_cached_storage;
++    std::atomic<u64 *> read_cached_bits{};
++    size_t read_cached_page_count{};
++#endif
++
+ #if defined(__APPLE__)
+     // Native code execution on 16 KiB pages: a write to a host page holding guest pages the GPU
+     // caches makes them writable instead of invalidating the GPU cache, which would make it
+@@ -1625,9 +1847,7 @@ Result Memory::FlushDataCache(Common::ProcessAddress dest_addr, const std::size_
+ }
+ 
+ void Memory::RasterizerMarkRegionReadCached(uint64_t vaddr, uint64_t size, int32_t delta) {
+-#if defined(__APPLE__)
+     impl->RasterizerMarkRegionReadCached(vaddr, size, delta);
+-#endif
+ }
+ 
+ bool Memory::ProtectsReadCachedRegions() {
+diff --git a/src/nxemu/ui/views/main_window.cpp b/src/nxemu/ui/views/main_window.cpp
+index eeaa36e95a..00532a36d5 100644
+--- a/src/nxemu/ui/views/main_window.cpp
++++ b/src/nxemu/ui/views/main_window.cpp
+@@ -6,7 +6,10 @@
+ #include "scaling_filters.h"
+ #include <RmlUi/Core.h>
+ #include <algorithm>
++#include <chrono>
+ #include <cmath>
++#include <cstdio>
++#include <cstdlib>
+ #include <common/path.h>
+ #include <common/std_string.h>
+ #include <nxemu-core/notification.h>
+@@ -2351,9 +2354,34 @@ void MainWindow::MeasureGame()
+     if (m_session.IsValid() && m_session.IsRunning())
+     {
+         IOperatingSystem & os = m_session.Modules().OperatingSystem();
+-        m_longestMeasured = m_performance->Shown();
++        static std::FILE * perfCsv = [] {
++            const char * path = std::getenv("NXEMU_PERF_CSV");
++            std::FILE * file = path != nullptr ? std::fopen(path, "w") : nullptr;
++            if (file != nullptr)
++            {
++                std::fputs("ms,fps,frametime_ms,speed,longest_ms,shaders_building,steady_ms\n", file);
++            }
++            return file;
++        }();
++        m_longestMeasured = m_performance->Shown() || perfCsv != nullptr;
+         os.MeasureGameFrames(m_longestMeasured);
+         const PerfStatsResults stats = os.GetAndResetPerfStats();
++        if (perfCsv != nullptr && std::getenv("NXEMU_PERF_UNLOCK") != nullptr &&
++            SettingsStore::GetInstance().GetBool(NXOsSetting::UseSpeedLimit))
++        {
++            SettingsStore::GetInstance().SetBool(NXOsSetting::UseSpeedLimit, false);
++            m_session.FlushSettings();
++        }
++        if (perfCsv != nullptr && measured && !os.IsEmulationPaused())
++        {
++            static const auto start = std::chrono::steady_clock::now();
++            const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
++            std::fprintf(perfCsv, "%lld,%.3f,%.3f,%.4f,%.3f,%d,%lld\n", static_cast<long long>(ms), stats.average_game_fps,
++                         stats.frametime * 1000.0, stats.emulation_speed, stats.longest_game_frame * 1000.0,
++                         static_cast<int>(m_session.Modules().Video().ShadersBuilding()),
++                         static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()));
++            std::fflush(perfCsv);
++        }
+         if (measured && m_longestMeasured && !os.IsEmulationPaused())
+         {
+             m_performance->Add(stats, m_session.Modules().Video().ShadersBuilding(), !SettingsStore::GetInstance().GetBool(NXOsSetting::UseSpeedLimit));
+diff --git a/src/yuzu_common/thread.cpp b/src/yuzu_common/thread.cpp
+index f2747c3a2c..f91cea3e22 100644
+--- a/src/yuzu_common/thread.cpp
++++ b/src/yuzu_common/thread.cpp
+@@ -2,7 +2,13 @@
+ // SPDX-FileCopyrightText: 2014 Citra Emulator Project
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
++#include <algorithm>
++#include <chrono>
++#include <mutex>
+ #include <string>
++#include <thread>
++#include <utility>
++#include <vector>
+ 
+ #include "yuzu_common/error.h"
+ #include "yuzu_common/logging/log.h"
+@@ -146,4 +152,180 @@ void SetCurrentThreadName(const char* name) {
+ 
+ #endif
+ 
++#ifdef _WIN32
++
++namespace {
++
++struct CorePlacement {
++    // CPU set id of the first logical processor of each reserved core, by DedicatedThread.
++    std::vector<ULONG> reserved;
++    // CPU set ids the other threads of the process may use.
++    std::vector<ULONG> shared;
++};
++
++// NXEMU_CPU_PLACEMENT selects how many threads get a core: "off", "gpu" (GPU thread),
++// "gpu1" (GPU thread and guest core 0), "full" (GPU thread and the 4 guest cores).
++size_t ReservedThreadCount() {
++    char value[16]{};
++    size_t length = 0;
++    if (getenv_s(&length, value, sizeof(value), "NXEMU_CPU_PLACEMENT") != 0 || length == 0) {
++        return 0;
++    }
++    const std::string mode{value};
++    if (mode == "gpu") {
++        return 1;
++    }
++    if (mode == "gpu1") {
++        return 2;
++    }
++    if (mode == "full" || mode == "toggle") {
++        return 5;
++    }
++    return 0;
++}
++
++// Test mode: placement is on during even 5 second slots of the steady clock and off during odd
++// ones, so a single run compares both on nearly the same scene.
++bool PlacementToggles() {
++    char value[16]{};
++    size_t length = 0;
++    return getenv_s(&length, value, sizeof(value), "NXEMU_CPU_PLACEMENT") == 0 &&
++           std::string{value} == "toggle";
++}
++
++struct PlacedThread {
++    HANDLE handle;
++    ULONG id;
++};
++std::mutex placed_mutex;
++std::vector<PlacedThread> placed_threads;
++
++CorePlacement BuildPlacement() {
++    CorePlacement placement;
++    const size_t wanted = ReservedThreadCount();
++    if (wanted == 0) {
++        return placement;
++    }
++    ULONG length = 0;
++    GetSystemCpuSetInformation(nullptr, 0, &length, GetCurrentProcess(), 0);
++    std::vector<u8> buffer(length);
++    auto* const first = reinterpret_cast<SYSTEM_CPU_SET_INFORMATION*>(buffer.data());
++    if (length == 0 || !GetSystemCpuSetInformation(first, length, &length, GetCurrentProcess(), 0)) {
++        return placement;
++    }
++    struct Core {
++        WORD group;
++        BYTE core_index;
++        BYTE efficiency;
++        std::vector<std::pair<BYTE, ULONG>> logical; // logical processor index, cpu set id
++    };
++    std::vector<Core> cores;
++    for (size_t offset = 0; offset < length;) {
++        const auto* const info =
++            reinterpret_cast<const SYSTEM_CPU_SET_INFORMATION*>(buffer.data() + offset);
++        offset += info->Size;
++        if (info->Type != CpuSetInformation || info->CpuSet.Parked) {
++            continue;
++        }
++        const auto& set = info->CpuSet;
++        auto it = std::find_if(cores.begin(), cores.end(), [&](const Core& core) {
++            return core.group == set.Group && core.core_index == set.CoreIndex;
++        });
++        if (it == cores.end()) {
++            cores.push_back(Core{set.Group, set.CoreIndex, set.EfficiencyClass, {}});
++            it = cores.end() - 1;
++        }
++        it->logical.emplace_back(set.LogicalProcessorIndex, set.Id);
++    }
++    // Keep at least two cores for the rest of the process (Vulkan worker, timing, audio,
++    // shader compilation and the UI).
++    if (cores.size() < wanted + 2) {
++        return placement;
++    }
++    // Fastest cores first. Among equal cores take the last ones: core 0 also serves most
++    // interrupts.
++    std::sort(cores.begin(), cores.end(), [](const Core& a, const Core& b) {
++        if (a.efficiency != b.efficiency) {
++            return a.efficiency > b.efficiency;
++        }
++        if (a.group != b.group) {
++            return a.group > b.group;
++        }
++        return a.core_index > b.core_index;
++    });
++    for (auto& core : cores) {
++        std::sort(core.logical.begin(), core.logical.end());
++    }
++    for (size_t index = 0; index < cores.size(); ++index) {
++        if (index < wanted) {
++            placement.reserved.push_back(cores[index].logical.front().second);
++            continue;
++        }
++        for (const auto& logical : cores[index].logical) {
++            placement.shared.push_back(logical.second);
++        }
++    }
++    return placement;
++}
++
++const CorePlacement& GetPlacement() {
++    static const CorePlacement placement = [] {
++        CorePlacement result = BuildPlacement();
++        if (!result.reserved.empty()) {
++            // Threads without a CPU set of their own stay off the reserved cores, including
++            // their second SMT thread.
++            SetProcessDefaultCpuSets(GetCurrentProcess(), result.shared.data(),
++                                     static_cast<ULONG>(result.shared.size()));
++        }
++        if (!result.reserved.empty() && PlacementToggles()) {
++            std::thread([shared = result.shared] {
++                bool applied = true;
++                for (;;) {
++                    const auto now = std::chrono::steady_clock::now().time_since_epoch();
++                    const bool on =
++                        (std::chrono::duration_cast<std::chrono::seconds>(now).count() / 5) % 2 == 0;
++                    if (on != applied) {
++                        applied = on;
++                        SetProcessDefaultCpuSets(GetCurrentProcess(), on ? shared.data() : nullptr,
++                                                 on ? static_cast<ULONG>(shared.size()) : 0);
++                        std::scoped_lock lock{placed_mutex};
++                        for (PlacedThread& placed : placed_threads) {
++                            SetThreadSelectedCpuSets(placed.handle, on ? &placed.id : nullptr,
++                                                     on ? 1 : 0);
++                        }
++                    }
++                    std::this_thread::sleep_for(std::chrono::milliseconds(20));
++                }
++            }).detach();
++        }
++        return result;
++    }();
++    return placement;
++}
++
++} // Anonymous namespace
++
++void PlaceCurrentThread(DedicatedThread thread) {
++    const CorePlacement& placement = GetPlacement();
++    const size_t index = static_cast<size_t>(thread);
++    if (index >= placement.reserved.size()) {
++        return;
++    }
++    ULONG id = placement.reserved[index];
++    SetThreadSelectedCpuSets(GetCurrentThread(), &id, 1);
++    if (PlacementToggles()) {
++        HANDLE handle{};
++        DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &handle,
++                        THREAD_SET_LIMITED_INFORMATION | THREAD_QUERY_LIMITED_INFORMATION, FALSE, 0);
++        std::scoped_lock lock{placed_mutex};
++        placed_threads.push_back(PlacedThread{handle, id});
++    }
++}
++
++#else
++
++void PlaceCurrentThread(DedicatedThread) {}
++
++#endif
++
+ } // namespace Common
+diff --git a/src/yuzu_common/thread.h b/src/yuzu_common/thread.h
+index 601457155c..192f0c46f6 100644
+--- a/src/yuzu_common/thread.h
++++ b/src/yuzu_common/thread.h
+@@ -106,4 +106,18 @@ void SetCurrentThreadPriority(ThreadPriority new_priority);
+ 
+ void SetCurrentThreadName(const char* name);
+ 
++/// Threads that can get a physical core of their own.
++enum class DedicatedThread : u32 {
++    Gpu = 0,
++    GuestCore0 = 1,
++    GuestCore1 = 2,
++    GuestCore2 = 3,
++    GuestCore3 = 4,
++};
++
++/// Moves the current thread to a physical core reserved for it, and keeps the other threads of
++/// the process off the reserved cores. Does nothing when placement is off or the machine has too
++/// few cores.
++void PlaceCurrentThread(DedicatedThread thread);
++
+ } // namespace Common
+diff --git a/src/yuzu_video_core/buffer_cache/buffer_cache.h b/src/yuzu_video_core/buffer_cache/buffer_cache.h
+index a213a91e2d..47c36977cb 100644
+--- a/src/yuzu_video_core/buffer_cache/buffer_cache.h
++++ b/src/yuzu_video_core/buffer_cache/buffer_cache.h
+@@ -3,11 +3,15 @@
+ 
+ #pragma once
+ 
++#include "yuzu_video_core/g2_stats.h" // TEMP
+ #include <algorithm>
++#include <cstdlib>
++#include <cstring>
+ #include <memory>
+ #include <numeric>
+ 
+ #include "yuzu_common/range_sets.inc"
++#include "yuzu_common/thread.h"
+ #include "yuzu_video_core/buffer_cache/buffer_cache_base.h"
+ #include "yuzu_video_core/guest_memory.h"
+ #include "yuzu_video_core/host1x/gpu_device_memory_manager.h"
+@@ -46,6 +50,130 @@ BufferCache<P>::BufferCache(Tegra::MaxwellDeviceMemoryManager& device_memory_, R
+ template <class P>
+ BufferCache<P>::~BufferCache() = default;
+ 
++template <class P>
++bool BufferCache<P>::AsyncReprotectEnabled() {
++    // TEMP A/B: NXEMU_ASYNC_REPROTECT=0 protects on the GPU thread as before
++    static const bool enabled = [] {
++        const char* value = std::getenv("NXEMU_ASYNC_REPROTECT");
++        return value == nullptr || value[0] != '0';
++    }();
++    return enabled;
++}
++
++template <class P>
++typename BufferCache<P>::ReprotectJob BufferCache<P>::TakeReprotectJob() {
++    std::scoped_lock lock{reprotect_mutex};
++    if (reprotect_free.empty()) {
++        return {};
++    }
++    ReprotectJob job = std::move(reprotect_free.back());
++    reprotect_free.pop_back();
++    return job;
++}
++
++template <class P>
++void BufferCache<P>::SubmitReprotectJob(ReprotectJob&& job) {
++    {
++        std::scoped_lock lock{reprotect_mutex};
++        if (!reprotect_thread.joinable()) {
++            reprotect_thread =
++                std::jthread([this](std::stop_token token) { ReprotectThread(token); });
++        }
++        reprotect_queue.push_back(std::move(job));
++        ++reprotect_in_flight;
++    }
++    reprotect_cv.notify_one();
++}
++
++template <class P>
++void BufferCache<P>::ReprotectThread(std::stop_token token) {
++    Common::SetCurrentThreadName("GPUReprotect");
++    std::vector<ReprotectJob> jobs;
++    std::vector<std::pair<DAddr, u64>> written;
++    std::array<u8, Core::DEVICE_PAGESIZE> current{};
++    while (true) {
++        {
++            std::unique_lock lock{reprotect_mutex};
++            if (!reprotect_cv.wait(lock, token, [this] { return !reprotect_queue.empty(); })) {
++                return;
++            }
++            jobs.swap(reprotect_queue);
++        }
++        for (ReprotectJob& job : jobs) {
++            for (const auto& [addr, size] : job.caching) {
++                device_memory.ApplyDeferredCaching(addr, size);
++            }
++            // The pages fault on CPU writes from here on. Find the writes made before.
++            u64 offset = 0;
++            for (const auto& [addr, size] : job.ranges) {
++                for (u64 done = 0; done < size;) {
++                    const DAddr chunk_addr = addr + done;
++                    const u64 chunk = std::min<u64>(
++                        size - done, Core::DEVICE_PAGESIZE - (chunk_addr & Core::DEVICE_PAGEMASK));
++                    device_memory.ReadBlockUnsafe(chunk_addr, current.data(), chunk);
++                    if (std::memcmp(current.data(), job.data.data() + offset + done, chunk) != 0) {
++                        if (!written.empty() &&
++                            written.back().first + written.back().second == chunk_addr) {
++                            written.back().second += chunk;
++                        } else {
++                            written.emplace_back(chunk_addr, chunk);
++                        }
++                    }
++                    done += chunk;
++                }
++                offset += size;
++            }
++        }
++        {
++            std::scoped_lock lock{reprotect_mutex};
++            if (!written.empty()) {
++                late_writes.insert(late_writes.end(), written.begin(), written.end());
++                has_late_writes.store(true, std::memory_order_release);
++                written.clear();
++            }
++            reprotect_in_flight -= jobs.size();
++            for (ReprotectJob& job : jobs) {
++                job.caching.clear();
++                job.ranges.clear();
++                job.data.clear();
++                if (reprotect_free.size() < 256) {
++                    reprotect_free.push_back(std::move(job));
++                }
++            }
++            jobs.clear();
++        }
++        reprotect_idle_cv.notify_all();
++    }
++}
++
++template <class P>
++void BufferCache<P>::ApplyLateWrites() {
++    if (!has_late_writes.load(std::memory_order_acquire)) {
++        return;
++    }
++    std::vector<std::pair<DAddr, u64>> writes;
++    {
++        std::scoped_lock lock{reprotect_mutex};
++        writes.swap(late_writes);
++        has_late_writes.store(false, std::memory_order_relaxed);
++    }
++    if (!late_write_handler) {
++        return;
++    }
++    for (const auto& [addr, size] : writes) {
++        late_write_handler(addr, size);
++    }
++}
++
++template <class P>
++void BufferCache<P>::DrainReprotects() {
++    {
++        std::unique_lock lock{reprotect_mutex};
++        reprotect_idle_cv.wait(lock, [this] { return reprotect_in_flight == 0; });
++    }
++    ApplyLateWrites();
++}
++
+ template <class P>
+ void BufferCache<P>::RunGarbageCollector() {
+     const bool aggressive_gc = total_used_memory >= critical_memory;
+@@ -1223,10 +1351,16 @@ void BufferCache<P>::BindHostGraphicsUniformBuffer(size_t stage, u32 index, u32
+         // Stream buffer path to avoid stalling on non-Nvidia drivers or Vulkan
+         const std::span<u8> span = runtime.BindMappedUniformBuffer(stage, binding_index, size);
+         device_memory.ReadBlockUnsafe(device_addr, span.data(), size);
++        G2Stats::Add(G2Stats::UniformFast);
++        G2Stats::Add(G2Stats::UniformFastBytes, size);
+         return;
+     }
+     // Classic cached path
++    G2Stats::Add(G2Stats::UniformSyncs);
++    if (size > 16384) G2Stats::Add(G2Stats::UniformBig);
++    G2Stats::in_uniform = true;
+     const bool sync_cached = SynchronizeBuffer(buffer, device_addr, size);
++    G2Stats::in_uniform = false;
+     if (sync_cached) {
+         ++channel_state->uniform_cache_hits[0];
+     }
+@@ -2010,6 +2144,15 @@ bool BufferCache<P>::SynchronizeBuffer(Buffer& buffer, DAddr device_addr, u32 si
+         total_size_bytes += range_size;
+         largest_copy = std::max(largest_copy, range_size);
+     };
++    ReprotectJob job{};
++    bool defer_protection = false;
++    if constexpr (USE_MEMORY_MAPS_FOR_UPLOADS) {
++        defer_protection = AsyncReprotectEnabled();
++    }
++    if (defer_protection) {
++        job = TakeReprotectJob();
++        device_memory.DeferCaching(&job.caching);
++    }
+     memory_tracker.ForEachUploadRange(device_addr, size, [&](u64 device_addr_out, u64 range_size) {
+         // What the GPU wrote is newer than guest memory until it is downloaded
+         DAddr upload_start = device_addr_out;
+@@ -2020,11 +2163,37 @@ bool BufferCache<P>::SynchronizeBuffer(Buffer& buffer, DAddr device_addr, u32 si
+                                            });
+         add_upload(upload_start, device_addr_out + range_size);
+     });
++    if (defer_protection) {
++        device_memory.DeferCaching(nullptr);
++    }
+     if (total_size_bytes == 0) {
++        if (!job.caching.empty()) {
++            SubmitReprotectJob(std::move(job));
++        }
+         return true;
+     }
++    G2Stats::Add(G2Stats::SyncUploads);
++    G2Stats::Add(G2Stats::SyncUploadBytes, total_size_bytes);
++    if (G2Stats::in_uniform) {
++        G2Stats::Add(G2Stats::UniformUploads);
++        G2Stats::Add(G2Stats::UniformUploadBytes, total_size_bytes);
++    }
+     const std::span<BufferCopy> copies_span(copies.data(), copies.size());
+-    UploadMemory(buffer, total_size_bytes, largest_copy, copies_span);
++    const u8* snapshot = nullptr;
++    if (!job.caching.empty()) {
++        // Upload exactly what the worker compares guest memory with
++        job.data.resize(total_size_bytes);
++        for (const BufferCopy& copy : copies) {
++            const DAddr copy_addr = buffer_start + copy.dst_offset;
++            device_memory.ReadBlockUnsafe(copy_addr, job.data.data() + copy.src_offset, copy.size);
++            job.ranges.emplace_back(copy_addr, copy.size);
++        }
++        snapshot = job.data.data();
++    }
++    UploadMemory(buffer, total_size_bytes, largest_copy, copies_span, snapshot);
++    if (!job.caching.empty()) {
++        SubmitReprotectJob(std::move(job));
++    }
+     for (const BufferCopy& copy : copies) {
+         MarkBufferContentChanged(buffer, buffer_start + copy.dst_offset, copy.size);
+     }
+@@ -2033,7 +2202,7 @@ bool BufferCache<P>::SynchronizeBuffer(Buffer& buffer, DAddr device_addr, u32 si
+ 
+ template <class P>
+ void BufferCache<P>::UploadMemory(Buffer& buffer, u64 total_size_bytes, u64 largest_copy,
+-                                  std::span<BufferCopy> copies) {
++                                  std::span<BufferCopy> copies, const u8* snapshot) {
+     if constexpr (!IS_OPENGL) {
+         if (runtime.HasReadbackReferences()) {
+             for (const auto& copy : copies) {
+@@ -2042,7 +2211,7 @@ void BufferCache<P>::UploadMemory(Buffer& buffer, u64 total_size_bytes, u64 larg
+         }
+     }
+     if constexpr (USE_MEMORY_MAPS_FOR_UPLOADS) {
+-        MappedUploadMemory(buffer, total_size_bytes, copies);
++        MappedUploadMemory(buffer, total_size_bytes, copies, snapshot);
+     } else {
+         ImmediateUploadMemory(buffer, largest_copy, copies);
+     }
+@@ -2077,7 +2246,8 @@ void BufferCache<P>::ImmediateUploadMemory([[maybe_unused]] Buffer& buffer,
+ template <class P>
+ void BufferCache<P>::MappedUploadMemory([[maybe_unused]] Buffer& buffer,
+                                         [[maybe_unused]] u64 total_size_bytes,
+-                                        [[maybe_unused]] std::span<BufferCopy> copies) {
++                                        [[maybe_unused]] std::span<BufferCopy> copies,
++                                        [[maybe_unused]] const u8* snapshot) {
+     if constexpr (USE_MEMORY_MAPS) {
+         auto upload_staging = runtime.UploadStagingBuffer(total_size_bytes);
+         const std::span<u8> staging_pointer = upload_staging.mapped_span;
+@@ -2085,7 +2255,11 @@ void BufferCache<P>::MappedUploadMemory([[maybe_unused]] Buffer& buffer,
+         for (BufferCopy& copy : copies) {
+             u8* const src_pointer = staging_pointer.data() + copy.src_offset;
+             const DAddr device_addr = buffer.CpuAddr() + copy.dst_offset;
+-            device_memory.ReadBlockUnsafe(device_addr, src_pointer, copy.size);
++            if (snapshot != nullptr) {
++                std::memcpy(src_pointer, snapshot + copy.src_offset, copy.size);
++            } else {
++                device_memory.ReadBlockUnsafe(device_addr, src_pointer, copy.size);
++            }
+             device_memory.GpuWrittenResults(device_addr, copy.size, gpu_written_results);
+ 
+             // Apply the staging offset
+diff --git a/src/yuzu_video_core/buffer_cache/buffer_cache_base.h b/src/yuzu_video_core/buffer_cache/buffer_cache_base.h
+index fcfec14d22..890a6cc6eb 100644
+--- a/src/yuzu_video_core/buffer_cache/buffer_cache_base.h
++++ b/src/yuzu_video_core/buffer_cache/buffer_cache_base.h
+@@ -5,7 +5,9 @@
+ 
+ #include <algorithm>
+ #include <array>
++#include <condition_variable>
+ #include <tuple>
++#include <thread>
+ #include <functional>
+ #include <memory>
+ #include <mutex>
+@@ -213,6 +215,19 @@ public:
+ 
+     void TickFrame();
+ 
++    /// Applies a CPU write that the deferred protection of an uploaded page missed. Called on
++    /// the GPU thread; it takes the cache locks.
++    void SetLateWriteHandler(std::function<void(DAddr, u64)> handler) {
++        late_write_handler = std::move(handler);
++    }
++
++    /// Applies the late CPU writes found so far. Call on the GPU thread.
++    void ApplyLateWrites();
++
++    /// Waits until every deferred protection is applied and checked, then applies the late
++    /// CPU writes. Call on the GPU thread at guest synchronization points.
++    void DrainReprotects();
++
+     void WriteMemory(DAddr device_addr, u64 size);
+ 
+     void CachedWriteMemory(DAddr device_addr, u64 size);
+@@ -514,7 +529,7 @@ private:
+                            boost::container::small_vector<BufferCopy, 4>& uploads);
+ 
+     void UploadMemory(Buffer& buffer, u64 total_size_bytes, u64 largest_copy,
+-                      std::span<BufferCopy> copies);
++                      std::span<BufferCopy> copies, const u8* snapshot = nullptr);
+ 
+     void ImmediateUploadMemory(Buffer& buffer, u64 largest_copy,
+                                std::span<const BufferCopy> copies);
+@@ -522,7 +537,21 @@ private:
+     void SplitAroundGpuWrittenResults(DAddr buffer_addr, const BufferCopy& copy,
+                                       std::vector<BufferCopy>& out) const;
+ 
+-    void MappedUploadMemory(Buffer& buffer, u64 total_size_bytes, std::span<BufferCopy> copies);
++    void MappedUploadMemory(Buffer& buffer, u64 total_size_bytes, std::span<BufferCopy> copies,
++                            const u8* snapshot);
++
++    // Protecting the pages of an upload again is moved off the GPU thread. The upload is
++    // made from a copy of guest memory; once the pages are protected, guest memory is compared
++    // with that copy to find the CPU writes made in between, which did not fault.
++    struct ReprotectJob {
++        std::vector<std::pair<DAddr, size_t>> caching; // device ranges to protect
++        std::vector<std::pair<DAddr, u64>> ranges;     // uploaded device ranges, data in order
++        std::vector<u8> data;
++    };
++    static bool AsyncReprotectEnabled();
++    ReprotectJob TakeReprotectJob();
++    void SubmitReprotectJob(ReprotectJob&& job);
++    void ReprotectThread(std::stop_token token);
+ 
+     void DownloadBufferMemory(Buffer& buffer_id);
+ 
+@@ -699,5 +728,17 @@ private:
+ 
+     std::array<BufferId, ((1ULL << 34) >> CACHING_PAGEBITS)> page_table;
+     Common::ScratchBuffer<u8> tmp_buffer;
++
++    std::function<void(DAddr, u64)> late_write_handler;
++    std::mutex reprotect_mutex;
++    std::condition_variable_any reprotect_cv;
++    std::condition_variable_any reprotect_idle_cv;
++    std::vector<ReprotectJob> reprotect_queue;
++    std::vector<ReprotectJob> reprotect_free;
++    std::vector<std::pair<DAddr, u64>> late_writes;
++    std::atomic<bool> has_late_writes{};
++    size_t reprotect_in_flight = 0;
++    // Last member: stopped and joined before the state it uses is destroyed
++    std::jthread reprotect_thread;
+ };
+ } // namespace VideoCommon
+diff --git a/src/yuzu_video_core/device_memory_manager.h b/src/yuzu_video_core/device_memory_manager.h
+index 6fbbed7666..3f3835561e 100644
+--- a/src/yuzu_video_core/device_memory_manager.h
++++ b/src/yuzu_video_core/device_memory_manager.h
+@@ -113,6 +113,16 @@ public:
+     void UnregisterProcess(Asid id);
+ 
+     void UpdatePagesCachedCount(DAddr addr, size_t size, s32 delta);
++
++    /// Device ranges whose pages started being cached while protection was deferred
++    using DeferredCaching = std::vector<std::pair<DAddr, size_t>>;
++    /// While a list is set on this thread, pages that start being cached are recorded in it
++    /// instead of being protected. Pass null to stop.
++    static void DeferCaching(DeferredCaching* ranges) {
++        deferred_caching = ranges;
++    }
++    /// Protects the pages of a recorded range that are still cached
++    void ApplyDeferredCaching(DAddr addr, size_t size);
+     void UpdatePagesReadCachedCount(DAddr addr, size_t size, s32 delta);
+     // Append the ranges of pending query results the GPU already copied into its buffers.
+     void GpuWrittenResults(DAddr address, size_t size, std::vector<std::pair<DAddr, u64>>& ranges);
+@@ -241,6 +251,7 @@ private:
+     std::set<size_t> native_read_pages;
+     Common::RangeMutex counter_guard;
+     std::mutex mapping_guard;
++    static thread_local DeferredCaching* deferred_caching;
+ };
+ 
+ } // namespace Core
+diff --git a/src/yuzu_video_core/gpu_thread.cpp b/src/yuzu_video_core/gpu_thread.cpp
+index 5b129f882e..a03e489bf8 100644
+--- a/src/yuzu_video_core/gpu_thread.cpp
++++ b/src/yuzu_video_core/gpu_thread.cpp
+@@ -20,6 +20,7 @@ static void RunThread(std::stop_token stop_token, Tegra::GPU & gpu, VideoCore::R
+ {
+     Common::SetCurrentThreadName("GPU");
+     Common::SetCurrentThreadPriority(Common::ThreadPriority::Critical);
++    Common::PlaceCurrentThread(Common::DedicatedThread::Gpu);
+     gpu.RegisterHostThread();
+ 
+     auto current_context = context.Acquire();
+diff --git a/src/yuzu_video_core/host1x/gpu_device_memory_manager.cpp b/src/yuzu_video_core/host1x/gpu_device_memory_manager.cpp
+index 3525c8330c..cf36edf3e0 100644
+--- a/src/yuzu_video_core/host1x/gpu_device_memory_manager.cpp
++++ b/src/yuzu_video_core/host1x/gpu_device_memory_manager.cpp
+@@ -1,6 +1,7 @@
+ // SPDX-FileCopyrightText: 2023 yuzu Emulator Project
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
++#include "yuzu_video_core/g2_stats.h" // TEMP
+ #include <algorithm>
+ #include <atomic>
+ #include <cstdlib>
+@@ -751,7 +752,6 @@ void DeviceMemoryManager<Traits>::InvalidateNativeReadRegion(DAddr addr, size_t
+ template <typename Traits>
+ void DeviceMemoryManager<Traits>::UpdatePagesReadCachedCount(DAddr addr, size_t size, s32 delta)
+ {
+-#if defined(__APPLE__)
+     if (size == 0) return;
+     Common::ScopedRangeLock lk(counter_guard, addr, size);
+     std::atomic_thread_fence(std::memory_order_acquire);
+@@ -784,7 +784,6 @@ void DeviceMemoryManager<Traits>::UpdatePagesReadCachedCount(DAddr addr, size_t
+         bytes += DEVICE_PAGESIZE;
+     }
+     flush();
+-#endif
+ }
+ 
+ template <typename Traits>
+@@ -867,7 +866,20 @@ void DeviceMemoryManager<Traits>::UpdatePagesCachedCount(DAddr addr, size_t size
+             MarkRegionCaching(memory_device_inter, uncache_begin << DEVICE_PAGEBITS, uncache_bytes, false);
+             uncache_bytes = 0;
+         }
+-        if (count.load(std::memory_order::relaxed) == 1 && delta > 0)
++        if (count.load(std::memory_order::relaxed) == 1 && delta > 0 && deferred_caching != nullptr)
++        {
++            // Protected later by ApplyDeferredCaching
++            if (!deferred_caching->empty() &&
++                deferred_caching->back().first + deferred_caching->back().second == (page << DEVICE_PAGEBITS))
++            {
++                deferred_caching->back().second += DEVICE_PAGESIZE;
++            }
++            else
++            {
++                deferred_caching->emplace_back(page << DEVICE_PAGEBITS, DEVICE_PAGESIZE);
++            }
++        }
++        else if (count.load(std::memory_order::relaxed) == 1 && delta > 0)
+         {
+             if (cache_bytes == 0)
+             {
+@@ -883,6 +895,51 @@ void DeviceMemoryManager<Traits>::UpdatePagesCachedCount(DAddr addr, size_t size
+     }
+     release_pending();
+ }
++
++template <typename Traits>
++thread_local typename DeviceMemoryManager<Traits>::DeferredCaching* DeviceMemoryManager<Traits>::deferred_caching = nullptr;
++
++template <typename Traits>
++void DeviceMemoryManager<Traits>::ApplyDeferredCaching(DAddr addr, size_t size)
++{
++    // Same lock as UpdatePagesCachedCount: the protection follows the count as it is now,
++    // whatever happened to it since the protection was deferred.
++    Common::ScopedRangeLock lk(counter_guard, addr, size);
++    const auto MarkRegionCaching = &DeviceMemoryManager<Traits>::DeviceMethods::MarkRegionCaching;
++    std::atomic_thread_fence(std::memory_order_acquire);
++    IMemory* memory = nullptr;
++    Asid current_asid{};
++    u64 begin = 0;
++    u64 bytes = 0;
++    const auto flush = [&] {
++        if (bytes > 0 && memory != nullptr)
++        {
++            MarkRegionCaching(memory, begin << DEVICE_PAGEBITS, bytes, true);
++        }
++        bytes = 0;
++    };
++    const size_t page_end = Common::DivCeil(addr + size, DEVICE_PAGESIZE);
++    for (size_t page = addr >> DEVICE_PAGEBITS; page != page_end; ++page)
++    {
++        const CounterAtomicType& count = cached_pages->at(page >> subentries_shift).Count(page);
++        auto [asid, vpage] = ExtractCPUBacking(page);
++        vpage >>= DEVICE_PAGEBITS;
++        if (vpage == 0 || count.load(std::memory_order_relaxed) == 0)
++        {
++            flush();
++            continue;
++        }
++        if (bytes == 0 || asid.id != current_asid.id || vpage != begin + bytes / DEVICE_PAGESIZE)
++        {
++            flush();
++            current_asid = asid;
++            memory = GetRegisteredProcess(asid);
++            begin = vpage;
++        }
++        bytes += DEVICE_PAGESIZE;
++    }
++    flush();
++}
+ } // namespace Core
+ 
+ namespace Tegra
+@@ -891,6 +948,8 @@ struct MaxwellDeviceMethods
+ {
+     static inline void MarkRegionCaching(IMemory * interface, VAddr address, size_t size, bool caching)
+     {
++        G2Stats::Add(caching ? G2Stats::ProtectCalls : G2Stats::UnprotectCalls);
++        G2Stats::Add(caching ? G2Stats::ProtectBytes : G2Stats::UnprotectBytes, size);
+         interface->RasterizerMarkRegionCached(address, size, caching);
+     }
+ };
+diff --git a/src/yuzu_video_core/renderer_vulkan/vk_rasterizer.cpp b/src/yuzu_video_core/renderer_vulkan/vk_rasterizer.cpp
+index 03da81e6d7..b4082ad85d 100644
+--- a/src/yuzu_video_core/renderer_vulkan/vk_rasterizer.cpp
++++ b/src/yuzu_video_core/renderer_vulkan/vk_rasterizer.cpp
+@@ -233,6 +233,18 @@ RasterizerVulkan::RasterizerVulkan(Core::Frontend::EmuWindow& emu_window_, Tegra
+       accelerate_dma(buffer_cache, texture_cache, scheduler),
+       fence_manager(*this, gpu, texture_cache, buffer_cache, query_cache, device, scheduler) {
+     scheduler.SetQueryCache(query_cache);
++    // A CPU write to an uploaded page before its protection was applied: same as a fault
++    buffer_cache.SetLateWriteHandler([this](DAddr addr, u64 size) {
++        {
++            std::scoped_lock lock{buffer_cache.mutex};
++            buffer_cache.WriteMemory(addr, size);
++        }
++        {
++            std::scoped_lock lock{texture_cache.mutex};
++            texture_cache.WriteMemory(addr, size);
++        }
++        pipeline_cache.InvalidateRegion(addr, size);
++    });
+ }
+ 
+ RasterizerVulkan::~RasterizerVulkan() {
+@@ -247,6 +259,7 @@ void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func) {
+         gpu.TickWork();
+     };
+     FlushWork();
++    buffer_cache.ApplyLateWrites();
+     gpu_memory->FlushCaching();
+ 
+     query_cache.NotifySegment(true);
+@@ -722,6 +735,7 @@ void RasterizerVulkan::Clear(u32 layer_count) {
+ 
+ void RasterizerVulkan::DispatchCompute() {
+     FlushWork();
++    buffer_cache.ApplyLateWrites();
+     gpu_memory->FlushCaching();
+ 
+     ComputePipeline* const pipeline{pipeline_cache.CurrentComputePipeline()};
+@@ -1020,10 +1034,13 @@ void RasterizerVulkan::OnCacheInvalidation(DAddr addr, u64 size) {
+ }
+ 
+ void RasterizerVulkan::InvalidateGPUCache() {
++    // The guest synchronizes here: its earlier writes must all be seen
++    buffer_cache.DrainReprotects();
+     gpu.InvalidateGPUCache();
+ }
+ 
+ void RasterizerVulkan::UnmapMemory(DAddr addr, u64 size) {
++    buffer_cache.DrainReprotects();
+     {
+         std::scoped_lock lock{texture_cache.mutex};
+         texture_cache.UnmapMemory(addr, size);
+diff --git a/src/yuzu_video_core/texture_cache/texture_cache.h b/src/yuzu_video_core/texture_cache/texture_cache.h
+index 22925cc579..55f9918639 100644
+--- a/src/yuzu_video_core/texture_cache/texture_cache.h
++++ b/src/yuzu_video_core/texture_cache/texture_cache.h
+@@ -3258,7 +3258,6 @@ void TextureCache<P>::NotifyNativeImageModification(ImageBase& image, ImageId im
+ 
+ template <class P>
+ void TextureCache<P>::UpdateNativeReadTracking(ImageBase& image, ImageId image_id) {
+-#if defined(__APPLE__)
+     const bool required = True(image.flags & ImageFlagBits::Tracked) &&
+                           True(image.flags & ImageFlagBits::GpuModified);
+     const bool tracked = True(image.flags & ImageFlagBits::NativeReadTracked);
+@@ -3284,7 +3283,6 @@ void TextureCache<P>::UpdateNativeReadTracking(ImageBase& image, ImageId image_i
+     ForEachSparseSegment(image, [this, delta](GPUVAddr, DAddr address, size_t size) {
+         device_memory.UpdatePagesReadCachedCount(address, size, delta);
+     });
+-#endif
+ }
+ 
+ template <class P>

@@ -1,0 +1,81 @@
+diff --git a/src/nxemu-cpu/CMakeLists.txt b/src/nxemu-cpu/CMakeLists.txt
+index 7f0db8dd36..4f98cda02e 100644
+--- a/src/nxemu-cpu/CMakeLists.txt
++++ b/src/nxemu-cpu/CMakeLists.txt
+@@ -556,7 +556,8 @@ target_include_directories(nxemu-cpu PRIVATE
+ 
+ # Optimize the x64 JIT together at link time in native MSVC Release builds.
+ # Keep other compilers, architectures and configurations on their existing path.
+-if(ARCHITECTURE_x86_64 AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
++# With NXEMU_ENABLE_LTO every source is already compiled with /GL.
++if(ARCHITECTURE_x86_64 AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND NOT NXEMU_ENABLE_LTO)
+     get_target_property(_nxemu_jit_sources nxemu-cpu SOURCES)
+     foreach(_nxemu_jit_source IN LISTS _nxemu_jit_sources)
+         if(_nxemu_jit_source MATCHES "^dynarmic/(backend/x64|frontend/A64|ir|common)/.*[.]cpp$"
+diff --git a/src/nxemu-cpu/dynarmic/backend/x64/perf_map.cpp b/src/nxemu-cpu/dynarmic/backend/x64/perf_map.cpp
+index 88691dbffc..bb37f8c998 100644
+--- a/src/nxemu-cpu/dynarmic/backend/x64/perf_map.cpp
++++ b/src/nxemu-cpu/dynarmic/backend/x64/perf_map.cpp
+@@ -6,6 +6,7 @@
+ #include "dynarmic/backend/x64/perf_map.h"
+ 
+ #include <cstddef>
++#include <cstdint>
+ #include <string>
+ 
+ #ifdef __linux__
+@@ -79,6 +80,54 @@ void PerfMapClear() {
+ 
+ }  // namespace Dynarmic::Backend::X64
+ 
++#elif defined(_WIN32)
++
++// TEMP: block map for profiling, written when NXEMU_PERF_MAP_DIR is set
++#    include <cstdio>
++#    include <cstdlib>
++#    include <mutex>
++#    include <process.h>
++
++namespace Dynarmic::Backend::X64 {
++
++namespace {
++std::mutex mutex;
++std::FILE* file = nullptr;
++bool tried = false;
++}  // anonymous namespace
++
++namespace detail {
++void PerfMapRegister(const void* start, const void* end, std::string_view friendly_name) {
++    if (start == end) {
++        return;
++    }
++    std::lock_guard guard{mutex};
++    if (!tried) {
++        tried = true;
++        if (const char* dir = std::getenv("NXEMU_PERF_MAP_DIR")) {
++            char name[512];
++            std::snprintf(name, sizeof(name), "%s/perf-%d.map", dir, _getpid());
++            file = std::fopen(name, "w");
++        }
++    }
++    if (!file) {
++        return;
++    }
++    std::fprintf(file, "%016llx %llx %.*s\n", (unsigned long long)(uintptr_t)start,
++                 (unsigned long long)((const char*)end - (const char*)start),
++                 (int)friendly_name.size(), friendly_name.data());
++}
++}  // namespace detail
++
++void PerfMapClear() {
++    std::lock_guard guard{mutex};
++    if (file) {
++        std::fflush(file);
++    }
++}
++
++}  // namespace Dynarmic::Backend::X64
++
+ #else
+ 
+ namespace Dynarmic::Backend::X64 {

@@ -1,0 +1,298 @@
+diff --git a/src/yuzu_video_core/buffer_cache/buffer_cache.h b/src/yuzu_video_core/buffer_cache/buffer_cache.h
+index 21cc23693e..0a9ea002c2 100644
+--- a/src/yuzu_video_core/buffer_cache/buffer_cache.h
++++ b/src/yuzu_video_core/buffer_cache/buffer_cache.h
+@@ -13,6 +13,8 @@
+ #include "yuzu_video_core/host1x/gpu_device_memory_manager.h"
+ 
+ namespace VideoCommon {
++inline u64 temp_ubo_stored = 0, temp_ubo_stream = 0, temp_ubo_nobind = 0; // TEMP
++
+ using Core::DEVICE_PAGESIZE;
+ 
+ template <class P>
+@@ -21,6 +23,7 @@ BufferCache<P>::BufferCache(Tegra::MaxwellDeviceMemoryManager& device_memory_, R
+     // Ensure the first slot is used for the null buffer
+     void(slot_buffers.insert(runtime, NullBufferParams{}));
+     gpu_modified_ranges.Clear();
++    ++binding_epoch;
+     inline_buffer_id = NULL_BUFFER_ID;
+ 
+     if (!runtime.CanReportMemoryUsage()) {
+@@ -116,6 +119,7 @@ void BufferCache<P>::WriteMemory(DAddr device_addr, u64 size) {
+          IsRegionGpuModified(device_addr, size))) {
+         ClearDownload(device_addr, size);
+         gpu_modified_ranges.Subtract(device_addr, size);
++        ++binding_epoch;
+     } else {
+         InvalidateReadbackReferences(device_addr, size);
+     }
+@@ -270,9 +274,11 @@ bool BufferCache<P>::DMACopy(GPUVAddr src_address, GPUVAddr dest_address, u64 am
+     gpu_modified_ranges.ForEachInRange(*cpu_src_address, amount, mirror);
+     // This subtraction in this order is important for overlapping copies.
+     gpu_modified_ranges.Subtract(*cpu_dest_address, amount);
++    ++binding_epoch;
+     const bool has_new_downloads = tmp_intervals.size() != 0;
+     for (const auto& pair : tmp_intervals) {
+         gpu_modified_ranges.Add(pair.first, pair.second);
++        ++binding_epoch;
+     }
+     const auto& copy = copies[0];
+     src_buffer.MarkUsage(copy.src_offset, copy.size);
+@@ -303,6 +309,7 @@ bool BufferCache<P>::DMAClear(GPUVAddr dst_address, u64 amount, u32 value) {
+     const size_t size = amount * sizeof(u32);
+     ClearDownload(*cpu_dst_address, size);
+     gpu_modified_ranges.Subtract(*cpu_dst_address, size);
++    ++binding_epoch;
+ 
+     const BufferId buffer = FindBuffer(*cpu_dst_address, static_cast<u32>(size));
+     Buffer& dest_buffer = slot_buffers[buffer];
+@@ -347,6 +354,7 @@ std::pair<typename P::Buffer*, u32> BufferCache<P>::ObtainCPUBuffer(
+     case ObtainBufferOperation::DiscardWrite: {
+         ClearDownload(device_addr, size);
+         gpu_modified_ranges.Subtract(device_addr, size);
++        ++binding_epoch;
+         break;
+     }
+     default:
+@@ -936,6 +944,7 @@ void BufferCache<P>::PopAsyncBuffers() {
+                 const u64 size = end - start;
+                 if (uncommitted_gpu_modified_ranges.Empty() && committed_gpu_modified_ranges.empty()) {
+                     gpu_modified_ranges.Subtract(start, size);
++                ++binding_epoch;
+                     return;
+                 }
+                 // What the GPU wrote again after this download was committed has not reached guest
+@@ -951,6 +960,7 @@ void BufferCache<P>::PopAsyncBuffers() {
+                 }
+                 downloaded_ranges.ForEach([&](DAddr clean_start, DAddr clean_end) {
+                     gpu_modified_ranges.Subtract(clean_start, clean_end - clean_start);
++                    ++binding_epoch;
+                 });
+             });
+         });
+@@ -1188,6 +1198,38 @@ void BufferCache<P>::BindHostGraphicsUniformBuffer(size_t stage, u32 index, u32
+     const DAddr device_addr = binding.device_addr;
+     const u32 size = std::min(binding.size, (*channel_state->uniform_buffer_sizes)[stage][index]);
+     Buffer& buffer = slot_buffers[binding.buffer_id];
++    [[maybe_unused]] auto& cached_binding = channel_state->uniform_binding_cache[stage][index];
++    if constexpr (!IS_OPENGL) {
++        // Most draws bind the same constants as the previous one: the checks and the upload
++        // below would find nothing to do
++        { // TEMP
++            static u64 st[6]{};
++            static u64 last_mt{}, last_be{};
++            static u64 old_same{};
++            static std::array<std::array<std::pair<DAddr, u32>, 18>, 5> prev{};
++            old_same += prev[stage][index] == std::pair<DAddr, u32>{device_addr, size};
++            prev[stage][index] = {device_addr, size};
++            if ((st[0] & ((1ULL << 21) - 1)) == 0) LOG_INFO(HW_GPU, "TEMP old_same {:.1f}% stored {:.1f}% stream {:.1f}% nobind {:.1f}%", 100.0*old_same/(st[0]+1), 100.0*temp_ubo_stored/(st[0]+1), 100.0*temp_ubo_stream/(st[0]+1), 100.0*temp_ubo_nobind/(st[0]+1));
++            const bool same = cached_binding.buffer_id == binding.buffer_id && cached_binding.device_addr == device_addr && cached_binding.size == size;
++            ++st[0]; st[1] += same; st[2] += same && cached_binding.frame == frame_tick && cached_binding.epoch == memory_tracker.Epoch() + binding_epoch;
++            st[3] += memory_tracker.Epoch() != last_mt; st[4] += binding_epoch != last_be; st[5] += same && cached_binding.epoch == ~0ULL;
++            last_mt = memory_tracker.Epoch(); last_be = binding_epoch;
++            if ((st[0] & ((1ULL << 21) - 1)) == 0)
++                LOG_INFO(HW_GPU, "TEMP ubo binds {} same {:.1f}% hit {:.1f}% mt_changed {:.1f}% be_changed {:.1f}% same_but_invalid {:.1f}%", st[0], 100.0*st[1]/st[0], 100.0*st[2]/st[0], 100.0*st[3]/st[0], 100.0*st[4]/st[0], 100.0*st[5]/st[0]);
++        }
++        if (cached_binding.epoch == memory_tracker.Epoch() + binding_epoch &&
++            cached_binding.frame == frame_tick && cached_binding.buffer_id == binding.buffer_id &&
++            cached_binding.device_addr == device_addr && cached_binding.size == size &&
++            binding.buffer_id != NULL_BUFFER_ID) {
++            if constexpr (NEEDS_BIND_UNIFORM_INDEX) {
++                runtime.BindUniformBuffer(stage, binding_index, buffer, cached_binding.offset, size);
++            } else {
++                runtime.BindUniformBuffer(buffer, cached_binding.offset, size);
++            }
++            return;
++        }
++        cached_binding.epoch = ~0ULL;
++    }
+     TouchBuffer(buffer, binding.buffer_id);
+     bool stream_modified_uniform{};
+     if constexpr (!IS_OPENGL) {
+@@ -1226,6 +1268,7 @@ void BufferCache<P>::BindHostGraphicsUniformBuffer(size_t stage, u32 index, u32
+         // Stream buffer path to avoid stalling on non-Nvidia drivers or Vulkan
+         const std::span<u8> span = runtime.BindMappedUniformBuffer(stage, binding_index, size);
+         device_memory.ReadBlockUnsafe(device_addr, span.data(), size);
++        ++temp_ubo_stream;
+         return;
+     }
+     // Classic cached path
+@@ -1242,6 +1285,7 @@ void BufferCache<P>::BindHostGraphicsUniformBuffer(size_t stage, u32 index, u32
+         needs_bind |= channel_state->uniform_buffer_binding_sizes[stage][binding_index] != size;
+     }
+     if (!needs_bind) {
++        ++temp_ubo_nobind;
+         return;
+     }
+     const u32 offset = buffer.Offset(device_addr);
+@@ -1262,6 +1306,17 @@ void BufferCache<P>::BindHostGraphicsUniformBuffer(size_t stage, u32 index, u32
+     } else {
+         runtime.BindUniformBuffer(buffer, offset, size);
+     }
++    if constexpr (!IS_OPENGL) {
++        ++temp_ubo_stored; // TEMP
++        cached_binding = {
++            .device_addr = device_addr,
++            .epoch = memory_tracker.Epoch() + binding_epoch,
++            .frame = frame_tick,
++            .size = size,
++            .offset = offset,
++            .buffer_id = binding.buffer_id,
++        };
++    }
+ }
+ 
+ template <class P>
+@@ -1782,6 +1837,7 @@ void BufferCache<P>::MarkWrittenBuffer(BufferId buffer_id, DAddr device_addr, u3
+     gpu_write_history.Mark(device_addr, size);
+     memory_tracker.MarkRegionAsGpuModified(device_addr, size);
+     gpu_modified_ranges.Add(device_addr, size);
++    ++binding_epoch;
+     uncommitted_gpu_modified_ranges.Add(device_addr, size);
+     runtime.MarkHostWrite(slot_buffers[buffer_id]);
+     MarkBufferContentChanged(slot_buffers[buffer_id], device_addr, size);
+@@ -1957,6 +2013,7 @@ void BufferCache<P>::Unregister(BufferId buffer_id) {
+ template <class P>
+ template <bool insert>
+ void BufferCache<P>::ChangeRegister(BufferId buffer_id) {
++    ++binding_epoch;
+     Buffer& buffer = slot_buffers[buffer_id];
+     const auto size = buffer.SizeBytes();
+     if (insert) {
+@@ -2167,6 +2224,7 @@ void BufferCache<P>::InlineMemoryImplementation(DAddr dest_address, size_t copy_
+                                                 std::span<const u8> inlined_buffer) {
+     ClearDownload(dest_address, copy_size);
+     gpu_modified_ranges.Subtract(dest_address, copy_size);
++    ++binding_epoch;
+ 
+     BufferId buffer_id = FindBuffer(dest_address, static_cast<u32>(copy_size));
+     auto& buffer = slot_buffers[buffer_id];
+@@ -2230,6 +2288,7 @@ void BufferCache<P>::DownloadBufferMemory(Buffer& buffer, DAddr device_addr, u64
+             gpu_modified_ranges.ForEachInRange(device_addr_out, range_size, add_download);
+             ClearDownload(device_addr_out, range_size);
+             gpu_modified_ranges.Subtract(device_addr_out, range_size);
++            ++binding_epoch;
+         });
+     if (total_size_bytes == 0) {
+         return;
+@@ -2690,6 +2749,7 @@ void BufferCache<P>::MarkSparseWrite(GPUVAddr gpu_addr, u32 size) {
+         gpu_write_history.Mark(device_addr, write_size);
+         memory_tracker.MarkRegionAsGpuModified(device_addr, write_size);
+         gpu_modified_ranges.Add(device_addr, write_size);
++        ++binding_epoch;
+         uncommitted_gpu_modified_ranges.Add(device_addr, write_size);
+         untracked_gpu_writes.Add(device_addr, write_size);
+     }
+diff --git a/src/yuzu_video_core/buffer_cache/buffer_cache_base.h b/src/yuzu_video_core/buffer_cache/buffer_cache_base.h
+index fcfec14d22..dc21f0a946 100644
+--- a/src/yuzu_video_core/buffer_cache/buffer_cache_base.h
++++ b/src/yuzu_video_core/buffer_cache/buffer_cache_base.h
+@@ -146,6 +146,19 @@ public:
+ 
+     u32 uniform_buffer_skip_cache_size = DEFAULT_SKIP_CACHE_SIZE;
+ 
++    /// Uniform buffer bound through the cache by the last draw. While nothing was registered,
++    /// marked modified or downloaded since, it needs no synchronization in the same frame.
++    struct UniformBindingCache {
++        DAddr device_addr{};
++        u64 epoch = ~0ULL;
++        u64 frame{};
++        u32 size{};
++        u32 offset{};
++        BufferId buffer_id{};
++    };
++    std::array<std::array<UniformBindingCache, NUM_GRAPHICS_UNIFORM_BUFFERS>, NUM_STAGES>
++        uniform_binding_cache{};
++
+     bool has_deleted_buffers = false;
+ 
+     std::array<u32, NUM_STAGES> dirty_uniform_buffers{};
+@@ -692,6 +705,8 @@ private:
+     };
+     Common::LeastRecentlyUsedCache<LRUItemParams> lru_cache;
+     u64 frame_tick = 0;
++    /// Changes when buffers are registered or unregistered, or GPU-written ranges change
++    u64 binding_epoch = 0;
+     u64 total_used_memory = 0;
+     u64 minimum_memory = 0;
+     u64 critical_memory = 0;
+diff --git a/src/yuzu_video_core/buffer_cache/memory_tracker_base.h b/src/yuzu_video_core/buffer_cache/memory_tracker_base.h
+index e3a143f857..69592129b5 100644
+--- a/src/yuzu_video_core/buffer_cache/memory_tracker_base.h
++++ b/src/yuzu_video_core/buffer_cache/memory_tracker_base.h
+@@ -51,6 +51,11 @@ public:
+     }
+ 
+     /// Returns true if a region has been modified from the CPU
++    /// Changes whenever a region becomes CPU or GPU modified or stops being GPU modified
++    [[nodiscard]] u64 Epoch() const noexcept {
++        return epoch;
++    }
++
+     [[nodiscard]] bool IsRegionCpuModified(VAddr query_cpu_addr, u64 query_size) noexcept {
+         return IteratePages<true>(
+             query_cpu_addr, query_size, [](Manager* manager, u64 offset, size_t size) {
+@@ -76,6 +81,7 @@ public:
+ 
+     /// Mark region as CPU modified, notifying the device_tracker about this change
+     void MarkRegionAsCpuModified(VAddr dirty_cpu_addr, u64 query_size) {
++        ++epoch;
+         IteratePages<true>(dirty_cpu_addr, query_size,
+                            [](Manager* manager, u64 offset, size_t size) {
+                                manager->template ChangeRegionState<Type::CPU, true>(
+@@ -94,6 +100,7 @@ public:
+ 
+     /// Mark region as modified from the host GPU
+     void MarkRegionAsGpuModified(VAddr dirty_cpu_addr, u64 query_size) noexcept {
++        ++epoch;
+         IteratePages<true>(dirty_cpu_addr, query_size,
+                            [](Manager* manager, u64 offset, size_t size) {
+                                manager->template ChangeRegionState<Type::GPU, true>(
+@@ -112,6 +119,7 @@ public:
+ 
+     /// Unmark region as modified from the host GPU
+     void UnmarkRegionAsGpuModified(VAddr dirty_cpu_addr, u64 query_size) noexcept {
++        ++epoch;
+         IteratePages<true>(dirty_cpu_addr, query_size,
+                            [](Manager* manager, u64 offset, size_t size) {
+                                manager->template ChangeRegionState<Type::GPU, false>(
+@@ -141,12 +149,14 @@ public:
+ 
+     /// Flushes cached CPU writes, and notify the device_tracker about the deltas
+     void FlushCachedWrites(VAddr query_cpu_addr, u64 query_size) noexcept {
++        ++epoch;
+         IteratePages<false>(query_cpu_addr, query_size,
+                             [](Manager* manager, [[maybe_unused]] u64 offset,
+                                [[maybe_unused]] size_t size) { manager->FlushCachedWrites(); });
+     }
+ 
+     void FlushCachedWrites() noexcept {
++        ++epoch;
+         for (auto id : cached_pages) {
+             top_tier[id]->FlushCachedWrites();
+         }
+@@ -166,6 +176,7 @@ public:
+     /// Call 'func' for each GPU modified range and unmark those pages as GPU modified
+     template <typename Func>
+     void ForEachDownloadRange(VAddr query_cpu_range, u64 query_size, bool clear, Func&& func) {
++        epoch += clear ? 1 : 0;
+         IteratePages<false>(query_cpu_range, query_size,
+                             [&func, clear](Manager* manager, u64 offset, size_t size) {
+                                 if (clear) {
+@@ -180,6 +191,7 @@ public:
+ 
+     template <typename Func>
+     void ForEachDownloadRangeAndClear(VAddr query_cpu_range, u64 query_size, Func&& func) {
++        ++epoch;
+         IteratePages<false>(query_cpu_range, query_size,
+                             [&func](Manager* manager, u64 offset, size_t size) {
+                                 manager->template ForEachModifiedRange<Type::GPU, true>(
+@@ -292,6 +304,7 @@ private:
+     std::array<Manager*, NUM_HIGH_PAGES> top_tier{};
+ 
+     std::unordered_set<u32> cached_pages;
++    u64 epoch{};
+ 
+     DeviceTracker* device_tracker = nullptr;
+ };

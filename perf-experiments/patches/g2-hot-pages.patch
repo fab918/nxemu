@@ -1,0 +1,387 @@
+diff --git a/src/yuzu_video_core/buffer_cache/buffer_cache.h b/src/yuzu_video_core/buffer_cache/buffer_cache.h
+index a213a91e2d..e82c4f5981 100644
+--- a/src/yuzu_video_core/buffer_cache/buffer_cache.h
++++ b/src/yuzu_video_core/buffer_cache/buffer_cache.h
+@@ -3,6 +3,7 @@
+ 
+ #pragma once
+ 
++#include "yuzu_video_core/g2_stats.h" // TEMP
+ #include <algorithm>
+ #include <memory>
+ #include <numeric>
+@@ -64,12 +65,22 @@ void BufferCache<P>::RunGarbageCollector() {
+     lru_cache.ForEachItemBelow(frame_tick - ticks_to_destroy, clean_up);
+ }
+ 
++template <class P>
++void BufferCache<P>::BeginWriteEpoch() {
++    G2Stats::Add(G2Stats::Epochs);
++    memory_tracker.RefreshHotPages();
++}
++
+ template <class P>
+ void BufferCache<P>::TickFrame() {
+     // Homebrew console apps don't create or bind any channels, so this will be nullptr.
+     if (!channel_state) {
+         return;
+     }
++    if (++hot_page_frames >= HOT_PAGE_DEMOTE_FRAMES) {
++        hot_page_frames = 0;
++        memory_tracker.DemoteHotPages();
++    }
+     runtime.TickFrame(slot_buffers);
+ 
+     // Calculate hits and shots and move hit bits to the right
+@@ -1223,10 +1234,16 @@ void BufferCache<P>::BindHostGraphicsUniformBuffer(size_t stage, u32 index, u32
+         // Stream buffer path to avoid stalling on non-Nvidia drivers or Vulkan
+         const std::span<u8> span = runtime.BindMappedUniformBuffer(stage, binding_index, size);
+         device_memory.ReadBlockUnsafe(device_addr, span.data(), size);
++        G2Stats::Add(G2Stats::UniformFast);
++        G2Stats::Add(G2Stats::UniformFastBytes, size);
+         return;
+     }
+     // Classic cached path
++    G2Stats::Add(G2Stats::UniformSyncs);
++    if (size > 16384) G2Stats::Add(G2Stats::UniformBig);
++    G2Stats::in_uniform = true;
+     const bool sync_cached = SynchronizeBuffer(buffer, device_addr, size);
++    G2Stats::in_uniform = false;
+     if (sync_cached) {
+         ++channel_state->uniform_cache_hits[0];
+     }
+@@ -2023,6 +2040,12 @@ bool BufferCache<P>::SynchronizeBuffer(Buffer& buffer, DAddr device_addr, u32 si
+     if (total_size_bytes == 0) {
+         return true;
+     }
++    G2Stats::Add(G2Stats::SyncUploads);
++    G2Stats::Add(G2Stats::SyncUploadBytes, total_size_bytes);
++    if (G2Stats::in_uniform) {
++        G2Stats::Add(G2Stats::UniformUploads);
++        G2Stats::Add(G2Stats::UniformUploadBytes, total_size_bytes);
++    }
+     const std::span<BufferCopy> copies_span(copies.data(), copies.size());
+     UploadMemory(buffer, total_size_bytes, largest_copy, copies_span);
+     for (const BufferCopy& copy : copies) {
+diff --git a/src/yuzu_video_core/buffer_cache/buffer_cache_base.h b/src/yuzu_video_core/buffer_cache/buffer_cache_base.h
+index fcfec14d22..69b34912c2 100644
+--- a/src/yuzu_video_core/buffer_cache/buffer_cache_base.h
++++ b/src/yuzu_video_core/buffer_cache/buffer_cache_base.h
+@@ -213,6 +213,10 @@ public:
+ 
+     void TickFrame();
+ 
++    /// Guest commands submitted from here on can read CPU writes to pages whose writes are
++    /// not tracked.
++    void BeginWriteEpoch();
++
+     void WriteMemory(DAddr device_addr, u64 size);
+ 
+     void CachedWriteMemory(DAddr device_addr, u64 size);
+@@ -557,6 +561,8 @@ private:
+     u32 last_index_count = 0;
+ 
+     MemoryTracker memory_tracker;
++    static constexpr u32 HOT_PAGE_DEMOTE_FRAMES = 120;
++    u32 hot_page_frames = 0;
+     mutable EmptyStorageBufferWarningCounter empty_storage_warnings;
+ 
+     /// Part of a guest range that is continuous in device memory
+diff --git a/src/yuzu_video_core/buffer_cache/memory_tracker_base.h b/src/yuzu_video_core/buffer_cache/memory_tracker_base.h
+index e3a143f857..de291a2ce0 100644
+--- a/src/yuzu_video_core/buffer_cache/memory_tracker_base.h
++++ b/src/yuzu_video_core/buffer_cache/memory_tracker_base.h
+@@ -187,6 +187,26 @@ public:
+                             });
+     }
+ 
++    /// Starts a write epoch for pages whose CPU writes are not tracked
++    void RefreshHotPages() noexcept {
++        for (auto& pool : manager_pool) {
++            for (Manager& manager : pool) {
++                if (manager.has_hot_pages) {
++                    manager.has_hot_pages = manager.RefreshHotPages();
++                }
++            }
++        }
++    }
++
++    /// Returns every page to protection based write tracking
++    void DemoteHotPages() noexcept {
++        for (auto& pool : manager_pool) {
++            for (Manager& manager : pool) {
++                manager.DemoteHotPages();
++            }
++        }
++    }
++
+ private:
+     template <bool create_region_on_fail, typename Func>
+     bool IteratePages(VAddr cpu_address, size_t size, Func&& func) {
+diff --git a/src/yuzu_video_core/buffer_cache/word_manager.h b/src/yuzu_video_core/buffer_cache/word_manager.h
+index c27b093a44..eb84c4a3d8 100644
+--- a/src/yuzu_video_core/buffer_cache/word_manager.h
++++ b/src/yuzu_video_core/buffer_cache/word_manager.h
+@@ -4,7 +4,9 @@
+ #pragma once
+ 
+ #include <algorithm>
++#include <array>
+ #include <bit>
++#include <cstdlib>
+ #include <limits>
+ #include <span>
+ #include <utility>
+@@ -259,6 +261,17 @@ public:
+         [[maybe_unused]] std::span<u64> untracked_words = words.template Span<Type::Untracked>();
+         [[maybe_unused]] std::span<u64> cached_words = words.template Span<Type::CachedCPU>();
+         IterateWords(dirty_addr - cpu_addr, size, [&](size_t index, u64 mask) {
++            if constexpr (type == Type::CPU && enable) {
++                CountRewrites(index, mask & ~untracked_words[index]);
++            }
++            if constexpr (type == Type::GPU && enable) {
++                DemoteForGpuWrite(index, mask);
++            }
++            if constexpr (type == Type::CPU && !enable) {
++                if (IsShort()) {
++                    hot_words[index] &= ~mask;
++                }
++            }
+             if constexpr (type == Type::CPU || type == Type::CachedCPU) {
+                 NotifyRasterizer<!enable>(index, untracked_words[index], mask);
+             }
+@@ -321,20 +334,25 @@ public:
+                 mask &= ~untracked_words[index];
+             }
+             const u64 word = state_words[index] & mask;
++            // Hot pages stay writable: they are uploaded again in each write epoch instead
++            u64 keep_untracked = 0;
++            if constexpr (clear && type == Type::CPU) {
++                keep_untracked = HotPagesToKeep(index, mask, word, untracked_words[index]);
++            }
+             if constexpr (clear && (type == Type::CPU || type == Type::CachedCPU)) {
+                 // A clean, tracked word needs neither protection updates nor stores.
+                 // Cached CPU writes can leave untracked bits even when word is zero.
+-                if (word == 0 && (untracked_words[index] & mask) == 0) {
++                if (word == 0 && (untracked_words[index] & mask & ~keep_untracked) == 0) {
+                     return;
+                 }
+             }
+             if constexpr (clear) {
+                 if constexpr (type == Type::CPU || type == Type::CachedCPU) {
+-                    NotifyRasterizer<true>(index, untracked_words[index], mask);
++                    NotifyRasterizer<true>(index, untracked_words[index], mask & ~keep_untracked);
+                 }
+                 state_words[index] &= ~mask;
+                 if constexpr (type == Type::CPU || type == Type::CachedCPU) {
+-                    untracked_words[index] &= ~mask;
++                    untracked_words[index] &= ~(mask & ~keep_untracked);
+                 }
+                 if constexpr (type == Type::CPU) {
+                     cached_words[index] &= ~word;
+@@ -442,6 +460,42 @@ public:
+         return words.IsShort();
+     }
+ 
++    /// Starts a write epoch: hot pages count as CPU modified again, since their writes are
++    /// not tracked. Returns true while the manager holds hot pages.
++    bool RefreshHotPages() noexcept {
++        if (!IsShort()) {
++            return false;
++        }
++        bool any = false;
++        u64* const cpu_words = Array<Type::CPU>();
++        for (size_t index = 0; index < NumWords(); ++index) {
++            if (hot_words[index] == 0) {
++                continue;
++            }
++            any = true;
++            cpu_words[index] |= hot_words[index];
++            UpdateCpuWorkWord(index);
++        }
++        return any;
++    }
++
++    /// Hot pages go back to protection based tracking after one more upload. Pages still
++    /// rewritten every frame become hot again after a few frames.
++    void DemoteHotPages() noexcept {
++        if (!IsShort()) {
++            return;
++        }
++        u64* const cpu_words = Array<Type::CPU>();
++        for (size_t index = 0; index < NumWords(); ++index) {
++            cpu_words[index] |= hot_words[index];
++            hot_words[index] = 0;
++            reprotected_words[index] = 0;
++            UpdateCpuWorkWord(index);
++        }
++        rewrite_streak.fill(0);
++        has_hot_pages = false;
++    }
++
+     void FlushCachedWrites() noexcept {
+         const u64 num_words = NumWords();
+         u64* const cached_words = Array<Type::CachedCPU>();
+@@ -466,7 +520,9 @@ private:
+             return;
+         }
+         const u64 bit = u64{1} << index;
+-        const bool work = (Array<Type::CPU>()[index] | Array<Type::Untracked>()[index]) != 0;
++        const bool work =
++            (Array<Type::CPU>()[index] |
++             (Array<Type::Untracked>()[index] & ~(IsShort() ? hot_words[index] : 0))) != 0;
+         cpu_work_words = (cpu_work_words & ~bit) | (work ? bit : 0);
+     }
+     template <Type type>
+@@ -514,6 +570,88 @@ private:
+         });
+     }
+ 
++    // Pages re-protected by an upload that the CPU writes again: count the cycles
++    void CountRewrites(size_t index, u64 unprotected) noexcept {
++        if (!IsShort() || unprotected == 0) {
++            return;
++        }
++        const u64 rewritten = unprotected & reprotected_words[index];
++        reprotected_words[index] &= ~unprotected;
++        IteratePages(rewritten, [&](size_t offset, size_t count) {
++            for (size_t page = offset; page < offset + count; ++page) {
++                u8& streak = rewrite_streak[index * PAGES_PER_WORD + page];
++                streak = static_cast<u8>(std::min<u32>(streak + 1U, 255U));
++            }
++        });
++    }
++
++    // Returns the pages of an upload that stay writable. Pages rewritten after each of their
++    // last uploads become hot here. Pages the GPU wrote stay protected.
++    u64 HotPagesToKeep(size_t index, u64 mask, u64 modified, u64 untracked) noexcept {
++        if (!IsShort() || !HotPagesEnabled()) {
++            return 0;
++        }
++        const u64 gpu = Array<Type::GPU>()[index];
++        const u64 candidates = mask & modified & untracked & ~hot_words[index] & ~gpu;
++        u64 promoted = 0;
++        IteratePages(candidates, [&](size_t offset, size_t count) {
++            for (size_t page = offset; page < offset + count; ++page) {
++                if (rewrite_streak[index * PAGES_PER_WORD + page] >= HOT_REWRITES) {
++                    promoted |= u64{1} << page;
++                }
++            }
++        });
++        if (promoted != 0) {
++            hot_words[index] |= promoted;
++            has_hot_pages = true;
++        }
++        const u64 keep = mask & untracked & hot_words[index];
++        // The others are protected again now
++        reprotected_words[index] |= mask & untracked & ~keep;
++        return keep;
++    }
++
++    // The GPU writes hot pages: protect them again so GPU writes stay visible
++    void DemoteForGpuWrite(size_t index, u64 mask) noexcept {
++        if (!IsShort()) {
++            return;
++        }
++        const u64 pages = hot_words[index] & mask;
++        if (pages == 0) {
++            return;
++        }
++        hot_words[index] &= ~pages;
++        // A hot page counts as CPU modified at each epoch even when the CPU did not write it,
++        // which would hide what the GPU writes now. The GPU data is the newer one.
++        u64* const untracked_words = Array<Type::Untracked>();
++        NotifyRasterizer<true>(index, untracked_words[index], pages);
++        untracked_words[index] &= ~pages;
++        Array<Type::CPU>()[index] &= ~pages;
++        reprotected_words[index] &= ~pages;
++        IteratePages(pages, [&](size_t offset, size_t count) {
++            std::fill_n(rewrite_streak.begin() + index * PAGES_PER_WORD + offset, count, u8{0});
++        });
++        UpdateCpuWorkWord(index);
++    }
++
++    // TEMP A/B: NXEMU_HOT_PAGES=0 keeps protection based tracking for every page
++    static bool HotPagesEnabled() {
++        static const bool enabled = [] {
++            const char* value = std::getenv("NXEMU_HOT_PAGES");
++            return value == nullptr || value[0] != '0';
++        }();
++        return enabled;
++    }
++
++public:
++    bool has_hot_pages = false;
++
++private:
++    static constexpr u8 HOT_REWRITES = 3;
++    std::array<u64, stack_words> hot_words{};
++    std::array<u64, stack_words> reprotected_words{};
++    std::array<u8, stack_words * PAGES_PER_WORD> rewrite_streak{};
++
+     VAddr cpu_addr = 0;
+     DeviceTracker* tracker = nullptr;
+     Words<stack_words> words;
+diff --git a/src/yuzu_video_core/gpu_thread.cpp b/src/yuzu_video_core/gpu_thread.cpp
+index 5b129f882e..51f657352a 100644
+--- a/src/yuzu_video_core/gpu_thread.cpp
++++ b/src/yuzu_video_core/gpu_thread.cpp
+@@ -20,6 +20,7 @@ static void RunThread(std::stop_token stop_token, Tegra::GPU & gpu, VideoCore::R
+ {
+     Common::SetCurrentThreadName("GPU");
+     Common::SetCurrentThreadPriority(Common::ThreadPriority::Critical);
++    Common::PlaceCurrentThread(Common::DedicatedThread::Gpu);
+     gpu.RegisterHostThread();
+ 
+     auto current_context = context.Acquire();
+@@ -52,6 +53,7 @@ static void RunThread(std::stop_token stop_token, Tegra::GPU & gpu, VideoCore::R
+             std::scoped_lock execution_lock{state.execution_mutex};
+             if (auto * submit_list = std::get_if<SubmitListCommand>(&next.data))
+             {
++                rasterizer->BeginWriteEpoch();
+                 scheduler.Push(submit_list->channel, std::move(submit_list->entries));
+             }
+             else if (std::holds_alternative<GPUTickCommand>(next.data))
+diff --git a/src/yuzu_video_core/rasterizer_interface.h b/src/yuzu_video_core/rasterizer_interface.h
+index 8fe7536e62..9066ddd8ee 100644
+--- a/src/yuzu_video_core/rasterizer_interface.h
++++ b/src/yuzu_video_core/rasterizer_interface.h
+@@ -160,6 +160,9 @@ public:
+     /// Sync memory between guest and host.
+     virtual void InvalidateGPUCache() = 0;
+ 
++    /// Called on the GPU thread before it executes newly submitted guest commands
++    virtual void BeginWriteEpoch() {}
++
+     /// Unmap memory range
+     virtual void UnmapMemory(DAddr addr, u64 size) = 0;
+ 
+diff --git a/src/yuzu_video_core/renderer_vulkan/vk_rasterizer.cpp b/src/yuzu_video_core/renderer_vulkan/vk_rasterizer.cpp
+index 03da81e6d7..382ea48616 100644
+--- a/src/yuzu_video_core/renderer_vulkan/vk_rasterizer.cpp
++++ b/src/yuzu_video_core/renderer_vulkan/vk_rasterizer.cpp
+@@ -1021,6 +1021,12 @@ void RasterizerVulkan::OnCacheInvalidation(DAddr addr, u64 size) {
+ 
+ void RasterizerVulkan::InvalidateGPUCache() {
+     gpu.InvalidateGPUCache();
++    BeginWriteEpoch();
++}
++
++void RasterizerVulkan::BeginWriteEpoch() {
++    std::scoped_lock lock{buffer_cache.mutex};
++    buffer_cache.BeginWriteEpoch();
+ }
+ 
+ void RasterizerVulkan::UnmapMemory(DAddr addr, u64 size) {
+diff --git a/src/yuzu_video_core/renderer_vulkan/vk_rasterizer.h b/src/yuzu_video_core/renderer_vulkan/vk_rasterizer.h
+index ea38aa4818..9058acb7d6 100644
+--- a/src/yuzu_video_core/renderer_vulkan/vk_rasterizer.h
++++ b/src/yuzu_video_core/renderer_vulkan/vk_rasterizer.h
+@@ -132,6 +132,7 @@ public:
+     void OnCacheInvalidation(DAddr addr, u64 size) override;
+     bool OnCPUWrite(DAddr addr, u64 size) override;
+     void InvalidateGPUCache() override;
++    void BeginWriteEpoch() override;
+     void UnmapMemory(DAddr addr, u64 size) override;
+     void ModifyGPUMemory(size_t as_id, GPUVAddr addr, u64 size, bool preserve_contents = false) override;
+     void SignalFence(std::function<void()>&& func) override;
