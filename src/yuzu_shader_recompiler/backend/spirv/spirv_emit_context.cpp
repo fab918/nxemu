@@ -667,10 +667,13 @@ void EmitContext::DefineInterfaces(const IR::Program& program) {
 }
 
 void EmitContext::DefineLocalMemory(const IR::Program& program) {
-    if (program.local_memory_size == 0) {
+    // Only shaders that access local memory get the array: a header can declare a size that
+    // is never used, and a large private array costs registers or spills on every thread.
+    if (!program.info.uses_local_memory) {
         return;
     }
-    const u32 num_elements{Common::DivCeil(program.local_memory_size, 4U)};
+    // An access with a declared size of zero still needs a valid array to index
+    const u32 num_elements{std::max(Common::DivCeil(program.local_memory_size, 4U), 1U)};
     // Sirit interns types. A signed length keeps this Private array distinct from the
     // Workgroup array with the same size, which carries an explicit ArrayStride layout.
     const Id type{TypeArray(U32[1], SConst(static_cast<s32>(num_elements)))};

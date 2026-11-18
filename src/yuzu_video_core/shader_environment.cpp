@@ -4,6 +4,7 @@
 #include "yuzu_video_core/shader_profile_sph.h"
 #include "yuzu_video_core/shader_profile_hash.h"
 #include <algorithm>
+#include <atomic>
 #include <boost/container/static_vector.hpp>
 #include <cstring>
 #include <filesystem>
@@ -56,6 +57,22 @@ Shader::TexturePoolInfo GraphicsTexturePoolInfo(const Maxwell& regs) {
         .num_samplers = linked ? num_textures : std::min(regs.tex_sampler.limit + 1U, 1U << 12),
         .linked_samplers = linked,
     };
+}
+
+// NVIDIA GPUs give a thread at most 512 KiB of local memory, Maxwell and Ampere alike.
+// A larger size is garbage, and declaring it would make a huge private array.
+constexpr u64 MAX_LOCAL_MEMORY_SIZE = 512 * 1024;
+
+static u32 ClampLocalMemorySize(u64 size) {
+    if (size <= MAX_LOCAL_MEMORY_SIZE) {
+        return static_cast<u32>(size);
+    }
+    static std::atomic_bool warned{};
+    if (!warned.exchange(true)) {
+        LOG_WARNING(HW_GPU, "Shader local memory size 0x{:x} is too large, using 0x{:x}", size,
+                    MAX_LOCAL_MEMORY_SIZE);
+    }
+    return static_cast<u32>(MAX_LOCAL_MEMORY_SIZE);
 }
 
 static u32 CbufSizeQueryMask(const std::unordered_map<u64, u32>& values) {
@@ -408,9 +425,8 @@ GraphicsEnvironment::GraphicsEnvironment(Tegra::Engines::Maxwell3D& maxwell3d_,
         ASSERT_MSG(false, "Invalid program={}", program);
         break;
     }
-    const u64 local_size{sph.LocalMemorySize()};
-    ASSERT(local_size <= std::numeric_limits<u32>::max());
-    local_memory_size = static_cast<u32>(local_size) + sph.common3.shader_local_memory_crs_size;
+    local_memory_size = ClampLocalMemorySize(sph.LocalMemorySize() +
+                                             u64{sph.common3.shader_local_memory_crs_size});
     texture_bound = maxwell3d->regs.bindless_texture_const_buffer_slot;
     is_proprietary_driver = texture_bound == 2;
     has_hle_engine_state =
@@ -731,7 +747,8 @@ ComputeEnvironment::ComputeEnvironment(Tegra::Engines::KeplerCompute& kepler_com
                                                                           &kepler_compute_} {
     const auto& qmd{kepler_compute->launch_description};
     stage = Shader::Stage::Compute;
-    local_memory_size = qmd.local_pos_alloc + qmd.local_crs_alloc;
+    local_memory_size =
+        ClampLocalMemorySize(u64{qmd.local_pos_alloc} + u64{qmd.local_crs_alloc});
     texture_bound = kepler_compute->regs.tex_cb_index;
     is_proprietary_driver = texture_bound == 2;
     shared_memory_size = qmd.shared_alloc;
@@ -840,6 +857,7 @@ void FileEnvironment::Deserialize(std::istream& file, std::shared_ptr<const std:
     if (!file || stage > Shader::Stage::VertexA || code_size % sizeof(u64) != 0) {
         throw std::ios_base::failure("Invalid shader cache environment header");
     }
+    local_memory_size = ClampLocalMemorySize(local_memory_size);
     const auto position = file.tellg();
     file.seekg(0, std::ios::end);
     const auto end = file.tellg();
