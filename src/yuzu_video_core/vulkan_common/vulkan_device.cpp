@@ -1562,8 +1562,8 @@ void Device::CollectPhysicalMemoryInfo()
         // in dynamic-resolution titles before TextureCache GC activates.
         const u64 scale = std::max<u64>(1, videoSettings.resolution_info.ScaleUp(1));
         const u64 mode_cap = videoSettings.vram_usage_mode == VramUsageMode::Aggressive
-                                 ? (6_GiB + 1_GiB * scale)
-                                 : (3_GiB + 1_GiB * scale);
+                                 ? (8_GiB + 1_GiB * scale)
+                                 : (6_GiB + 1_GiB * scale);
         const u64 reserve = std::clamp<u64>(heap_budget / 8, 2_GiB, 4_GiB);
         const u64 free_budget = available_memory > static_cast<s64>(reserve) ? static_cast<u64>(available_memory) - reserve : 0;
         device_access_memory = std::min(mode_cap, std::max(device_access_memory, std::min(free_budget, heap_budget / 2)));

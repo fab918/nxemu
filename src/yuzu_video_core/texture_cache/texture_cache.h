@@ -1209,11 +1209,19 @@ void TextureCache<P>::SyncEagerAliases()
             SynchronizeAliases(alias_id);
         }
     };
-    for (const ImageViewId view_id : render_targets.color_buffer_ids)
+    const auto & flags = maxwell3d->dirty.flags;
+    const bool force = flags[VideoCommon::Dirty::RenderTargetControl];
+    for (size_t index = 0; index < NUM_RT; ++index)
     {
-        sync_aliases_of(view_id);
+        if (force || flags[VideoCommon::Dirty::ColorBuffer0 + index])
+        {
+            sync_aliases_of(render_targets.color_buffer_ids[index]);
+        }
     }
-    sync_aliases_of(render_targets.depth_buffer_id);
+    if (force || flags[VideoCommon::Dirty::ZetaBuffer])
+    {
+        sync_aliases_of(render_targets.depth_buffer_id);
+    }
 }
 
 template <class P>
