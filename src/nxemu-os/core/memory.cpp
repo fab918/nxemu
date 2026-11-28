@@ -1680,6 +1680,7 @@ struct Memory::Impl
                 it->second.count += static_cast<u32>(delta);
                 ++it->second.generation;
                 it->second.direct_read = false;
+                it->second.neighbor_defer_until_ns = 0;
                 // Already read-cached, not opened for native/direct reads or writes, and
                 // confirmed read-denied in NceDirectMap: host protection is already PROT_NONE.
                 if (reactive && was_present && !was_open && !was_direct_read &&
@@ -1873,6 +1874,19 @@ struct Memory::Impl
         const u64 host_page = vaddr & ~(NceHostPageSize - 1);
         const u64 target_page = vaddr & ~YUZU_PAGEMASK;
         bool target_is_readback_page = false;
+        const bool precise = PreciseNceReadTracking();
+        const bool demand = DemandNceReadback();
+        u64 now_ns = 0;
+        const auto get_now_ns = [&]() -> u64 {
+            if (now_ns == 0)
+            {
+                now_ns = static_cast<u64>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch())
+                        .count());
+            }
+            return now_ns;
+        };
         {
             std::scoped_lock lk{nce_write_mutex};
             if (!osSettings.use_reactive_flushing) return;
@@ -1882,17 +1896,37 @@ struct Memory::Impl
             for (auto it = nce_read_cached.lower_bound(host_page);
                  it != nce_read_cached.end() && it->first < host_page + NceHostPageSize; ++it)
             {
+                const bool is_target_page = (it->first == target_page);
+                // A 4 KiB page already readable in NceDirectMap needs no repeat download
+                // unless it was previously opened only as a shared neighbor and is now being
+                // directly read (so it promotes to a readback target once).
+                const bool tracked_readable = buffer->NceTrackedAccessAllowed(it->first, false);
+                if (tracked_readable && (!read || !is_target_page || it->second.direct_read))
+                    continue;
+                if (!is_target_page)
+                {
+                    if (target_is_readback_page && !precise && !demand && !it->second.direct_read)
+                        continue;
+                    if (read && it->second.neighbor_defer_until_ns != 0)
+                    {
+                        if (get_now_ns() < it->second.neighbor_defer_until_ns) continue;
+                        it->second.neighbor_defer_until_ns = 0;
+                    }
+                }
                 // A different 4 KiB neighbor may have trapped this 16 KiB host page.
                 // Pages already synchronized remain readable until a real GPU write
                 // revokes them on the producer; do not download them again here.
-                if (!PreciseNceReadTracking() || !nce_open_read_pages.contains(it->first))
+                if (!precise || !nce_open_read_pages.contains(it->first))
                     pages[count++] = {it->first, it->second.generation, it->second.direct_read};
             }
         }
+        if (count == 0) return;
         // GPU readback may untrack textures and acquire nce_write_mutex. Do not hold it
         // while synchronizing. Read every protected neighbor before opening the host page.
         std::array<u64, NceHostPageSize / YUZU_PAGESIZE> deferred{};
         size_t deferred_count{};
+        std::array<u64, NceHostPageSize / YUZU_PAGESIZE> neighbor_deferred{};
+        size_t neighbor_deferred_count{};
         for (size_t i = 0; i < count;)
         {
             const auto & first = pages[i++];
@@ -1901,7 +1935,7 @@ struct Memory::Impl
             const auto pointer = reinterpret_cast<uintptr_t>(GetPointerFromRasterizerCachedMemory(begin));
             // Adjacent guest pages may map unrelated physical pages. Merge only when
             // their CPU backing is also contiguous.
-            while (DemandNceReadback() && i < count && pages[i].page == end && pointer != 0 &&
+            while (demand && i < count && pages[i].page == end && pointer != 0 &&
                    reinterpret_cast<uintptr_t>(GetPointerFromRasterizerCachedMemory(pages[i].page)) ==
                        pointer + end - begin)
             {
@@ -1910,8 +1944,7 @@ struct Memory::Impl
             }
             const bool neighbor = !(begin <= vaddr && vaddr < end);
             bool defer = false;
-            if (neighbor && target_is_readback_page && !PreciseNceReadTracking() &&
-                !DemandNceReadback() && !first.direct_read)
+            if (neighbor && target_is_readback_page && !precise && !demand && !first.direct_read)
             {
                 // The CPU is actively reading a GPU readback page on this 16 KiB host page,
                 // and a neighbouring 4 KiB page holds another GPU-modified target that has
@@ -1923,21 +1956,28 @@ struct Memory::Impl
             }
             else
             {
-                const bool shared = IsSharedNcePage(begin, end, vaddr, read) && !PreciseNceReadTracking();
+                const bool shared = IsSharedNcePage(begin, end, vaddr, read) && !precise;
                 // Opening the host page would expose data an asynchronous copy has not
                 // published. The access is emulated instead until that copy completes.
                 defer = HandleRasterizerDownload(begin, end - begin, shared, /*from_nce_fault=*/true);
                 // An existing readback target may still have its asynchronous copy in flight,
                 // and the guest can read the page before the fence that publishes it.
-                if (!shared && !DemandNceReadback())
+                if (!shared && !demand)
                     defer = HandleRasterizerDownload(begin, end - begin, true, /*from_nce_fault=*/true) || defer;
+                if (defer && neighbor && read)
+                {
+                    for (u64 page = begin; page < end; page += YUZU_PAGESIZE)
+                        neighbor_deferred[neighbor_deferred_count++] = page;
+                }
             }
             for (u64 page = begin; defer && page < end; page += YUZU_PAGESIZE)
                 deferred[deferred_count++] = page;
         }
         // Precise mode grants access and registers the observer on the GPU producer
         // before it resumes drawing. Reopening here could undo a subsequent GPU write.
-        if (PreciseNceReadTracking()) return;
+        if (precise) return;
+        const u64 neighbor_backoff_until_ns =
+            neighbor_deferred_count != 0 ? (get_now_ns() + 2'000'000ULL) : 0;
         std::scoped_lock lk{nce_write_mutex};
         u64 run_begin{}, run_end{};
         Common::MemoryPermission run_perm{};
@@ -1959,6 +1999,18 @@ struct Memory::Impl
             if (std::find(deferred.begin(), deferred.begin() + deferred_count, page) !=
                 deferred.begin() + deferred_count)
             {
+                if (neighbor_backoff_until_ns != 0 &&
+                    std::find(neighbor_deferred.begin(),
+                              neighbor_deferred.begin() + neighbor_deferred_count,
+                              page) != neighbor_deferred.begin() + neighbor_deferred_count)
+                {
+                    const auto cached_it = nce_read_cached.find(page);
+                    if (cached_it != nce_read_cached.end() &&
+                        cached_it->second.generation == pages[i].generation)
+                    {
+                        cached_it->second.neighbor_defer_until_ns = neighbor_backoff_until_ns;
+                    }
+                }
                 flush_protect();
                 continue;
             }
@@ -1975,11 +2027,12 @@ struct Memory::Impl
                     flush_protect();
                     continue;
                 }
+                cached_it->second.neighbor_defer_until_ns = 0;
                 if (read && page == target_page)
                 {
                     cached_it->second.direct_read = true;
                 }
-                if (DemandNceReadback() || shared)
+                if (demand || shared)
                 {
                     nce_open_read_pages.insert(page);
                     has_nce_open_read_pages.store(true, std::memory_order_release);
@@ -2877,6 +2930,7 @@ struct Memory::Impl
         u32 count{};
         u32 generation{};
         bool direct_read{};
+        u64 neighbor_defer_until_ns{};
     };
     std::map<u64, NceReadCachedEntry> nce_read_cached;
     std::set<u64> nce_open_read_pages;

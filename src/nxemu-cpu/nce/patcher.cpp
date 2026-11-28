@@ -234,13 +234,13 @@ bool Patcher::PatchText(const uint8_t * program_image, uint64_t image_size, uint
                 }
             }
         }
+        // Write basic X0 read thunks and store thunks first so optional extra read thunks
+        // (all_read_bases / float_reads) can never starve them when patch_limit is tight.
         for (u32 i = ModuleCodeIndex; i < static_cast<u32>(text_words.size()); i++)
         {
             const u32 inst = text_words[i];
-            const bool basic_read = ReadThunk::Basic(inst);
-            if (read_thunks && atomic_table &&
-                ((basic_read && m_basic_read_bytes + MaxReadHandlerBytes <= 16_MiB) ||
-                 extra_reads[i]))
+            if (read_thunks && atomic_table && ReadThunk::Basic(inst) &&
+                m_basic_read_bytes + MaxReadHandlerBytes <= 16_MiB)
             {
                 if (c.offset() + MaxReadHandlerBytes > patch_limit)
                 {
@@ -250,7 +250,7 @@ bool Patcher::PatchText(const uint8_t * program_image, uint64_t image_size, uint
                 const size_t before = c.offset();
                 WriteReadHandler((i + 1) * sizeof(u32), inst);
                 ASSERT(c.offset() - before <= MaxReadHandlerBytes);
-                (basic_read ? m_basic_read_bytes : m_extra_read_bytes) += c.offset() - before;
+                m_basic_read_bytes += c.offset() - before;
             }
             else if (store_thunks && atomic_table && extra_stores[i] &&
                      c.offset() + 256 <= patch_limit)
@@ -260,6 +260,25 @@ bool Patcher::PatchText(const uint8_t * program_image, uint64_t image_size, uint
                 WriteStoreHandler((i + 1) * sizeof(u32), inst);
                 ASSERT(c.offset() - before <= 256);
                 m_store_bytes += c.offset() - before;
+            }
+        }
+        if (read_thunks && atomic_table && (all_read_bases || float_reads))
+        {
+            for (u32 i = ModuleCodeIndex; i < static_cast<u32>(text_words.size()); i++)
+            {
+                if (!extra_reads[i])
+                {
+                    continue;
+                }
+                if (c.offset() + MaxReadHandlerBytes > patch_limit)
+                {
+                    break;
+                }
+                curr_patch->m_read_handlers.push_back({c.offset(), i * sizeof(u32)});
+                const size_t before = c.offset();
+                WriteReadHandler((i + 1) * sizeof(u32), text_words[i]);
+                ASSERT(c.offset() - before <= MaxReadHandlerBytes);
+                m_extra_read_bytes += c.offset() - before;
             }
         }
     };
