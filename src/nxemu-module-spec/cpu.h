@@ -159,6 +159,10 @@ nxinterface IKProcessPageTable
 };
 
 struct NativeCodeEntry;
+using EmitNceThunkFn = bool (*)(void * ctx, uint64_t thunk_va,
+                                uint32_t * out_words, size_t max_words, size_t * out_word_count,
+                                NativeCodeEntry * out_restarts, size_t max_restarts,
+                                size_t * out_restart_count);
 
 nxinterface IKernelProcess
 {
@@ -178,10 +182,6 @@ nxinterface IKernelProcess
     virtual void RegisterNceReadHandler(uint64_t pc, uint64_t handler) {}
     virtual uint64_t InstallNceReadHandler(uint64_t pc) { return 0; }
     virtual void RegisterNceThunkArena(uint64_t base, uint64_t size) {}
-    using EmitNceThunkFn = bool (*)(void * ctx, uint64_t thunk_va,
-                                    uint32_t * out_words, size_t max_words, size_t * out_word_count,
-                                    NativeCodeEntry * out_restarts, size_t max_restarts,
-                                    size_t * out_restart_count);
     virtual uint64_t InstallNceDynamicThunk(uint64_t pc, size_t max_bytes,
                                             EmitNceThunkFn emit_fn, void * ctx) { return 0; }
 };
