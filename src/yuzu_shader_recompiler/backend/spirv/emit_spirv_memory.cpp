@@ -71,10 +71,10 @@ void WriteStorageByCasLoop(EmitContext& ctx, const IR::Value& binding, const IR:
     if (!binding.IsImmediate()) {
         throw NotImplementedException("Dynamic storage buffer indexing");
     }
-    const Id ssbo{ctx.ssbos[binding.U32()].U32};
+    const u32 binding_idx{binding.U32()};
     const Id index{StorageIndex(ctx, offset, sizeof(u32))};
-    ctx.OpFunctionCall(ctx.TypeVoid(), ctx.write_storage_cas_loop_func, ssbo, index, value,
-                       bit_offset, bit_count);
+    ctx.OpFunctionCall(ctx.TypeVoid(), ctx.write_storage_cas_loop_funcs.at(binding_idx), index,
+                       value, bit_offset, bit_count);
 }
 } // Anonymous namespace
 

@@ -372,7 +372,7 @@ public:
     Id f32x2_min_cas{};
     Id f32x2_max_cas{};
 
-    Id write_storage_cas_loop_func{};
+    boost::container::small_vector<Id, 8> write_storage_cas_loop_funcs;
 
     Id load_global_func_u32{};
     Id load_global_func_u32x2{};
@@ -438,7 +438,7 @@ private:
     void DefineRuntimeSamplers(const Info& info, u32& table_binding);
     void DefineImages(const Info& info, u32& binding, u32& scaling_index);
     void DefineAttributeMemAccess(const Info& info);
-    void DefineWriteStorageCasLoopFunction(const Info& info);
+    void DefineWriteStorageCasLoopFunction(const IR::Program& program);
     void DefineGlobalMemoryFunctions(const IR::Program& program);
     void DefineRescalingInput(const Info& info);
     void DefineRescalingInputPushConstant(const Info& info);

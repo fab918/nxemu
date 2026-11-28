@@ -549,11 +549,24 @@ void EmitSetFragDepth(EmitContext& ctx, Id value) {
     }
     if (ctx.runtime_info.quantize_d24_frag_depth) {
         const Id zero{ctx.Const(0.0f)};
+        const Id half{ctx.Const(0.5f)};
         const Id one{ctx.Const(1.0f)};
+        const Id neg_one{ctx.Const(-1.0f)};
+        const Id scale_pow2{ctx.Const(16777216.0f)};
         const Id scale{ctx.Const(16777215.0f)};
+        // Compute roundEven(clamped * (2^24 - 1)) exactly in binary32 without double-rounding
+        // in [2^22, 2^23) (e.g. 0.3f -> 5033165, not 5033164). Multiplying by 2^24 is exact, so
+        // floor(y) and yf = y - floor(y) are exact, and (yf - 0.5) > clamped / clamped > 0.5
+        // determine the exact integer step across all binary32 inputs in [0, 1].
         const Id clamped{ctx.OpFClamp(ctx.F32[1], depth, zero, one)};
-        const Id scaled{ctx.OpFMul(ctx.F32[1], clamped, scale)};
-        const Id rounded{ctx.OpRoundEven(ctx.F32[1], scaled)};
+        const Id y{ctx.OpFMul(ctx.F32[1], clamped, scale_pow2)};
+        const Id yi{ctx.OpFloor(ctx.F32[1], y)};
+        const Id yf{ctx.OpFSub(ctx.F32[1], y, yi)};
+        const Id up{ctx.OpFOrdGreaterThan(ctx.U1, ctx.OpFSub(ctx.F32[1], yf, half), clamped)};
+        const Id down{ctx.OpFOrdGreaterThan(ctx.U1, clamped, half)};
+        const Id down_step{ctx.OpSelect(ctx.F32[1], down, neg_one, zero)};
+        const Id adj{ctx.OpSelect(ctx.F32[1], up, one, down_step)};
+        const Id rounded{ctx.OpFAdd(ctx.F32[1], yi, adj)};
         depth = ctx.OpFDiv(ctx.F32[1], rounded, scale);
     }
     ctx.OpStore(ctx.frag_depth, depth);

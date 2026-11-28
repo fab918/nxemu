@@ -369,26 +369,15 @@ Id EmitStorageAtomicExchange64(EmitContext& ctx, const IR::Value& binding, const
 
 Id EmitStorageAtomicCompareExchange64(EmitContext& ctx, const IR::Value& binding,
                                       const IR::Value& offset, Id value, Id compare) {
-    if (!ctx.profile.support_descriptor_aliasing) {
-        LOG_WARNING(Shader_SPIRV,
-                    "Storage descriptor aliasing not supported, this cannot be atomic.");
-        return ctx.ConstantNull(ctx.U64);
+    if (!ctx.profile.support_descriptor_aliasing || !ctx.profile.support_int64_atomics) {
+        throw NotImplementedException(
+            "StorageAtomicCompareExchange64 requires descriptor aliasing and int64 atomics");
     }
-    if (ctx.profile.support_int64_atomics) {
-        const Id pointer{StoragePointer(ctx, ctx.storage_types.U64, &StorageDefinitions::U64,
-                                        binding, offset, sizeof(u64))};
-        const auto [scope, semantics]{AtomicArgs(ctx)};
-        return ctx.OpAtomicCompareExchange(ctx.U64, pointer, scope, semantics, semantics, value,
-                                           compare);
-    }
-    LOG_WARNING(Shader_SPIRV, "Int64 atomics not supported, fallback to non-atomic");
-    const Id pointer{StoragePointer(ctx, ctx.storage_types.U32x2, &StorageDefinitions::U32x2,
-                                    binding, offset, sizeof(u32[2]))};
-    const Id original{ctx.OpBitcast(ctx.U64, ctx.OpLoad(ctx.U32[2], pointer))};
-    const Id equal{ctx.OpIEqual(ctx.U1, original, compare)};
-    const Id next{ctx.OpSelect(ctx.U64, equal, value, original)};
-    ctx.OpStore(pointer, ctx.OpBitcast(ctx.U32[2], next));
-    return original;
+    const Id pointer{StoragePointer(ctx, ctx.storage_types.U64, &StorageDefinitions::U64, binding,
+                                    offset, sizeof(u64))};
+    const auto [scope, semantics]{AtomicArgs(ctx)};
+    return ctx.OpAtomicCompareExchange(ctx.U64, pointer, scope, semantics, semantics, value,
+                                       compare);
 }
 
 Id EmitStorageAtomicIAdd32x2(EmitContext& ctx, IR::Inst* inst, const IR::Value& binding,
@@ -449,29 +438,9 @@ Id EmitStorageAtomicExchange32x2(EmitContext& ctx, const IR::Value& binding,
     return original;
 }
 
-Id EmitStorageAtomicCompareExchange32x2(EmitContext& ctx, const IR::Value& binding,
-                                        const IR::Value& offset, Id value, Id compare) {
-    if (!ctx.profile.support_descriptor_aliasing) {
-        LOG_WARNING(Shader_SPIRV,
-                    "Storage descriptor aliasing not supported, this cannot be atomic.");
-        return ctx.ConstantNull(ctx.U32[2]);
-    }
-    LOG_WARNING(Shader_SPIRV, "Int64 atomics not supported, fallback to non-atomic");
-    const Id pointer{StoragePointer(ctx, ctx.storage_types.U32x2, &StorageDefinitions::U32x2,
-                                    binding, offset, sizeof(u32[2]))};
-    const Id original{ctx.OpLoad(ctx.U32[2], pointer)};
-    const Id orig_lo{ctx.OpCompositeExtract(ctx.U32[1], original, 0U)};
-    const Id orig_hi{ctx.OpCompositeExtract(ctx.U32[1], original, 1U)};
-    const Id cmp_lo{ctx.OpCompositeExtract(ctx.U32[1], compare, 0U)};
-    const Id cmp_hi{ctx.OpCompositeExtract(ctx.U32[1], compare, 1U)};
-    const Id val_lo{ctx.OpCompositeExtract(ctx.U32[1], value, 0U)};
-    const Id val_hi{ctx.OpCompositeExtract(ctx.U32[1], value, 1U)};
-    const Id equal{ctx.OpLogicalAnd(ctx.U1, ctx.OpIEqual(ctx.U1, orig_lo, cmp_lo),
-                                    ctx.OpIEqual(ctx.U1, orig_hi, cmp_hi))};
-    const Id next_lo{ctx.OpSelect(ctx.U32[1], equal, val_lo, orig_lo)};
-    const Id next_hi{ctx.OpSelect(ctx.U32[1], equal, val_hi, orig_hi)};
-    ctx.OpStore(pointer, ctx.OpCompositeConstruct(ctx.U32[2], next_lo, next_hi));
-    return original;
+Id EmitStorageAtomicCompareExchange32x2(EmitContext&, const IR::Value&, const IR::Value&, Id, Id) {
+    throw NotImplementedException(
+        "StorageAtomicCompareExchange32x2 requires native 64-bit atomics");
 }
 
 Id EmitStorageAtomicAddF32(EmitContext& ctx, const IR::Value& binding, const IR::Value& offset,

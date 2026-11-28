@@ -579,7 +579,7 @@ EmitContext::EmitContext(const Profile& profile_, const RuntimeInfo& runtime_inf
     DefineWriteTrackingBitmap(program.info, storage_binding);
     DefineInputAttachments(program.info, texture_binding);
     DefineAttributeMemAccess(program.info);
-    DefineWriteStorageCasLoopFunction(program.info);
+    DefineWriteStorageCasLoopFunction(program);
     DefineGlobalMemoryFunctions(program);
     DefineRescalingInput(program.info);
     DefineWriteTrackingFunction(program.info);
@@ -999,57 +999,92 @@ void EmitContext::DefineAttributeMemAccess(const Info& info) {
     }
 }
 
-void EmitContext::DefineWriteStorageCasLoopFunction(const Info& info) {
+void EmitContext::DefineWriteStorageCasLoopFunction(const IR::Program& program) {
+    const Info& info{program.info};
     const bool native_8bit = profile.SupportsNativeStorage8Bit();
     const bool native_16bit = profile.SupportsNativeStorage16Bit();
     if ((native_8bit || !True(info.used_storage_buffer_types & IR::Type::U8)) &&
         (native_16bit || !True(info.used_storage_buffer_types & IR::Type::U16))) {
         return;
     }
-    if (info.storage_buffers_descriptors.empty() || !Sirit::ValidId(storage_types.U32.array)) {
+    if (ssbos.empty() || !Sirit::ValidId(storage_types.U32.element)) {
         return;
     }
 
-    const Id func_type{
-        TypeFunction(void_id, storage_types.U32.array, U32[1], U32[1], U32[1], U32[1])};
-    const Id func{OpFunction(void_id, spv::FunctionControlMask::MaskNone, func_type)};
-    const Id ssbo{OpFunctionParameter(storage_types.U32.array)};
-    const Id index{OpFunctionParameter(U32[1])};
-    const Id value{OpFunctionParameter(U32[1])};
-    const Id bit_offset{OpFunctionParameter(U32[1])};
-    const Id bit_count{OpFunctionParameter(U32[1])};
+    // Collect the SSBO bindings that actually issue fallback narrow writes so each helper
+    // accesses its OpVariable directly without passing a StorageBuffer pointer parameter
+    // (avoiding VariablePointersStorageBuffer and SPIRV-Cross MSL element-pointer bugs).
+    boost::container::small_vector<bool, 8> used_bindings(ssbos.size(), false);
+    bool any_used = false;
+    for (const IR::Block* const block : program.blocks) {
+        for (const IR::Inst& inst : *block) {
+            const IR::Opcode op{inst.GetOpcode()};
+            const bool needs_cas =
+                (!native_8bit &&
+                 (op == IR::Opcode::WriteStorageU8 || op == IR::Opcode::WriteStorageS8)) ||
+                (!native_16bit &&
+                 (op == IR::Opcode::WriteStorageU16 || op == IR::Opcode::WriteStorageS16));
+            if (!needs_cas) {
+                continue;
+            }
+            const IR::Value binding{inst.Arg(0)};
+            if (binding.IsImmediate() && binding.U32() < ssbos.size()) {
+                used_bindings[binding.U32()] = true;
+                any_used = true;
+            }
+        }
+    }
+    if (!any_used) {
+        return;
+    }
 
-    AddLabel();
-    const Id pointer{OpAccessChain(storage_types.U32.element, ssbo, u32_zero_value, index)};
-    const Id scope_device{Const(1u)};
-    const Id ordering_relaxed{u32_zero_value};
-    const Id body_label{OpLabel()};
-    const Id continue_label{OpLabel()};
-    const Id endloop_label{OpLabel()};
-    const Id beginloop_label{OpLabel()};
-    OpBranch(beginloop_label);
+    write_storage_cas_loop_funcs.resize(ssbos.size());
+    const Id func_type{TypeFunction(void_id, U32[1], U32[1], U32[1], U32[1])};
+    for (size_t binding_idx = 0; binding_idx < ssbos.size(); ++binding_idx) {
+        if (!used_bindings[binding_idx] || !Sirit::ValidId(ssbos[binding_idx].U32)) {
+            continue;
+        }
+        const Id func{OpFunction(void_id, spv::FunctionControlMask::MaskNone, func_type)};
+        const Id index{OpFunctionParameter(U32[1])};
+        const Id value{OpFunctionParameter(U32[1])};
+        const Id bit_offset{OpFunctionParameter(U32[1])};
+        const Id bit_count{OpFunctionParameter(U32[1])};
 
-    AddLabel(beginloop_label);
-    OpLoopMerge(endloop_label, continue_label, spv::LoopControlMask::MaskNone);
-    OpBranch(body_label);
+        AddLabel();
+        const Id pointer{OpAccessChain(storage_types.U32.element, ssbos[binding_idx].U32,
+                                       u32_zero_value, index)};
+        const Id scope_device{Const(1u)};
+        const Id ordering_relaxed{u32_zero_value};
+        const Id body_label{OpLabel()};
+        const Id continue_label{OpLabel()};
+        const Id endloop_label{OpLabel()};
+        const Id beginloop_label{OpLabel()};
+        OpBranch(beginloop_label);
 
-    AddLabel(body_label);
-    const Id expected_value{OpAtomicLoad(U32[1], pointer, scope_device, ordering_relaxed)};
-    const Id desired_value{OpBitFieldInsert(U32[1], expected_value, value, bit_offset, bit_count)};
-    const Id actual_value{OpAtomicCompareExchange(U32[1], pointer, scope_device, ordering_relaxed,
-                                                  ordering_relaxed, desired_value, expected_value)};
-    const Id store_successful{OpIEqual(U1, expected_value, actual_value)};
-    OpBranchConditional(store_successful, endloop_label, continue_label);
+        AddLabel(beginloop_label);
+        OpLoopMerge(endloop_label, continue_label, spv::LoopControlMask::MaskNone);
+        OpBranch(body_label);
 
-    AddLabel(endloop_label);
-    OpReturn();
+        AddLabel(body_label);
+        const Id expected_value{OpAtomicLoad(U32[1], pointer, scope_device, ordering_relaxed)};
+        const Id desired_value{
+            OpBitFieldInsert(U32[1], expected_value, value, bit_offset, bit_count)};
+        const Id actual_value{OpAtomicCompareExchange(U32[1], pointer, scope_device,
+                                                      ordering_relaxed, ordering_relaxed,
+                                                      desired_value, expected_value)};
+        const Id store_successful{OpIEqual(U1, expected_value, actual_value)};
+        OpBranchConditional(store_successful, endloop_label, continue_label);
 
-    AddLabel(continue_label);
-    OpBranch(beginloop_label);
+        AddLabel(endloop_label);
+        OpReturn();
 
-    OpFunctionEnd();
+        AddLabel(continue_label);
+        OpBranch(beginloop_label);
 
-    write_storage_cas_loop_func = func;
+        OpFunctionEnd();
+
+        write_storage_cas_loop_funcs[binding_idx] = func;
+    }
 }
 
 void EmitContext::DefineGlobalMemoryFunctions(const IR::Program& program) {
