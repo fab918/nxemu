@@ -75,6 +75,9 @@ std::optional<OutAttr> OutputAttrPointer(EmitContext& ctx, IR::Attribute attr) {
     case IR::Attribute::PositionY:
     case IR::Attribute::PositionZ:
     case IR::Attribute::PositionW: {
+        if (!Sirit::ValidId(ctx.output_position)) {
+            return std::nullopt;
+        }
         const u32 element{static_cast<u32>(attr) % 4};
         const Id element_id{ctx.Const(element)};
         return OutputAccessChain(ctx, ctx.output_f32, ctx.output_position, element_id);
