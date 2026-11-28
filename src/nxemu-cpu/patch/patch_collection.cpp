@@ -123,6 +123,26 @@ void PatchCollection::Relocate(int32_t patch_index, uint64_t load_base, uint8_t 
         return;
     }
 
+#if defined(__APPLE__)
+    if (IKernelProcess * process = m_modules.OperatingSystem().CurrentProcess();
+        process != nullptr && patch.GetDynamicArenaSize() != 0)
+    {
+        const uint64_t patch_base =
+            patch.GetPatchMode() == Core::NCE::PatchMode::PreText
+                ? load_base
+                : load_base + image_size_before_relocate;
+        const uint64_t arena_base = patch_base + patch.GetDynamicArenaOffset();
+        const uint64_t arena_size = patch.GetDynamicArenaSize();
+        process->RegisterNceThunkArena(arena_base, arena_size);
+        if (std::getenv("NXEMU_NCE_READBACK_PROFILE") != nullptr)
+        {
+            std::fprintf(stderr, "[NCE-THUNK-ARENA] base=%llx size_KiB=%.1f total_patch_KiB=%.1f\n",
+                         (unsigned long long)arena_base, arena_size / 1024.0,
+                         patch.GetSectionSize() / 1024.0);
+        }
+    }
+#endif
+
     if (segment_addr != nullptr)
     {
         *segment_addr = patch.GetPatchMode() == Core::NCE::PatchMode::PreText ? 0ULL : (uint64_t)image_size_before_relocate;

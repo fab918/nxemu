@@ -158,8 +158,16 @@ private:
     std::vector<NceRestartChunk> m_nce_restart_chunks{};
     std::unordered_map<u64, u64> m_nce_restart_overflow{};
     Common::NativeCodeMetadata m_runtime_code_metadata;
+    struct NceThunkArena
+    {
+        u64 base{};
+        u64 end{};
+        u64 cursor{};
+    };
     std::unordered_map<u64, u64> m_nce_atomic_handlers;
     std::unordered_map<u64, u64> m_nce_read_handlers;
+    std::vector<NceThunkArena> m_nce_thunk_arenas;
+    std::mutex m_nce_thunk_mutex;
     std::atomic<bool> m_native_atomics_enabled{};
     ExclusiveMonitorPtr m_exclusive_monitor;
     Core::Memory::Memory m_memory;
@@ -674,6 +682,13 @@ public:
         m_nce_read_handlers.insert_or_assign(pc, handler);
     }
     uint64_t InstallNceReadHandler(uint64_t pc) override;
+    void RegisterNceThunkArena(uint64_t base, uint64_t size) override {
+        if (size == 0) return;
+        std::scoped_lock lk{m_nce_thunk_mutex};
+        m_nce_thunk_arenas.push_back({base, base + size, base});
+    }
+    uint64_t InstallNceDynamicThunk(uint64_t pc, size_t max_bytes,
+                                    EmitNceThunkFn emit_fn, void * ctx) override;
     void EnableNceAtomicHandlers() override;
     void PatchRuntimeAtomics();
 

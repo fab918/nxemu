@@ -46,6 +46,10 @@ constexpr bool Pair(std::uint32_t i)
 {
     return (i & 0xffc00000u) == 0xad000000u;
 }
+constexpr bool IntPair(std::uint32_t i)
+{
+    return (i & 0x7fc00000u) == 0x29000000u;
+}
 constexpr bool Indexed(std::uint32_t i)
 {
     return (i & 0x3fe00c00u) == 0x3c200800u && (i >> 30) >= 2 && ((i >> 13) & 2);
@@ -60,12 +64,13 @@ constexpr unsigned Base(std::uint32_t i)
 }
 constexpr bool Eligible(std::uint32_t i)
 {
-    return Base(i) != 31 && (Cache(i) || Pair(i) || Indexed(i) || Floating(i) || (i & 0x3fc00000u) == 0x39000000u);
+    return Base(i) != 31 && (Cache(i) || Pair(i) || IntPair(i) || Indexed(i) || Floating(i) || (i & 0x3fc00000u) == 0x39000000u);
 }
 constexpr unsigned Scratch(std::uint32_t i)
 {
     unsigned r = 0;
     while (r == Base(i) || (!Floating(i) && !Cache(i) && r == (i & 31)) ||
+           (IntPair(i) && r == ((i >> 10) & 31)) ||
            (Indexed(i) && r == ((i >> 16) & 31)))
         ++r;
     return r;
@@ -73,15 +78,17 @@ constexpr unsigned Scratch(std::uint32_t i)
 constexpr unsigned Bytes(std::uint32_t i)
 {
     return Cache(i) ? 1 : Pair(i) ? 32
-                                  : 1u << (i >> 30);
+                        : IntPair(i) ? (8u << (i >> 31))
+                                     : 1u << (i >> 30);
 }
 constexpr std::int64_t Offset(std::uint32_t i)
 {
     if (Cache(i) || Indexed(i)) return 0;
-    if (Pair(i))
+    if (Pair(i) || IntPair(i))
     {
         const int n = (i >> 15) & 127;
-        return std::int64_t(n < 64 ? n : n - 128) * 16;
+        const int scale = Pair(i) ? 16 : (4 << (i >> 31));
+        return std::int64_t(n < 64 ? n : n - 128) * scale;
     }
     return ((i >> 10) & 4095) * Bytes(i);
 }
@@ -149,6 +156,15 @@ void Complete(Memory & memory, Registers & r, std::uint64_t & sp, std::uint64_t 
     {
         std::memcpy(payload, static_cast<const unsigned char *>(vectors) + 16 * rt, Pair(i) ? 16 : bytes);
         if (Pair(i)) std::memcpy(payload + 16, static_cast<const unsigned char *>(vectors) + 16 * ((i >> 10) & 31), 16);
+    }
+    else if (IntPair(i))
+    {
+        const unsigned elem = 4u << (i >> 31);
+        const unsigned rt2 = (i >> 10) & 31;
+        const std::uint64_t v1 = rt == 31 ? 0 : r[rt];
+        const std::uint64_t v2 = rt2 == 31 ? 0 : r[rt2];
+        std::memcpy(payload, &v1, elem);
+        std::memcpy(payload + elem, &v2, elem);
     }
     else
     {

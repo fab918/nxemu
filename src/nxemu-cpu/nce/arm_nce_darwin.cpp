@@ -25,6 +25,7 @@
 #include "arm_dynarmic.h"
 #include "nce/arm_nce.h"
 #include "nce/interpreter_visitor.h"
+#include "nce/patcher.h"
 #include "nce/read_thunk.h"
 #include "nce/store_thunk.h"
 #include "yuzu_common/literals.h"
@@ -90,6 +91,53 @@ void ProfileReadFault(u64 pc, bool write = false)
     }
     sites = {};
     reported = now;
+}
+
+uint64_t InstallOrEmitNceThunk(ArmNce & nce, u64 pc, bool is_write)
+{
+    IKernelProcess * process = nce.m_running_thread->GetOwnerProcess();
+    if (const u64 existing = process->InstallNceReadHandler(pc))
+    {
+        return existing;
+    }
+    static const bool enabled = std::getenv("NXEMU_NCE_NO_THUNKS") == nullptr;
+    if (!enabled) return 0;
+    const u64 atomic_table = process->GetPageTable().GetNceAtomicTable();
+    if (atomic_table == 0) return 0;
+    struct EmitCtx
+    {
+        u64 pc;
+        bool is_write;
+        u64 atomic_table;
+    } ctx{pc, is_write, atomic_table};
+    const auto emit = [](void * raw, uint64_t thunk_va,
+                         uint32_t * out_words, size_t max_words, size_t * out_word_count,
+                         NativeCodeEntry * out_restarts, size_t max_restarts,
+                         size_t * out_restart_count) -> bool {
+        const auto & c = *static_cast<const EmitCtx *>(raw);
+        const u32 insn = *reinterpret_cast<const u32 *>(c.pc);
+        const bool write = c.is_write || NCE::StoreThunk::Cache(insn);
+        if (write ? !NCE::StoreThunk::Eligible(insn) : !NCE::ReadThunk::Eligible(insn))
+        {
+            return false;
+        }
+        std::array<std::pair<u64, u64>, 64> pairs{};
+        size_t restart_count = 0;
+        const size_t cap = std::min<size_t>(max_restarts, pairs.size());
+        if (!NCE::Patcher::EmitDynamicThunk(c.pc, insn, write, thunk_va, c.atomic_table,
+                                            out_words, max_words, *out_word_count,
+                                            pairs.data(), cap, restart_count))
+        {
+            return false;
+        }
+        for (size_t i = 0; i < restart_count; ++i)
+        {
+            out_restarts[i] = {pairs[i].first, pairs[i].second};
+        }
+        *out_restart_count = restart_count;
+        return true;
+    };
+    return process->InstallNceDynamicThunk(pc, 256, emit, &ctx);
 }
 
 struct sigaction g_orig_enter_action;
@@ -400,7 +448,7 @@ bool ArmNce::HandleGuestFault(ArmNce & nce, int sig, siginfo_t * /*info*/, void 
                 // Data cache maintenance (DC CIVAC/CVAC/CVAU) does not modify memory.
                 // Never route it through NceTrackWrites/NceTrackReads or InvalidateNCE,
                 // which would open GPU-read-cached pages without downloading them.
-                if (nce.m_running_thread->GetOwnerProcess()->InstallNceReadHandler(mc->__ss.__pc))
+                if (InstallOrEmitNceThunk(nce, mc->__ss.__pc, /*is_write=*/true))
                 {
                     return true;
                 }
@@ -414,7 +462,7 @@ bool ArmNce::HandleGuestFault(ArmNce & nce, int sig, siginfo_t * /*info*/, void 
             }
         }
         if (esr.IsWrite() && !translated_atomic &&
-            nce.m_running_thread->GetOwnerProcess()->InstallNceReadHandler(mc->__ss.__pc))
+            InstallOrEmitNceThunk(nce, mc->__ss.__pc, /*is_write=*/true))
         {
             // Re-execute the published branch; restarting directly at its spill PC
             // would apply fault metadata before the spill has actually executed.
@@ -463,7 +511,7 @@ bool ArmNce::HandleGuestFault(ArmNce & nce, int sig, siginfo_t * /*info*/, void 
 
     if (!translated_atomic && !esr.IsWrite() && !esr.IsAlignment())
     {
-        if (nce.m_running_thread->GetOwnerProcess()->InstallNceReadHandler(mc->__ss.__pc))
+        if (InstallOrEmitNceThunk(nce, mc->__ss.__pc, /*is_write=*/false))
         {
             // Re-execute the newly patched branch directly (matching the store-thunk
             // path above), avoiding a redundant SIGTRAP via GetNceRestartPc(spill_pc).

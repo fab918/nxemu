@@ -155,54 +155,6 @@ bool Patcher::PatchText(const uint8_t * program_image, uint64_t image_size, uint
         }
     }
 
-    // Keep the basic X0 coverage in an independent budget. Additional sites are
-    // selected by static instruction frequency, to avoid filling the code budget
-    // with uncommon offsets before frequently repeated pointer loads are reached.
-    std::vector<bool> extra_reads(text_words.size());
-    if (read_thunks && atomic_table && (all_read_bases || float_reads))
-    {
-        std::unordered_map<u32, size_t> frequency;
-        std::vector<u32> candidates;
-        for (u32 i = ModuleCodeIndex; i < text_words.size(); ++i)
-        {
-            if (ReadThunk::Eligible(text_words[i]) && !ReadThunk::Basic(text_words[i]) &&
-                (ReadThunk::Floating(text_words[i]) ? float_reads : all_read_bases))
-            {
-                ++frequency[text_words[i]];
-                candidates.push_back(i);
-            }
-        }
-        std::stable_sort(candidates.begin(), candidates.end(), [&](u32 a, u32 b) {
-            return frequency.at(text_words[a]) > frequency.at(text_words[b]);
-        });
-        const size_t slots = (16_MiB - std::min(m_extra_read_bytes, size_t{16_MiB})) / MaxReadHandlerBytes;
-        for (size_t i = 0; i < std::min(slots, candidates.size()); ++i)
-            extra_reads[candidates[i]] = true;
-    }
-
-    std::vector<bool> extra_stores(text_words.size());
-    if (store_thunks && atomic_table)
-    {
-        std::unordered_map<u32, size_t> frequency;
-        std::vector<u32> candidates;
-        for (u32 i = ModuleCodeIndex; i < text_words.size(); ++i)
-        {
-            if (StoreThunk::Eligible(text_words[i]) && !StoreThunk::Cache(text_words[i]))
-            {
-                ++frequency[text_words[i]];
-                candidates.push_back(i);
-            }
-        }
-        std::stable_sort(candidates.begin(), candidates.end(), [&](u32 a, u32 b) {
-            return frequency.at(text_words[a]) > frequency.at(text_words[b]);
-        });
-        const size_t available = (8_MiB - std::min(m_store_bytes, size_t{8_MiB})) / 256;
-        for (size_t i = 0; i < std::min(available, candidates.size()); ++i)
-        {
-            extra_stores[candidates[i]] = true;
-        }
-    }
-
     // Windows are classified on first use: only those holding an exclusive pay for decoding.
     std::vector<s8> data_windows((text_words.size() + DataWindowWords - 1) / DataWindowWords, -1);
     const auto in_data = [&](size_t i) {
@@ -213,12 +165,11 @@ bool Patcher::PatchText(const uint8_t * program_image, uint64_t image_size, uint
     size_t skipped_svcs = 0, skipped_exclusives = 0;
 
 #if defined(__APPLE__)
-    // The dormant read and store thunks are written after every required patch, as far as
-    // the branch range allows. The original instruction remains the fallback.
+    // Keep cache-maintenance (DC CIVAC/CVAC/CVAU) thunks static (only a handful of sites
+    // in SDK modules), and reserve a compact runtime thunk arena in the patch section so
+    // any faulting eligible load or store in the entire binary gets a thunk on demand
+    // without burning tens of MiB on speculative static thunks.
     const auto write_thunks = [&] {
-        // Cache maintenance (DC CIVAC/CVAC/CVAU) loops live in SDK modules loaded after
-        // the main binary has exhausted the general store-thunk budget. Reserve their
-        // few handlers first so they execute natively without per-cache-line signals.
         if (store_thunks && atomic_table)
         {
             for (u32 i = ModuleCodeIndex; i < static_cast<u32>(text_words.size()); i++)
@@ -234,54 +185,24 @@ bool Patcher::PatchText(const uint8_t * program_image, uint64_t image_size, uint
                 }
             }
         }
-        // Write basic X0 read thunks and store thunks first so optional extra read thunks
-        // (all_read_bases / float_reads) can never starve them when patch_limit is tight.
-        for (u32 i = ModuleCodeIndex; i < static_cast<u32>(text_words.size()); i++)
+        if ((read_thunks || store_thunks) && atomic_table)
         {
-            const u32 inst = text_words[i];
-            if (read_thunks && atomic_table && ReadThunk::Basic(inst) &&
-                m_basic_read_bytes + MaxReadHandlerBytes <= 16_MiB)
-            {
-                if (c.offset() + MaxReadHandlerBytes > patch_limit)
-                {
-                    continue;
-                }
-                curr_patch->m_read_handlers.push_back({c.offset(), i * sizeof(u32)});
-                const size_t before = c.offset();
-                WriteReadHandler((i + 1) * sizeof(u32), inst);
-                ASSERT(c.offset() - before <= MaxReadHandlerBytes);
-                m_basic_read_bytes += c.offset() - before;
-            }
-            else if (store_thunks && atomic_table && extra_stores[i] &&
-                     c.offset() + 256 <= patch_limit)
-            {
-                curr_patch->m_read_handlers.push_back({c.offset(), i * sizeof(u32)});
-                const size_t before = c.offset();
-                WriteStoreHandler((i + 1) * sizeof(u32), inst);
-                ASSERT(c.offset() - before <= 256);
-                m_store_bytes += c.offset() - before;
-            }
-        }
-        if (read_thunks && atomic_table && (all_read_bases || float_reads))
-        {
-            for (u32 i = ModuleCodeIndex; i < static_cast<u32>(text_words.size()); i++)
-            {
-                if (!extra_reads[i])
-                {
-                    continue;
-                }
-                if (c.offset() + MaxReadHandlerBytes > patch_limit)
-                {
-                    break;
-                }
-                curr_patch->m_read_handlers.push_back({c.offset(), i * sizeof(u32)});
-                const size_t before = c.offset();
-                WriteReadHandler((i + 1) * sizeof(u32), text_words[i]);
-                ASSERT(c.offset() - before <= MaxReadHandlerBytes);
-                m_extra_read_bytes += c.offset() - before;
-            }
+            const size_t used = Common::AlignUp(static_cast<size_t>(c.offset()), 16);
+            const size_t avail =
+                patch_limit > used ? Common::AlignDown(patch_limit - used, NceHostPageSize) : 0;
+            const size_t desired = std::min<size_t>(2_MiB, avail);
+            m_dynamic_arena_size =
+                m_dynamic_arena_size == 0 ? desired : std::min(m_dynamic_arena_size, avail);
         }
     };
+    (void)all_read_bases;
+    (void)float_reads;
+#else
+    (void)patch_limit;
+    (void)read_thunks;
+    (void)all_read_bases;
+    (void)float_reads;
+    (void)store_thunks;
 #endif
 
     // Loop through instructions, patching as needed.
@@ -588,12 +509,24 @@ bool Patcher::RelocateModule(uint64_t text_base, uint64_t patch_base, uint8_t * 
     return true;
 }
 
-size_t Patcher::GetSectionSize() const noexcept
+size_t Patcher::GetDynamicArenaOffset() const noexcept
 {
-    return Common::AlignUp(m_patch_instructions.size() * sizeof(u32), NceHostPageSize);
+    return Common::AlignUp(m_patch_instructions.size() * sizeof(u32), 16);
 }
 
-void Patcher::WriteStoreHandler(ModuleDestLabel module_dest, u32 instruction)
+size_t Patcher::GetSectionSize() const noexcept
+{
+    return Common::AlignUp(GetDynamicArenaOffset() + m_dynamic_arena_size, NceHostPageSize);
+}
+
+namespace
+{
+template <typename BranchFn, typename WritePcFn>
+void EmitStoreThunkBody(oaknut::VectorCodeGenerator & c,
+                        std::vector<ptrdiff_t> & atomic_table_relocations,
+                        std::vector<std::pair<ptrdiff_t, ptrdiff_t>> & fault_restarts,
+                        BranchFn && emit_branch_to_next, WritePcFn && emit_write_original_pc,
+                        u32 instruction)
 {
     const unsigned scratch = StoreThunk::Scratch(instruction);
     const auto reg = oaknut::XReg{static_cast<int>(scratch)};
@@ -634,7 +567,7 @@ void Patcher::WriteStoreHandler(ModuleDestLabel module_dest, u32 instruction)
     address();
     c.LSR(reg, reg, 9);
     c.AND(reg, reg, (1ULL << 30) - 8);
-    m_atomic_table_relocations.push_back(c.offset());
+    atomic_table_relocations.push_back(c.offset());
     c.NOP();
     c.MOVK(reg, {0, oaknut::MovImm16Shift::SHL_32});
     c.MOVK(reg, {0, oaknut::MovImm16Shift::SHL_48});
@@ -668,7 +601,7 @@ void Patcher::WriteStoreHandler(ModuleDestLabel module_dest, u32 instruction)
     const ptrdiff_t store = c.offset();
     if (is_cache)
         c.dw((instruction & ~31u) | scratch);
-    else if (StoreThunk::Pair(instruction))
+    else if (StoreThunk::Pair(instruction) || StoreThunk::IntPair(instruction))
         c.dw((instruction & ~((127u << 15) | (31u << 5))) | (scratch << 5));
     else if (StoreThunk::Indexed(instruction))
         c.dw((instruction & ~(31u << 5)) | (scratch << 5));
@@ -676,7 +609,7 @@ void Patcher::WriteStoreHandler(ModuleDestLabel module_dest, u32 instruction)
         c.dw((instruction & ~((4095u << 10) | (31u << 5))) | (scratch << 5));
     const ptrdiff_t completed_restore = c.offset();
     c.LDR(reg, SP, POST_INDEXED, 16);
-    BranchToModule(module_dest);
+    emit_branch_to_next();
     ptrdiff_t prepare_restore = -1;
     if (!is_cache)
     {
@@ -684,7 +617,7 @@ void Patcher::WriteStoreHandler(ModuleDestLabel module_dest, u32 instruction)
         prepare_restore = c.offset();
         c.LDR(reg, SP, POST_INDEXED, 16);
         c.BRK(static_cast<u32>(StoreThunk::Trap::Prepare));
-        WriteModulePc(module_dest - 4);
+        emit_write_original_pc();
         c.dw(instruction);
     }
     c.l(fallback);
@@ -692,55 +625,76 @@ void Patcher::WriteStoreHandler(ModuleDestLabel module_dest, u32 instruction)
     c.LDR(reg, SP, POST_INDEXED, 16);
     const ptrdiff_t plain = c.offset();
     c.BRK(static_cast<u32>(StoreThunk::Trap::Plain));
-    WriteModulePc(module_dest - 4);
+    emit_write_original_pc();
     c.dw(instruction);
     const ptrdiff_t spilled = c.offset();
     c.BRK(static_cast<u32>(StoreThunk::Trap::Spilled));
-    WriteModulePc(module_dest - 4);
+    emit_write_original_pc();
     c.dw(instruction);
     const ptrdiff_t done = c.offset();
     c.BRK(static_cast<u32>(StoreThunk::Trap::Completed));
-    WriteModulePc(module_dest - 4);
+    emit_write_original_pc();
     c.dw(instruction);
-    m_fault_restarts.emplace_back(spill, plain);
+    fault_restarts.emplace_back(spill, plain);
     // Cover every instruction from LDAR through the store so a preemption signal
     // cannot resume later with a stale canonical pointer after FlushNceWrites/MergeNceReadback.
     for (ptrdiff_t pc = post_ldar; pc <= store; pc += sizeof(u32))
     {
-        m_fault_restarts.emplace_back(pc, spilled);
+        fault_restarts.emplace_back(pc, spilled);
     }
-    if (prepare_restore >= 0) m_fault_restarts.emplace_back(prepare_restore, spilled);
-    m_fault_restarts.emplace_back(fallback_restore, spilled);
-    m_fault_restarts.emplace_back(completed_restore, done);
+    if (prepare_restore >= 0) fault_restarts.emplace_back(prepare_restore, spilled);
+    fault_restarts.emplace_back(fallback_restore, spilled);
+    fault_restarts.emplace_back(completed_restore, done);
 }
 
-void Patcher::WriteReadHandler(ModuleDestLabel module_dest, u32 instruction)
+template <typename BranchFn, typename WritePcFn>
+void EmitReadThunkBody(oaknut::VectorCodeGenerator & c,
+                       std::vector<ptrdiff_t> & atomic_table_relocations,
+                       std::vector<std::pair<ptrdiff_t, ptrdiff_t>> & fault_restarts,
+                       BranchFn && emit_branch_to_next, WritePcFn && emit_write_original_pc,
+                       u32 instruction)
 {
     const unsigned rt = instruction & 31;
     const unsigned rn = (instruction >> 5) & 31;
     const unsigned scratch = ReadThunk::Scratch(instruction);
     const auto base = oaknut::XReg{static_cast<int>(rn)};
-    const unsigned size_log2 = instruction >> 30;
-    const u32 offset = ((instruction >> 10) & 0xfff) << size_log2;
+    const auto offset = ReadThunk::Offset(instruction);
     const auto reg = oaknut::XReg{static_cast<int>(scratch)};
     oaknut::Label slow_restore;
     const auto address = [&] {
-        c.ADD(reg, base, offset & 0xfff);
-        if (offset >> 12) c.ADD(reg, reg, (offset >> 12) << 12);
+        if (ReadThunk::Indexed(instruction))
+        {
+            const unsigned shift = (instruction & (1u << 12)) ? (instruction >> 30) : 0;
+            c.dw(0x8b200000u | (instruction & (31u << 16)) | (instruction & (7u << 13)) |
+                 (shift << 10) | (rn << 5) | scratch);
+        }
+        else if (offset < 0)
+            c.SUB(reg, base, static_cast<u32>(-offset));
+        else if (offset == 0)
+            c.MOV(reg, base);
+        else
+        {
+            c.ADD(reg, base, static_cast<u32>(offset) & 0xfff);
+            if (offset >> 12) c.ADD(reg, reg, static_cast<u32>(offset >> 12) << 12);
+        }
     };
     const ptrdiff_t spill_pc = c.offset();
     c.STR(reg, SP, PRE_INDEXED, -16);
     address();
-    // Aligned scalar accesses cannot cross a 4 KiB page. Unaligned loads use
-    // the byte-wise slow path, including split pages and address wraparound.
-    for (unsigned bit = 0; bit < size_log2; ++bit)
-        c.TBNZ(reg, bit, slow_restore);
+    // Stay native unless the load crosses a 4 KiB guest page boundary.
+    if (const unsigned bytes = ReadThunk::Bytes(instruction); bytes > 1)
+    {
+        c.AND(reg, reg, 0xfff);
+        c.ADD(reg, reg, bytes - 1);
+        c.TBNZ(reg, 12, slow_restore);
+        address();
+    }
     c.LSR(reg, reg, 39);
     c.CBNZ(reg, slow_restore);
     address();
     c.LSR(reg, reg, 9);
     c.AND(reg, reg, (1ULL << 30) - 8);
-    m_atomic_table_relocations.push_back(c.offset());
+    atomic_table_relocations.push_back(c.offset());
     c.NOP();
     c.MOVK(reg, {0, oaknut::MovImm16Shift::SHL_32});
     c.MOVK(reg, {0, oaknut::MovImm16Shift::SHL_48});
@@ -749,44 +703,157 @@ void Patcher::WriteReadHandler(ModuleDestLabel module_dest, u32 instruction)
     c.TBZ(reg, 0, slow_restore);
     c.AND(reg, reg, ~0xfffULL);
     c.ADD(reg, reg, base);
-    if (offset & 0xfff) c.ADD(reg, reg, offset & 0xfff);
-    if (offset >> 12) c.ADD(reg, reg, (offset >> 12) << 12);
+    if (!ReadThunk::Indexed(instruction))
+    {
+        if (offset < 0)
+            c.SUB(reg, reg, static_cast<u32>(-offset));
+        else if (offset > 0)
+        {
+            if (offset & 0xfff) c.ADD(reg, reg, static_cast<u32>(offset) & 0xfff);
+            if (offset >> 12) c.ADD(reg, reg, static_cast<u32>(offset >> 12) << 12);
+        }
+    }
     const ptrdiff_t load_pc = c.offset();
-    c.dw((instruction & ~((0xfffu << 10) | (31u << 5))) | (scratch << 5));
+    if (ReadThunk::IntPair(instruction))
+        c.dw((instruction & ~((127u << 15) | (31u << 5))) | (scratch << 5));
+    else if (ReadThunk::Indexed(instruction))
+        c.dw((instruction & ~(31u << 5)) | (scratch << 5));
+    else if (ReadThunk::Unscaled(instruction))
+        c.dw((instruction & ~((0x1ffu << 12) | (31u << 5))) | (scratch << 5));
+    else
+        c.dw((instruction & ~((0xfffu << 10) | (31u << 5))) | (scratch << 5));
     const ptrdiff_t fast_restore_pc = c.offset();
-    const bool restore_scratch = ReadThunk::Floating(instruction) || scratch != rt;
+    const bool restore_scratch =
+        ReadThunk::Floating(instruction) || ReadThunk::IntPair(instruction) || scratch != rt;
     if (!restore_scratch)
         c.ADD(SP, SP, 16);
     else
         c.LDR(reg, SP, POST_INDEXED, 16);
-    BranchToModule(module_dest);
+    emit_branch_to_next();
     c.l(slow_restore);
     const ptrdiff_t restore_pc = c.offset();
     c.LDR(reg, SP, POST_INDEXED, 16);
     const ptrdiff_t plain_pc = c.offset();
     c.BRK(ReadThunk::PlainTrap);
-    WriteModulePc(module_dest - 4);
+    emit_write_original_pc();
     c.dw(instruction);
     const ptrdiff_t spilled_pc = c.offset();
     c.BRK(ReadThunk::SpilledTrap);
-    WriteModulePc(module_dest - 4);
+    emit_write_original_pc();
     c.dw(instruction);
     if (restore_scratch)
     {
         const ptrdiff_t completed_pc = c.offset();
         c.BRK(ReadThunk::CompletedTrap);
-        WriteModulePc(module_dest - 4);
+        emit_write_original_pc();
         c.dw(instruction);
-        m_fault_restarts.emplace_back(fast_restore_pc, completed_pc);
+        fault_restarts.emplace_back(fast_restore_pc, completed_pc);
     }
     // A spill can itself hit a protected neighbour or a stack guard. Do not
     // treat its address as the guest load, nor leave a temporary SP/register behind.
-    m_fault_restarts.emplace_back(spill_pc, plain_pc);
+    fault_restarts.emplace_back(spill_pc, plain_pc);
     for (ptrdiff_t pc = post_ldar_pc; pc <= load_pc; pc += sizeof(u32))
     {
-        m_fault_restarts.emplace_back(pc, spilled_pc);
+        fault_restarts.emplace_back(pc, spilled_pc);
     }
-    m_fault_restarts.emplace_back(restore_pc, spilled_pc);
+    fault_restarts.emplace_back(restore_pc, spilled_pc);
+}
+} // namespace
+
+void Patcher::WriteStoreHandler(ModuleDestLabel module_dest, u32 instruction)
+{
+    EmitStoreThunkBody(
+        c, m_atomic_table_relocations, m_fault_restarts,
+        [&] { BranchToModule(module_dest); },
+        [&] { WriteModulePc(module_dest - 4); }, instruction);
+}
+
+void Patcher::WriteReadHandler(ModuleDestLabel module_dest, u32 instruction)
+{
+    EmitReadThunkBody(
+        c, m_atomic_table_relocations, m_fault_restarts,
+        [&] { BranchToModule(module_dest); },
+        [&] { WriteModulePc(module_dest - 4); }, instruction);
+}
+
+bool Patcher::EmitDynamicThunk(u64 original_pc, u32 instruction, bool is_write,
+                               u64 thunk_va, u64 atomic_table,
+                               u32 * out_words, size_t max_words, size_t & out_word_count,
+                               std::pair<u64, u64> * out_restarts, size_t max_restarts,
+                               size_t & out_restart_count)
+{
+    if (atomic_table == 0 || (atomic_table & ((1ULL << 30) - 1)) != 0 ||
+        out_words == nullptr || out_restarts == nullptr)
+    {
+        return false;
+    }
+    if (is_write ? !StoreThunk::Eligible(instruction) : !ReadThunk::Eligible(instruction))
+    {
+        return false;
+    }
+    std::vector<u32> words;
+    words.reserve(64);
+    oaknut::VectorCodeGenerator gen{words};
+    std::vector<ptrdiff_t> atomic_relocs;
+    std::vector<std::pair<ptrdiff_t, ptrdiff_t>> restarts;
+    ptrdiff_t branch_offset = -1;
+    std::vector<ptrdiff_t> pc_offsets;
+    const auto emit_branch = [&] {
+        branch_offset = gen.offset();
+        gen.dw(0);
+    };
+    const auto emit_pc = [&] {
+        pc_offsets.push_back(gen.offset());
+        gen.dx(0);
+    };
+    if (is_write)
+        EmitStoreThunkBody(gen, atomic_relocs, restarts, emit_branch, emit_pc, instruction);
+    else
+        EmitReadThunkBody(gen, atomic_relocs, restarts, emit_branch, emit_pc, instruction);
+
+    if (branch_offset < 0 || words.size() > max_words || restarts.size() > max_restarts)
+    {
+        return false;
+    }
+    const auto branch_fits = [](u64 src, u64 dst) {
+        const s64 d = static_cast<s64>(dst) - static_cast<s64>(src);
+        return d >= -(1LL << 27) && d < (1LL << 27) && (d & 3) == 0;
+    };
+    if (!branch_fits(original_pc, thunk_va) ||
+        !branch_fits(thunk_va + static_cast<u64>(branch_offset), original_pc + 4))
+    {
+        return false;
+    }
+    {
+        oaknut::CodeGenerator rc{words.data() + branch_offset / sizeof(u32)};
+        rc.B(static_cast<s64>(original_pc + 4) - static_cast<s64>(thunk_va + branch_offset));
+    }
+    for (const ptrdiff_t off : pc_offsets)
+    {
+        oaknut::CodeGenerator rc{words.data() + off / sizeof(u32)};
+        rc.dx(original_pc);
+    }
+    for (const ptrdiff_t off : atomic_relocs)
+    {
+        u32 * slot = words.data() + off / sizeof(u32);
+        const auto reg = oaknut::XReg{static_cast<int>(slot[1] & 31)};
+        oaknut::CodeGenerator rc{slot};
+        if (atomic_table & 0xc0000000ULL)
+            rc.ORR(reg, reg, atomic_table & 0xc0000000ULL);
+        else
+            rc.NOP();
+        rc.MOVK(reg, {static_cast<u16>(atomic_table >> 32), oaknut::MovImm16Shift::SHL_32});
+        rc.MOVK(reg, {static_cast<u16>(atomic_table >> 48), oaknut::MovImm16Shift::SHL_48});
+    }
+    std::memcpy(out_words, words.data(), words.size() * sizeof(u32));
+    out_word_count = words.size();
+    for (size_t i = 0; i < restarts.size(); ++i)
+    {
+        out_restarts[i] = {thunk_va + static_cast<u64>(restarts[i].first),
+                           thunk_va + static_cast<u64>(restarts[i].second)};
+    }
+    out_restart_count = restarts.size();
+    return true;
 }
 
 void Patcher::WriteExclusiveHandler(ModuleDestLabel module_dest, u32 instruction, u64 table)

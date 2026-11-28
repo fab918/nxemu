@@ -1,5 +1,6 @@
 #pragma once
 #include "base.h"
+#include <stddef.h>
 #include <stdint.h>
 
 enum class CpuBackend : uint32_t
@@ -157,6 +158,8 @@ nxinterface IKProcessPageTable
     virtual uint64_t GetNceAtomicTable() const = 0;
 };
 
+struct NativeCodeEntry;
+
 nxinterface IKernelProcess
 {
     virtual IKProcessPageTable & GetPageTable() = 0;
@@ -174,6 +177,13 @@ nxinterface IKernelProcess
     virtual void EnableNceAtomicHandlers() = 0;
     virtual void RegisterNceReadHandler(uint64_t pc, uint64_t handler) {}
     virtual uint64_t InstallNceReadHandler(uint64_t pc) { return 0; }
+    virtual void RegisterNceThunkArena(uint64_t base, uint64_t size) {}
+    using EmitNceThunkFn = bool (*)(void * ctx, uint64_t thunk_va,
+                                    uint32_t * out_words, size_t max_words, size_t * out_word_count,
+                                    NativeCodeEntry * out_restarts, size_t max_restarts,
+                                    size_t * out_restart_count);
+    virtual uint64_t InstallNceDynamicThunk(uint64_t pc, size_t max_bytes,
+                                            EmitNceThunkFn emit_fn, void * ctx) { return 0; }
 };
 
 struct NativeExecutionParameters
