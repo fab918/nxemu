@@ -1313,23 +1313,25 @@ void BufferCache<P>::BindHostIndexBuffer() {
         // render pass, a full attachment store and reload on tilers, and quad-heavy titles
         // (Fast RMX) issue ~150 such draws a frame. Expand indices only the CPU wrote on the
         // host instead. The pass reads `count` indices from the start of the binding.
-        constexpr u32 HOST_QUAD_LIMIT = static_cast<u32>(256_KiB);
+        constexpr u64 HOST_QUAD_LIMIT = static_cast<u64>(256_KiB);
         const bool is_quads = draw_state.topology == Maxwell::PrimitiveTopology::Quads;
         const bool is_strip = draw_state.topology == Maxwell::PrimitiveTopology::QuadStrip;
         const u32 count = draw_state.index_buffer.count;
-        const u32 quad_bytes = count * draw_state.index_buffer.FormatSizeInBytes();
+        const u64 quad_bytes_64 = u64{count} * u64{draw_state.index_buffer.FormatSizeInBytes()};
         const DAddr address = channel_state->index_buffer.device_addr;
         if ((is_quads || is_strip) && count >= 4 && !current_draw_indirect &&
-            draw_state.inline_index_draw_indexes.empty() && quad_bytes <= size &&
-            quad_bytes <= HOST_QUAD_LIMIT &&
-            !memory_tracker.IsRegionGpuModified(address, quad_bytes) &&
-            !IsRegionGpuModified(address, quad_bytes)) {
-            host_quad_indices.resize_destructive(quad_bytes);
-            device_memory.ReadBlockUnsafe(address, host_quad_indices.data(), quad_bytes);
-            runtime.BindHostQuadIndexBuffer(
-                std::span<const u8>(host_quad_indices.data(), quad_bytes),
-                draw_state.index_buffer.format, draw_state.index_buffer.first, count, is_strip);
-            return;
+            draw_state.inline_index_draw_indexes.empty() && quad_bytes_64 <= u64{size} &&
+            quad_bytes_64 <= HOST_QUAD_LIMIT) {
+            const u32 quad_bytes = static_cast<u32>(quad_bytes_64);
+            if (!memory_tracker.IsRegionGpuModified(address, quad_bytes) &&
+                !IsRegionGpuModified(address, quad_bytes)) {
+                host_quad_indices.resize_destructive(quad_bytes);
+                device_memory.ReadBlockUnsafe(address, host_quad_indices.data(), quad_bytes);
+                runtime.BindHostQuadIndexBuffer(
+                    std::span<const u8>(host_quad_indices.data(), quad_bytes),
+                    draw_state.index_buffer.format, draw_state.index_buffer.first, count, is_strip);
+                return;
+            }
         }
     }
     if constexpr (requires { runtime.BindHostUint8IndexBuffer(std::span<const u8>{}, u32{}, bool{}); }) {
@@ -2756,8 +2758,8 @@ void BufferCache<P>::DownloadBufferMemory(Buffer& buffer, DAddr device_addr, u64
                     const u8* const src_base = buffer.Mapped();
                     for (const BufferCopy& copy : copies) {
                         const DAddr copy_device_addr = buffer.CpuAddr() + copy.src_offset;
-                        device_memory.WriteBlockUnsafe(copy_device_addr,
-                                                       src_base + copy.src_offset, copy.size);
+                        device_memory.WriteBlockForGpuReadback(
+                            copy_device_addr, src_base + copy.src_offset, copy.size);
                     }
                     return;
                 }

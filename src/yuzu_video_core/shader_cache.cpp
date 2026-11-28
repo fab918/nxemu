@@ -148,14 +148,8 @@ void ShaderCache::Register(std::unique_ptr<ShaderInfo> data, VAddr addr, size_t 
     std::scoped_lock lock{invalidation_mutex, lookup_mutex};
 
     const VAddr addr_end = addr + size;
-    // Before the entry is visible, so an invalidation never skips its pages
-    device_memory.RegisterFlushCacheRegion(addr, size, VideoCommon::CacheType::ShaderCache);
-    Entry* const entry = NewEntry(addr, addr_end, data.get());
-
-    const u64 page_end = (addr_end + YUZU_PAGESIZE - 1) >> YUZU_PAGEBITS;
-    for (u64 page = addr >> YUZU_PAGEBITS; page < page_end; ++page) {
-        invalidation_cache[page].push_back(entry);
-    }
+    // Publish coarse region bits before registering the range with device_memory so any
+    // concurrent invalidation observes MayContainShaders() == true and waits on invalidation_mutex.
     if (size != 0) {
         const u64 first_bucket = addr >> SHADER_REGION_BITS;
         const u64 last_bucket = (addr_end - 1) >> SHADER_REGION_BITS;
@@ -164,6 +158,14 @@ void ShaderCache::Register(std::unique_ptr<ShaderInfo> data, VAddr addr, size_t 
             registered_regions[idx >> 6].fetch_or(u64{1} << (idx & 63),
                                                   std::memory_order_release);
         }
+    }
+    // Before the entry is visible, so an invalidation never skips its pages
+    device_memory.RegisterFlushCacheRegion(addr, size, VideoCommon::CacheType::ShaderCache);
+    Entry* const entry = NewEntry(addr, addr_end, data.get());
+
+    const u64 page_end = (addr_end + YUZU_PAGESIZE - 1) >> YUZU_PAGEBITS;
+    for (u64 page = addr >> YUZU_PAGEBITS; page < page_end; ++page) {
+        invalidation_cache[page].push_back(entry);
     }
 
     storage.push_back(std::move(data));
