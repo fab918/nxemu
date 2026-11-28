@@ -1000,11 +1000,10 @@ void EmitContext::DefineAttributeMemAccess(const Info& info) {
 }
 
 void EmitContext::DefineWriteStorageCasLoopFunction(const Info& info) {
-    if (profile.support_int8 && profile.support_int16 && profile.support_descriptor_aliasing) {
-        return;
-    }
-    if (!info.uses_int8 && !info.uses_int16 &&
-        False(info.used_storage_buffer_types & (IR::Type::U8 | IR::Type::U16))) {
+    const bool native_8bit = profile.SupportsNativeStorage8Bit();
+    const bool native_16bit = profile.SupportsNativeStorage16Bit();
+    if ((native_8bit || !True(info.used_storage_buffer_types & IR::Type::U8)) &&
+        (native_16bit || !True(info.used_storage_buffer_types & IR::Type::U16))) {
         return;
     }
     if (info.storage_buffers_descriptors.empty() || !Sirit::ValidId(storage_types.U32.array)) {
@@ -1729,13 +1728,18 @@ void EmitContext::DefineStorageBuffers(const Info& info, u32& binding) {
     if (atomic64_add_reduction_buffers.any()) {
         used_types |= IR::Type::U32;
     }
-    if (profile.support_int8 && True(used_types & IR::Type::U8)) {
+    // Narrow accesses emulated with 32-bit loads/CAS need a U32 descriptor alias.
+    if ((!profile.SupportsNativeStorage8Bit() && True(used_types & IR::Type::U8)) ||
+        (!profile.SupportsNativeStorage16Bit() && True(used_types & IR::Type::U16))) {
+        used_types |= IR::Type::U32;
+    }
+    if (profile.SupportsNativeStorage8Bit() && True(used_types & IR::Type::U8)) {
         DefineSsbos(*this, storage_types.U8, &StorageDefinitions::U8, info, binding, U8,
                     sizeof(u8));
         DefineSsbos(*this, storage_types.S8, &StorageDefinitions::S8, info, binding, S8,
                     sizeof(u8));
     }
-    if (profile.support_int16 && True(used_types & IR::Type::U16)) {
+    if (profile.SupportsNativeStorage16Bit() && True(used_types & IR::Type::U16)) {
         DefineSsbos(*this, storage_types.U16, &StorageDefinitions::U16, info, binding, U16,
                     sizeof(u16));
         DefineSsbos(*this, storage_types.S16, &StorageDefinitions::S16, info, binding, S16,

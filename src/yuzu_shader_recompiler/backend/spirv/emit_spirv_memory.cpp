@@ -135,7 +135,7 @@ void EmitWriteGlobal128(EmitContext& ctx, Id address, Id value) {
 }
 
 Id EmitLoadStorageU8(EmitContext& ctx, const IR::Value& binding, const IR::Value& offset) {
-    if (ctx.profile.support_int8 && ctx.profile.support_descriptor_aliasing) {
+    if (ctx.profile.SupportsNativeStorage8Bit()) {
         return ctx.OpUConvert(ctx.U32[1],
                               LoadStorage(ctx, binding, offset, ctx.U8, ctx.storage_types.U8,
                                           sizeof(u8), &StorageDefinitions::U8));
@@ -146,7 +146,7 @@ Id EmitLoadStorageU8(EmitContext& ctx, const IR::Value& binding, const IR::Value
 }
 
 Id EmitLoadStorageS8(EmitContext& ctx, const IR::Value& binding, const IR::Value& offset) {
-    if (ctx.profile.support_int8 && ctx.profile.support_descriptor_aliasing) {
+    if (ctx.profile.SupportsNativeStorage8Bit()) {
         return ctx.OpSConvert(ctx.U32[1],
                               LoadStorage(ctx, binding, offset, ctx.S8, ctx.storage_types.S8,
                                           sizeof(s8), &StorageDefinitions::S8));
@@ -157,7 +157,7 @@ Id EmitLoadStorageS8(EmitContext& ctx, const IR::Value& binding, const IR::Value
 }
 
 Id EmitLoadStorageU16(EmitContext& ctx, const IR::Value& binding, const IR::Value& offset) {
-    if (ctx.profile.support_int16 && ctx.profile.support_descriptor_aliasing) {
+    if (ctx.profile.SupportsNativeStorage16Bit()) {
         return ctx.OpUConvert(ctx.U32[1],
                               LoadStorage(ctx, binding, offset, ctx.U16, ctx.storage_types.U16,
                                           sizeof(u16), &StorageDefinitions::U16));
@@ -168,7 +168,7 @@ Id EmitLoadStorageU16(EmitContext& ctx, const IR::Value& binding, const IR::Valu
 }
 
 Id EmitLoadStorageS16(EmitContext& ctx, const IR::Value& binding, const IR::Value& offset) {
-    if (ctx.profile.support_int16 && ctx.profile.support_descriptor_aliasing) {
+    if (ctx.profile.SupportsNativeStorage16Bit()) {
         return ctx.OpSConvert(ctx.U32[1],
                               LoadStorage(ctx, binding, offset, ctx.S16, ctx.storage_types.S16,
                                           sizeof(s16), &StorageDefinitions::S16));
@@ -206,7 +206,7 @@ Id EmitLoadStorage128(EmitContext& ctx, const IR::Value& binding, const IR::Valu
 
 void EmitWriteStorageU8(EmitContext& ctx, const IR::Value& binding, const IR::Value& offset,
                         Id value) {
-    if (ctx.profile.support_int8 && ctx.profile.support_descriptor_aliasing) {
+    if (ctx.profile.SupportsNativeStorage8Bit()) {
         WriteStorage(ctx, binding, offset, ctx.OpSConvert(ctx.U8, value), ctx.storage_types.U8,
                      sizeof(u8), &StorageDefinitions::U8);
     } else {
@@ -216,7 +216,7 @@ void EmitWriteStorageU8(EmitContext& ctx, const IR::Value& binding, const IR::Va
 
 void EmitWriteStorageS8(EmitContext& ctx, const IR::Value& binding, const IR::Value& offset,
                         Id value) {
-    if (ctx.profile.support_int8 && ctx.profile.support_descriptor_aliasing) {
+    if (ctx.profile.SupportsNativeStorage8Bit()) {
         WriteStorage(ctx, binding, offset, ctx.OpSConvert(ctx.S8, value), ctx.storage_types.S8,
                      sizeof(s8), &StorageDefinitions::S8);
     } else {
@@ -226,7 +226,7 @@ void EmitWriteStorageS8(EmitContext& ctx, const IR::Value& binding, const IR::Va
 
 void EmitWriteStorageU16(EmitContext& ctx, const IR::Value& binding, const IR::Value& offset,
                          Id value) {
-    if (ctx.profile.support_int16 && ctx.profile.support_descriptor_aliasing) {
+    if (ctx.profile.SupportsNativeStorage16Bit()) {
         WriteStorage(ctx, binding, offset, ctx.OpSConvert(ctx.U16, value), ctx.storage_types.U16,
                      sizeof(u16), &StorageDefinitions::U16);
     } else {
@@ -236,7 +236,7 @@ void EmitWriteStorageU16(EmitContext& ctx, const IR::Value& binding, const IR::V
 
 void EmitWriteStorageS16(EmitContext& ctx, const IR::Value& binding, const IR::Value& offset,
                          Id value) {
-    if (ctx.profile.support_int16 && ctx.profile.support_descriptor_aliasing) {
+    if (ctx.profile.SupportsNativeStorage16Bit()) {
         WriteStorage(ctx, binding, offset, ctx.OpSConvert(ctx.S16, value), ctx.storage_types.S16,
                      sizeof(s16), &StorageDefinitions::S16);
     } else {
