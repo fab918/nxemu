@@ -695,6 +695,7 @@ void DeviceMemoryManager<Traits>::WriteBlockForGpuReadback(DAddr address,
     MarkEngineWrittenAliases(address, size);
     const bool coalesce = size >= 96 * 1024 * 1024;
     Common::CoalescedMemoryCopy copies;
+#if defined(__APPLE__)
     // A process can hold CPU stores to these pages the caches do not know yet; it merges them.
     DAddr cursor = address;
     IMemory* memory = nullptr;
@@ -746,6 +747,25 @@ void DeviceMemoryManager<Traits>::WriteBlockForGpuReadback(DAddr address,
             src_pointer = static_cast<const u8*>(src_pointer) + copy_amount;
             cursor += copy_amount;
         });
+#else
+    // Non-Apple platforms do not hold deferred NCE CPU stores in guest RAM; avoid walking
+    // CPU backing pages or calling Memory::WriteGpuReadback (which always returns false).
+    WalkBlock(address, size, [&](size_t, DAddr current_vaddr)
+        {
+            copies.Flush();
+            LOG_ERROR(HW_Memory, "Unmapped Device WriteBlock @ 0x{:016X} (start address = 0x{:016X}, size = {})", current_vaddr, address, size);
+        },
+        [&](size_t copy_amount, u8* const dst_ptr)
+        {
+            const u8* const src = static_cast<const u8*>(src_pointer);
+            if (coalesce) copies.Append(dst_ptr, src, copy_amount);
+            else Common::CopyChangedMemoryForReadback(dst_ptr, src, copy_amount);
+        },
+        [&](const std::size_t copy_amount)
+        {
+            src_pointer = static_cast<const u8*>(src_pointer) + copy_amount;
+        });
+#endif
     copies.Flush();
 }
 
@@ -763,9 +783,10 @@ bool DeviceMemoryManager<Traits>::TryRunInPlaceGpuReadback(DAddr address, size_t
     if (NextContinuityBoundary(first_page + 1, last_page + 1) != last_page + 1) return false;
     u8* const dst_ptr = GetPointer<u8>(address);
     if (dst_ptr == nullptr) return false;
+    const uintptr_t expected_host_base = reinterpret_cast<uintptr_t>(dst_ptr);
+#if defined(__APPLE__)
     const auto [asid0, backing0] = ExtractCPUBacking(first_page);
     const VAddr vaddr_base = Common::AlignDown(backing0, DEVICE_PAGESIZE) + (address & DEVICE_PAGEMASK);
-    const uintptr_t expected_host_base = reinterpret_cast<uintptr_t>(dst_ptr);
     for (size_t page = first_page + 1; page <= last_page; ++page)
     {
         const DAddr page_addr = static_cast<DAddr>(page) << DEVICE_PAGEBITS;
@@ -791,16 +812,46 @@ bool DeviceMemoryManager<Traits>::TryRunInPlaceGpuReadback(DAddr address, size_t
     }
     if (backing0 == 0)
     {
+        MarkEngineWrittenAliases(address, size);
         fn(dst_ptr, size, user);
         return true;
     }
     IMemory* const memory = GetRegisteredProcess(asid0);
     if (memory == nullptr)
     {
+        MarkEngineWrittenAliases(address, size);
         fn(dst_ptr, size, user);
         return true;
     }
-    return memory->TryRunInPlaceGpuReadback(vaddr_base, dst_ptr, size, fn, user);
+    struct RunCtx
+    {
+        DeviceMemoryManager* self;
+        DAddr address;
+        size_t size;
+        void (*fn)(u8*, u64, void*);
+        void* user;
+    };
+    RunCtx run_ctx{this, address, size, fn, user};
+    const auto run_cb = [](u8* dst, u64 bytes, void* ctx_ptr) {
+        const auto& c = *static_cast<const RunCtx*>(ctx_ptr);
+        c.self->MarkEngineWrittenAliases(c.address, c.size);
+        c.fn(dst, bytes, c.user);
+    };
+    return memory->TryRunInPlaceGpuReadback(vaddr_base, dst_ptr, size, run_cb, &run_ctx);
+#else
+    for (size_t page = first_page + 1; page <= last_page; ++page)
+    {
+        const DAddr page_addr = static_cast<DAddr>(page) << DEVICE_PAGEBITS;
+        u8* const ptr = GetPointer<u8>(page_addr);
+        if (reinterpret_cast<uintptr_t>(ptr) != expected_host_base + (page_addr - address))
+        {
+            return false;
+        }
+    }
+    MarkEngineWrittenAliases(address, size);
+    fn(dst_ptr, size, user);
+    return true;
+#endif
 }
 
 template <typename Traits>

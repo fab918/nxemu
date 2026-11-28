@@ -2332,24 +2332,25 @@ struct Memory::Impl
                     buffer->ProtectAccess(va, YUZU_PAGESIZE, Common::MemoryPermission::Read);
                     dirty_open_vaddrs.push_back(va);
                 }
-                refs.push_back(nce_written.at(va).copy->data() + chunk_off);
+                refs.push_back(nce_written.at(va).copy->data());
                 ++it_w;
             }
             while (it_f != nce_flushing_by_phys.end() && it_f->first == phys_page)
             {
-                refs.push_back(nce_flushing.at(it_f->second).copy->data() + chunk_off);
+                refs.push_back(nce_flushing.at(it_f->second).copy->data());
                 ++it_f;
             }
             u8 * const dst_chunk = dst + (cursor - base);
+            u8 * const page_dst = dst_chunk - chunk_off;
             const u8 * const src_chunk = src + (cursor - base);
             if (refs.size() == 1)
             {
-                MergeNceReadbackBytes(refs[0], dst_chunk, src_chunk, chunk_size);
+                Core::MergeNceReadbackWords(refs[0], page_dst, chunk_off, src_chunk, chunk_size);
             }
             else if (refs.size() > 1)
             {
-                MergeNceReadbackBytesMulti(refs.data(), refs.size(), dst_chunk, src_chunk,
-                                           chunk_size);
+                Core::MergeNceReadbackWordsMulti(refs.data(), refs.size(), page_dst, chunk_off,
+                                                 src_chunk, chunk_size);
             }
             else
             {
@@ -2362,103 +2363,6 @@ struct Memory::Impl
             cursor = page_end;
         }
         return true;
-    }
-
-    // Bytes still equal to the snapshot were not stored by the CPU: they take the GPU data, in
-    // the snapshot too. The others keep the CPU store, which the next flush reports.
-    static void MergeNceReadbackBytes(u8 * reference, u8 * dst, const u8 * src, u64 size)
-    {
-        // Fast path: unmodified 16 KiB neighbor page -> bulk copy.
-        if (std::memcmp(dst, reference, size) == 0)
-        {
-            std::memcpy(dst, src, size);
-            std::memcpy(reference, src, size);
-            return;
-        }
-        u64 i = 0;
-#if defined(__aarch64__)
-        for (; i + 16 <= size; i += 16)
-        {
-            const uint8x16_t d = vld1q_u8(dst + i);
-            const uint8x16_t r = vld1q_u8(reference + i);
-            const uint8x16_t s = vld1q_u8(src + i);
-            const uint8x16_t eq = vceqq_u8(d, r);
-            vst1q_u8(dst + i, vbslq_u8(eq, s, d));
-            vst1q_u8(reference + i, vbslq_u8(eq, s, r));
-        }
-#endif
-        for (; i < size; ++i)
-        {
-            if (dst[i] == reference[i])
-            {
-                dst[i] = src[i];
-                reference[i] = src[i];
-            }
-        }
-    }
-
-    // Multi-snapshot merge (page present in both nce_written and nce_flushing, or mapped via
-    // multiple CPU VA aliases): a byte is untouched by CPU iff it equals EVERY snapshot.
-    static void MergeNceReadbackBytesMulti(u8 * const * refs, size_t ref_count, u8 * dst,
-                                           const u8 * src, u64 size)
-    {
-        bool all_equal = true;
-        for (size_t k = 0; k < ref_count; ++k)
-        {
-            if (std::memcmp(dst, refs[k], size) != 0)
-            {
-                all_equal = false;
-                break;
-            }
-        }
-        if (all_equal)
-        {
-            std::memcpy(dst, src, size);
-            for (size_t k = 0; k < ref_count; ++k)
-            {
-                std::memcpy(refs[k], src, size);
-            }
-            return;
-        }
-        u64 i = 0;
-#if defined(__aarch64__)
-        for (; i + 16 <= size; i += 16)
-        {
-            const uint8x16_t d = vld1q_u8(dst + i);
-            const uint8x16_t s = vld1q_u8(src + i);
-            uint8x16_t eq = vdupq_n_u8(0xFF);
-            for (size_t k = 0; k < ref_count; ++k)
-            {
-                eq = vandq_u8(eq, vceqq_u8(d, vld1q_u8(refs[k] + i)));
-            }
-            vst1q_u8(dst + i, vbslq_u8(eq, s, d));
-            for (size_t k = 0; k < ref_count; ++k)
-            {
-                const uint8x16_t rk = vld1q_u8(refs[k] + i);
-                vst1q_u8(refs[k] + i, vbslq_u8(eq, s, rk));
-            }
-        }
-#endif
-        for (; i < size; ++i)
-        {
-            bool untouched = true;
-            for (size_t k = 0; k < ref_count; ++k)
-            {
-                if (dst[i] != refs[k][i])
-                {
-                    untouched = false;
-                    break;
-                }
-            }
-            if (untouched)
-            {
-                dst[i] = src[i];
-                for (size_t k = 0; k < ref_count; ++k)
-                {
-                    refs[k][i] = src[i];
-                }
-            }
-        }
     }
 
     void FlushNceWrites(bool rearm_native_reads = true, bool defer_release = false)
