@@ -838,28 +838,49 @@ ConvertedIndices IndexPass::Run(Mode mode, u32 index_size, u32 num_source, u32 n
     MTL::Buffer* const dst = ref.buffer;
     const u32 dst_offset = static_cast<u32>(ref.offset);
     const u32 groups = Common::DivCeil(num_threads, THREADGROUP_SIZE);
+    // Mode::Expand (VTG/XFB) can read a buffer just written by Convert/Widen on the
+    // same draw; keep it on the main encoder (which already runs outside a render pass
+    // after WorkerFinishUpload) to avoid a Dispatch->Dispatch hazard on the upload encoder.
+    const bool use_upload =
+        mode != Mode::Expand && (src == nullptr || !scheduler.IsBufferWritten(src));
     // Slot 0 still has to hold a buffer, so the destination stands in for it.
     if (src == nullptr) {
         src = dst;
         src_offset = dst_offset;
     }
 
-    // Has to be recorded before the draw that consumes it, so before the render
-    // pass opens.
-    scheduler.RequestOutsideRenderPassOperationContext();
-    scheduler.Record([state, src, src_offset, dst, dst_offset, params, groups](
-                         CommandContext& context) {
-        ComputeEncoder encoder = context.RequestCompute();
-        if (encoder == nullptr) {
-            return;
-        }
-        encoder->setComputePipelineState(state);
-        encoder->setBuffer(src, src_offset, SOURCE_INDEX);
-        encoder->setBuffer(dst, dst_offset, DESTINATION_INDEX);
-        encoder->setBytes(&params, sizeof(params), PARAMS_INDEX);
-        encoder->dispatchThreadgroups(MTL::Size::Make(groups, 1, 1),
-                                      MTL::Size::Make(THREADGROUP_SIZE, 1, 1));
-    });
+    if (use_upload) {
+        // The source index buffer has not been written by the main command buffer in this
+        // submission (it is either from an earlier submission or uploaded via RecordUpload,
+        // which RecordUploadCompute orders via a Blit->Dispatch barrier). Running on the
+        // upload compute encoder keeps the active TBDR render pass open across draws.
+        scheduler.RecordUploadCompute([state, src, src_offset, dst, dst_offset, params, groups](
+                                          ComputeEncoder& encoder) {
+            encoder->setComputePipelineState(state);
+            encoder->setBuffer(src, src_offset, SOURCE_INDEX);
+            encoder->setBuffer(dst, dst_offset, DESTINATION_INDEX);
+            encoder->setBytes(&params, sizeof(params), PARAMS_INDEX);
+            encoder->dispatchThreadgroups(MTL::Size::Make(groups, 1, 1),
+                                          MTL::Size::Make(THREADGROUP_SIZE, 1, 1));
+        });
+    } else {
+        // Has to be recorded before the draw that consumes it, so before the render
+        // pass opens.
+        scheduler.RequestOutsideRenderPassOperationContext();
+        scheduler.Record([state, src, src_offset, dst, dst_offset, params, groups](
+                             CommandContext& context) {
+            ComputeEncoder encoder = context.RequestCompute();
+            if (encoder == nullptr) {
+                return;
+            }
+            encoder->setComputePipelineState(state);
+            encoder->setBuffer(src, src_offset, SOURCE_INDEX);
+            encoder->setBuffer(dst, dst_offset, DESTINATION_INDEX);
+            encoder->setBytes(&params, sizeof(params), PARAMS_INDEX);
+            encoder->dispatchThreadgroups(MTL::Size::Make(groups, 1, 1),
+                                          MTL::Size::Make(THREADGROUP_SIZE, 1, 1));
+        });
+    }
 
     return ConvertedIndices{
         .buffer = dst,

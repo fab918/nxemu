@@ -514,6 +514,7 @@ void Scheduler::WorkerBeginUpload() {
     mtl4_upload_open = true;
     mtl4_upload_has_work = false;
     mtl4_upload_table_bound = false;
+    mtl4_upload_dispatched = false;
     upload_written_ranges.clear();
     upload_buffer_bounds.clear();
 }
@@ -539,6 +540,7 @@ MTL4::CommandBuffer* Scheduler::WorkerFinishUpload() {
     mtl4_upload_open = false;
     mtl4_upload_has_work = false;
     mtl4_upload_table_bound = false;
+    mtl4_upload_dispatched = false;
     return had_work ? mtl4_upload_buffer.get() : nullptr;
 }
 

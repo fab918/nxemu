@@ -521,6 +521,13 @@ public:
             if (!self.mtl4_upload_encoder) {
                 return;
             }
+            if (self.mtl4_upload_dispatched) {
+                // Order prior upload compute reads (e.g. IndexPass::Widen) before a
+                // subsequent upload copy overwrites a dynamic source buffer.
+                self.mtl4_upload_encoder->barrierAfterEncoderStages(
+                    MTL::StageDispatch, MTL::StageBlit, MTL4::VisibilityOptionDevice);
+                self.mtl4_upload_dispatched = false;
+            }
             cmd(self, self.mtl4_upload_encoder.get());
             self.mtl4_upload_has_work = true;
         });
@@ -530,7 +537,7 @@ public:
     /// all prior submissions (e.g. reading visibility results from an earlier tick)
     /// and before the current main command buffer, WITHOUT closing the open render
     /// pass. Only valid when every GPU resource read by the kernel was written in a
-    /// strictly earlier submission (tick < CurrentTick()).
+    /// strictly earlier submission (tick < CurrentTick()) or uploaded via RecordUpload.
     template <typename T>
         requires std::is_invocable_v<T, ComputeEncoder&>
     void RecordUploadCompute(T&& command) {
@@ -559,6 +566,7 @@ public:
             }
             cmd(encoder);
             self.mtl4_upload_has_work = true;
+            self.mtl4_upload_dispatched = true;
         });
     }
 
@@ -597,6 +605,7 @@ private:
     bool mtl4_upload_open{false};
     bool mtl4_upload_has_work{false};
     bool mtl4_upload_table_bound{false};
+    bool mtl4_upload_dispatched{false};
     bool mtl4_committed{true};
 
     /// Compute and blit encoders write the vertex/index buffers and generated textures, so only
